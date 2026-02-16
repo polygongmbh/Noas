@@ -6,13 +6,14 @@
  * Uses a separate test server on port 3001.
  */
 
-import { test, before, after } from 'node:test';
+import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert';
 import { app } from './index.js';
 import { query, closePool } from './db/pool.js';
 
 const baseURL = 'http://localhost:3001';
 let server;
+let serverReady = false;
 
 /**
  * Helper function to make HTTP requests to the test server
@@ -22,32 +23,56 @@ let server;
  * @returns {Object} {status, data} - Response status and parsed JSON
  */
 async function request(method, path, body) {
-  const response = await fetch(`${baseURL}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await response.json();
-  return { status: response.status, data };
+  try {
+    const response = await fetch(`${baseURL}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await response.json().catch(() => ({}));
+    return { status: response.status, data };
+  } catch (error) {
+    throw new Error(`Request failed: ${error.message}`);
+  }
 }
 
 // Setup: Start test server and clean up existing test data
 before(async () => {
-  // Start test server on different port
-  await new Promise((resolve) => {
-    server = app.listen(3001, resolve);
-  });
+  // Clean up test data first
+  try {
+    await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
+  } catch (e) {
+    // Ignore if table doesn't exist yet
+  }
   
-  // Clean up test data
-  await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
+  // Start test server on different port
+  await new Promise((resolve, reject) => {
+    server = app.listen(3001, (err) => {
+      if (err) reject(err);
+      else {
+        serverReady = true;
+        setTimeout(resolve, 300); // Give server time to be ready
+      }
+    });
+  });
 });
 
 // Teardown: Clean up test data, close database, and stop server
 after(async () => {
-  // Clean up
-  await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
+  // Clean up test data
+  try {
+    await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
+  } catch (e) {
+    // Ignore cleanup errors
+  }
+  
+  // Close server
+  if (server) {
+    await new Promise((resolve) => server.close(resolve));
+  }
+  
+  // Close database pool
   await closePool();
-  server.close();
 });
 
 // Test: POST /register successfully creates a new user account

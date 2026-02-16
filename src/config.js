@@ -5,7 +5,7 @@
  * Handles .env file loading and provides typed config object for the app.
  */
 
-import { config as dotenvConfig } from 'dotenv';
+import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -13,7 +13,7 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load environment variables from .env file
-dotenvConfig({ path: join(__dirname, '../.env') });
+dotenv.config({ path: join(__dirname, '../.env') });
 
 // Export configuration object with all app settings
 export const config = {
