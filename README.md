@@ -44,12 +44,13 @@ npm run db:setup
 ### 4. Run tests
 
 ```bash
+# Unit tests (auth, validation, database)
+npm run test:unit
+
+# Or all tests
 npm test
-```
 
-Or watch mode:
-
-```bash
+# Watch mode
 npm run test:watch
 ```
 
@@ -153,10 +154,36 @@ NIP-05 verification endpoint.
 
 ## Development
 
-Run tests in watch mode while developing:
+### Testing
+
+The project has comprehensive test coverage:
 
 ```bash
+# Unit tests (auth, validation, database)
+npm run test:unit
+
+# Integration tests (API endpoints - requires server running)
+npm run test:integration
+
+# All tests
+npm test
+
+# Watch mode for TDD
 npm run test:watch
 ```
 
-The server uses Node.js built-in test runner (no external test framework needed).
+**Unit tests** cover:
+- ✅ Password hashing and verification (bcrypt)
+- ✅ Input validation (usernames, keys, passwords)
+- ✅ Database operations (CRUD)
+- ✅ NIP-49 encrypted key validation
+
+**Integration tests** cover:
+- ✅ Complete registration flow
+- ✅ Authentication and sign-in
+- ✅ Invalid password rejection
+- ✅ NIP-05 verification
+- ✅ Duplicate username prevention
+- ✅ Input validation
+
+Integration tests use real HTTP requests to test the full API.
