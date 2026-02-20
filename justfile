@@ -12,6 +12,10 @@ install:
 up:
     docker compose up -d
 
+# Rebuild and restart app (db + app)
+restart:
+    docker compose up -d --build noas
+
 # Start PostgreSQL database
 db-start:
     docker compose up -d postgres
@@ -52,6 +56,10 @@ test:
 test-integration:
     ./test-api.sh
 
+# Run tests inside the Docker container (rebuilds image first)
+test-docker: restart
+    docker exec -e NODE_ENV=test noas node --test src/auth.test.js src/db/users.test.js src/routes.test.js
+
 # Run all tests (unit + integration)
 test-all:
     npm test
@@ -67,21 +75,35 @@ health:
 # Demo: Register a user
 demo-register username="demo_user" password="securepass123":
     @echo "Registering user: {{username}}"
-    @curl -X POST http://localhost:3007/register -H "Content-Type: application/json" -d '{"username":"{{username}}","password":"{{password}}","publicKey":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","encryptedPrivateKey":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}' | jq || echo ""
+    @bash -lc 'curl -s -X POST http://localhost:3007/register -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","publicKey":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","encryptedPrivateKey":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: Sign in
 demo-signin username="demo_user" password="securepass123":
     @echo "Signing in: {{username}}"
-    @curl -X POST http://localhost:3007/signin -H "Content-Type: application/json" -d '{"username":"{{username}}","password":"{{password}}"}' | jq || echo ""
+    @bash -lc 'curl -s -X POST http://localhost:3007/signin -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: NIP-05 verification
 demo-nip05 username="demo_user":
     @echo "NIP-05 lookup: {{username}}"
-    @curl -s "http://localhost:3007/.well-known/nostr.json?name={{username}}" | jq || echo ""
+    @bash -lc 'curl -s "http://localhost:3007/.well-known/nostr.json?name={{username}}" | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Run full demo flow
 demo: demo-register demo-signin demo-nip05
     @echo "✅ Demo complete!"
+
+# Demo: Upload profile picture
+demo-picture username="demo_user" password="securepass123":
+    @echo "Uploading profile picture for: {{username}}"
+    @bash -lc 'curl -s -X POST http://localhost:3007/picture -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","contentType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2S+0sAAAAASUVORK5CYII="}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @echo ""
+    @echo "Fetch image:"
+    @curl -s -o /tmp/noas_demo_pic.bin http://localhost:3007/picture/abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234
+    @echo "Saved to /tmp/noas_demo_pic.bin (size: $(wc -c < /tmp/noas_demo_pic.bin) bytes)"
+
+# Demo: Full profile picture flow (register + upload + fetch)
+demo-picture-full username="demo_user" password="securepass123":
+    @just demo-register "{{username}}" "{{password}}"
+    @just demo-picture "{{username}}" "{{password}}"
 
 # Show git log
 log:
