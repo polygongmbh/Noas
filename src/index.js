@@ -12,7 +12,7 @@ import { router } from './routes.js';
 const app = express();
 
 // Parse JSON request bodies
-app.use(express.json());
+app.use(express.json({ limit: '4mb' }));
 
 // CORS middleware - allows cross-origin requests from any origin
 app.use((req, res, next) => {

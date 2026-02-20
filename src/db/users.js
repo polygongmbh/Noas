@@ -56,6 +56,41 @@ export async function getUserForNip05(username) {
 }
 
 /**
+ * Retrieve a user's profile picture by public key
+ * Returns binary picture data and content type
+ * @param {string} publicKey - Public key to look up
+ * @returns {Promise<Object|undefined>} Object with profile_picture and profile_picture_type
+ */
+export async function getUserProfilePictureByPublicKey(publicKey) {
+  const result = await query(
+    'SELECT profile_picture, profile_picture_type FROM users WHERE public_key = $1',
+    [publicKey]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Update user profile picture
+ * Stores binary picture data and content type
+ * @param {string} username - Username of user to update
+ * @param {Buffer} pictureData - Raw image bytes
+ * @param {string} pictureType - MIME type of image
+ * @returns {Promise<Object>} Updated user object
+ */
+export async function updateUserProfilePicture(username, pictureData, pictureType) {
+  const result = await query(
+    `UPDATE users
+     SET profile_picture = $1,
+         profile_picture_type = $2,
+         profile_picture_updated_at = CURRENT_TIMESTAMP
+     WHERE username = $3
+     RETURNING id, username, public_key`,
+    [pictureData, pictureType, username]
+  );
+  return result.rows[0];
+}
+
+/**
  * Update user fields
  * Can update password hash, encrypted private key, or relays
  * @param {string} username - Username of user to update

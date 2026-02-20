@@ -15,12 +15,24 @@ CREATE TABLE IF NOT EXISTS users (
   encrypted_private_key TEXT NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   relays JSONB DEFAULT '[]'::jsonb,
+  profile_picture BYTEA,
+  profile_picture_type VARCHAR(100),
+  profile_picture_updated_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT username_format CHECK (username ~ '^[a-z0-9_]{3,32}$')
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_public_key ON users(public_key);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
 `;
 
 /**

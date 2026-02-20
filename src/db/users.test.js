@@ -8,7 +8,14 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert';
 import { pool, query, closePool } from './pool.js';
-import { createUser, getUserByUsername, getUserForNip05, updateUser } from './users.js';
+import { 
+  createUser, 
+  getUserByUsername, 
+  getUserForNip05, 
+  updateUser,
+  updateUserProfilePicture,
+  getUserProfilePictureByPublicKey,
+} from './users.js';
 
 // Test user data used across all tests
 const testUser = {
@@ -21,6 +28,19 @@ const testUser = {
 
 // Setup: Clean up any existing test data before running tests
 before(async () => {
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
+  `);
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
+  `);
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
+  `);
+
   // Clean up any existing test data
   await query('DELETE FROM users WHERE username = $1', [testUser.username]);
 });
@@ -87,4 +107,16 @@ test('updateUser updates relays', async () => {
   
   const user = await getUserByUsername(testUser.username);
   assert.deepStrictEqual(user.relays, newRelays);
+});
+
+// Test: Updating profile picture stores image data and type
+test('updateUserProfilePicture stores profile picture', async () => {
+  const pictureData = Buffer.from([0, 1, 2, 3, 4]);
+  const pictureType = 'image/png';
+  await updateUserProfilePicture(testUser.username, pictureData, pictureType);
+
+  const stored = await getUserProfilePictureByPublicKey(testUser.publicKey);
+  assert.ok(stored);
+  assert.strictEqual(stored.profile_picture_type, pictureType);
+  assert.deepStrictEqual(stored.profile_picture, pictureData);
 });

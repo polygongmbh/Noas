@@ -40,6 +40,18 @@ async function request(method, path, body) {
 before(async () => {
   // Clean up test data first
   try {
+    await query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
+    `);
+    await query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
+    `);
+    await query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
+    `);
     await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
   } catch (e) {
     // Ignore if table doesn't exist yet
@@ -211,4 +223,26 @@ test('GET /health returns server status', async () => {
   assert.strictEqual(response.status, 200);
   assert.strictEqual(data.status, 'ok');
   assert.ok(data.domain);
+});
+
+// Test: POST /picture uploads and GET /picture/:pubkey serves the image
+test('POST /picture uploads and GET /picture/:pubkey serves image', async () => {
+  const imageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2S+0sAAAAASUVORK5CYII=';
+  const upload = await request('POST', '/picture', {
+    username: 'apitestuser',
+    password: 'testpassword123',
+    contentType: 'image/png',
+    data: imageBase64,
+  });
+
+  assert.strictEqual(upload.status, 200);
+  assert.strictEqual(upload.data.success, true);
+  assert.ok(upload.data.url.includes(`/picture/${'b'.repeat(64)}`));
+
+  const pictureResponse = await fetch(`${baseURL}/picture/${'b'.repeat(64)}`);
+  assert.strictEqual(pictureResponse.status, 200);
+  assert.strictEqual(pictureResponse.headers.get('content-type'), 'image/png');
+
+  const buffer = Buffer.from(await pictureResponse.arrayBuffer());
+  assert.deepStrictEqual(buffer, Buffer.from(imageBase64, 'base64'));
 });
