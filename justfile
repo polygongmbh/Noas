@@ -8,20 +8,24 @@ default:
 install:
     npm install
 
+# Start full stack (db + app)
+up:
+    docker compose up -d
+
 # Start PostgreSQL database
 db-start:
-    docker-compose up -d
+    docker compose up -d postgres
     @echo "Waiting for database to be ready..."
     @sleep 3
 
 # Stop PostgreSQL database
 db-stop:
-    docker-compose down
+    docker compose down
 
 # Restart database (clean slate)
 db-restart:
-    docker-compose down -v
-    docker-compose up -d
+    docker compose down -v
+    docker compose up -d postgres
     @sleep 3
 
 # Setup database schema
@@ -58,22 +62,22 @@ test-watch:
 
 # Health check
 health:
-    @curl -s http://localhost:3000/health | jq || curl http://localhost:3000/health
+    @curl -s http://localhost:3007/health | jq || curl http://localhost:3007/health
 
 # Demo: Register a user
 demo-register username="demo_user" password="securepass123":
     @echo "Registering user: {{username}}"
-    @curl -X POST http://localhost:3000/register -H "Content-Type: application/json" -d '{"username":"{{username}}","password":"{{password}}","publicKey":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","encryptedPrivateKey":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}' | jq || echo ""
+    @curl -X POST http://localhost:3007/register -H "Content-Type: application/json" -d '{"username":"{{username}}","password":"{{password}}","publicKey":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","encryptedPrivateKey":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}' | jq || echo ""
 
 # Demo: Sign in
 demo-signin username="demo_user" password="securepass123":
     @echo "Signing in: {{username}}"
-    @curl -X POST http://localhost:3000/signin -H "Content-Type: application/json" -d '{"username":"{{username}}","password":"{{password}}"}' | jq || echo ""
+    @curl -X POST http://localhost:3007/signin -H "Content-Type: application/json" -d '{"username":"{{username}}","password":"{{password}}"}' | jq || echo ""
 
 # Demo: NIP-05 verification
 demo-nip05 username="demo_user":
     @echo "NIP-05 lookup: {{username}}"
-    @curl -s "http://localhost:3000/.well-known/nostr.json?name={{username}}" | jq || echo ""
+    @curl -s "http://localhost:3007/.well-known/nostr.json?name={{username}}" | jq || echo ""
 
 # Run full demo flow
 demo: demo-register demo-signin demo-nip05
@@ -120,7 +124,7 @@ present-check:
 
 # Check if server is running
 check-server:
-    @curl -s http://localhost:3000/health > /dev/null && echo "✅ Server is running" || echo "❌ Server is not running"
+    @curl -s http://localhost:3007/health > /dev/null && echo "✅ Server is running" || echo "❌ Server is not running"
 
 # Push to git remote
 push remote="origin" branch="master":

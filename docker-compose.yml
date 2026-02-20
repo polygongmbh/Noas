@@ -16,5 +16,20 @@ services:
       timeout: 5s
       retries: 5
 
+  noas:
+    build: .
+    container_name: noas
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-lc", "npm run db:setup && npm start"]
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://noas:noas@postgres:5432/noas
+      DOMAIN: noas.progyssey.org
+    ports:
+      - "3007:3000"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
