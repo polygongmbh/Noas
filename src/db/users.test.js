@@ -111,9 +111,18 @@ test('updateUser updates relays', async () => {
 
 // Test: Updating profile picture stores image data and type
 test('updateUserProfilePicture stores profile picture', async () => {
+  // Ensure the user exists first
+  const existingUser = await getUserByUsername(testUser.username);
+  if (!existingUser) {
+    await createUser(testUser);
+  }
+  
   const pictureData = Buffer.from([0, 1, 2, 3, 4]);
   const pictureType = 'image/png';
-  await updateUserProfilePicture(testUser.username, pictureData, pictureType);
+  const updateResult = await updateUserProfilePicture(testUser.username, pictureData, pictureType);
+  
+  // Verify the update operation succeeded
+  assert.ok(updateResult);
 
   const stored = await getUserProfilePictureByPublicKey(testUser.publicKey);
   assert.ok(stored);
