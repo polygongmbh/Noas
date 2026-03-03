@@ -33,6 +33,43 @@ ALTER TABLE users
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
+
+-- NIP-46 Remote Signer tables
+CREATE TABLE IF NOT EXISTS nip46_sessions (
+  id SERIAL PRIMARY KEY,
+  session_id VARCHAR(64) UNIQUE NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  client_pubkey VARCHAR(64) NOT NULL,
+  remote_signer_pubkey VARCHAR(64) NOT NULL,
+  secret VARCHAR(64),
+  permissions TEXT[], -- array of allowed methods/permissions
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'connected', 'disconnected')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '24 hours')
+);
+
+CREATE TABLE IF NOT EXISTS nip46_requests (
+  id SERIAL PRIMARY KEY,
+  request_id VARCHAR(64) UNIQUE NOT NULL,
+  session_id VARCHAR(64) REFERENCES nip46_sessions(session_id) ON DELETE CASCADE,
+  method VARCHAR(50) NOT NULL,
+  params JSONB,
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'expired')),
+  response JSONB,
+  error TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP,
+  expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+);
+
+CREATE INDEX IF NOT EXISTS idx_nip46_sessions_session_id ON nip46_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_nip46_sessions_user_id ON nip46_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_nip46_sessions_client_pubkey ON nip46_sessions(client_pubkey);
+CREATE INDEX IF NOT EXISTS idx_nip46_sessions_status ON nip46_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_nip46_requests_request_id ON nip46_requests(request_id);
+CREATE INDEX IF NOT EXISTS idx_nip46_requests_session_id ON nip46_requests(session_id);
+CREATE INDEX IF NOT EXISTS idx_nip46_requests_status ON nip46_requests(status);
 `;
 
 /**

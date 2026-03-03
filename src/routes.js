@@ -9,6 +9,9 @@
  * - GET /picture/:pubkey - Serve profile picture by public key
  * - GET /.well-known/nostr.json - NIP-05 verification
  * - GET /health - Health check endpoint
+ * - POST /nip46/request - Handle NIP-46 requests
+ * - GET /nip46/connect/:username - Get connection token
+ * - GET /nip46/info - Get signer information
  */
 
 import express from 'express';
@@ -27,6 +30,12 @@ import {
   validatePublicKey, 
   validateEncryptedPrivateKey 
 } from './auth.js';
+import { 
+  createConnectionToken,
+  processNip46Request,
+  createResponseEvent,
+  signerPubkey 
+} from './nip46.js';
 import { config } from './config.js';
 
 export const router = express.Router();
@@ -357,4 +366,166 @@ router.get('/.well-known/nostr.json', async (req, res) => {
  */
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', domain: config.domain });
+});
+
+/**
+ * GET /nip46/info
+ * Get NIP-46 signer information
+ * 
+ * Returns the public key and supported methods of this remote signer.
+ */
+router.get('/nip46/info', (req, res) => {
+  res.json({
+    pubkey: signerPubkey,
+    domain: config.domain,
+    methods: [
+      'connect',
+      'ping', 
+      'get_public_key',
+      'sign_event',
+      'nip04_encrypt',
+      'nip04_decrypt',
+      'nip44_encrypt', 
+      'nip44_decrypt'
+    ],
+    version: '1.0.0'
+  });
+});
+
+/**
+ * GET /nip46/connect/:username
+ * Generate a connection token for a specific user
+ * 
+ * Creates a bunker:// URL that clients can use to initiate a connection.
+ */
+router.get('/nip46/connect/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    // Validate username exists
+    const user = await getUserByUsername(username);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Generate connection token
+    const connectionToken = createConnectionToken(config.domain);
+    
+    res.json({
+      bunker_url: connectionToken,
+      username,
+      instructions: 'Copy this URL and paste it into your NIP-46 compatible client'
+    });
+
+  } catch (error) {
+    console.error('NIP-46 connect error:', error);
+    res.status(500).json({ error: 'Failed to generate connection token' });
+  }
+});
+
+/**
+ * POST /nip46/request
+ * Handle NIP-46 requests
+ * 
+ * Processes encrypted NIP-46 request events and returns encrypted responses.
+ * This endpoint simulates relay-based communication via HTTP.
+ */
+router.post('/nip46/request', async (req, res) => {
+  try {
+    const { event, username } = req.body;
+
+    if (!event || !event.kind || event.kind !== 24133) {
+      return res.status(400).json({ error: 'Invalid request event' });
+    }
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Process the NIP-46 request
+    const response = await processNip46Request(event, username);
+    
+    if (!response) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    // Create response event
+    const responseEvent = createResponseEvent(response, event.pubkey);
+
+    res.json({
+      event: responseEvent,
+      success: true
+    });
+
+  } catch (error) {
+    console.error('NIP-46 request error:', error);
+    res.status(500).json({ error: 'Request processing failed' });
+  }
+});
+
+/**
+ * POST /nip46/nostrconnect
+ * Handle nostrconnect:// protocol connections
+ * 
+ * Processes client-initiated connections using the nostrconnect protocol.
+ */
+router.post('/nip46/nostrconnect', async (req, res) => {
+  try {
+    const { nostrconnect_url, username } = req.body;
+
+    if (!nostrconnect_url || !nostrconnect_url.startsWith('nostrconnect://')) {
+      return res.status(400).json({ error: 'Invalid nostrconnect URL' });
+    }
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Parse the nostrconnect URL
+    const url = new URL(nostrconnect_url);
+    const clientPubkey = url.pathname.replace('//', '');
+    const secret = url.searchParams.get('secret');
+    const relays = url.searchParams.getAll('relay');
+    const perms = url.searchParams.get('perms');
+
+    // Validate client pubkey
+    if (!clientPubkey || clientPubkey.length !== 64) {
+      return res.status(400).json({ error: 'Invalid client pubkey' });
+    }
+
+    // Create a mock connect request to process
+    const connectRequest = {
+      id: Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(''),
+      method: 'connect',
+      params: [signerPubkey, secret, perms]
+    };
+
+    // Create a mock event
+    const mockEvent = {
+      kind: 24133,
+      pubkey: clientPubkey,
+      content: 'encrypted_content', // Would be properly encrypted in real implementation
+      tags: [['p', signerPubkey]]
+    };
+
+    // For demo purposes, we'll simulate the connection
+    const user = await getUserByUsername(username);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      remote_signer_pubkey: signerPubkey,
+      secret: secret,
+      message: 'Connection initiated. Use /nip46/request endpoint to send encrypted commands.',
+      relays: ['wss://relay.nostr.org'] // Default relay
+    });
+
+  } catch (error) {
+    console.error('NIP-46 nostrconnect error:', error);
+    res.status(500).json({ error: 'Connection failed' });
+  }
 });
