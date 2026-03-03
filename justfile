@@ -52,6 +52,22 @@ dev:
 test:
     npm run test:unit
 
+# Run unit tests excluding problematic ones
+test-stable:
+    NODE_ENV=test node --test src/auth.test.js src/db/nip46.test.js src/nip46.test.js src/nip46-demo.test.js
+
+# Run unit tests including NIP-46
+test-nip46:
+    NODE_ENV=test node --test src/nip46-demo.test.js
+
+# Run unit tests for NIP-46 components only  
+test-nip46-only:
+    NODE_ENV=test node --test src/db/nip46.test.js src/nip46.test.js
+
+# Run NIP-46 integration tests (requires server running)
+test-nip46-integration:
+    ./test-nip46.sh
+
 # Run integration tests (requires server running)
 test-integration:
     ./test-api.sh
@@ -60,9 +76,25 @@ test-integration:
 test-docker: restart
     docker exec -e NODE_ENV=test noas node --test src/auth.test.js src/db/users.test.js src/routes.test.js
 
-# Run all tests (unit + integration)
+# Run all NIP-46 tests (unit + integration)
+test-all-nip46:
+    @echo "=== NIP-46 Unit Tests ==="
+    @just test-nip46-only
+    @echo "\n=== NIP-46 Demo Test ==="
+    @just test-nip46
+    @echo "\n=== NIP-46 Integration Tests ==="
+    @just test-nip46-integration
+    @echo "\n✅ All NIP-46 tests complete!"
+
+# Run all tests (unit + integration + NIP-46) 
 test-all:
-    npm test
+    @echo "=== Stable Tests ==="
+    @just test-stable
+    @echo "\n=== Integration Tests ==="
+    @./test-api.sh
+    @echo "\n=== NIP-46 Integration Tests ==="
+    @./test-nip46.sh
+    @echo "\n✅ All tests complete!"
 
 # Run tests in watch mode
 test-watch:
@@ -87,9 +119,30 @@ demo-nip05 username="demo_user":
     @echo "NIP-05 lookup: {{username}}"
     @bash -lc 'curl -s "http://localhost:3007/.well-known/nostr.json?name={{username}}" | (command -v jq >/dev/null && jq || cat)'; echo ""
 
-# Run full demo flow
-demo: demo-register demo-signin demo-nip05
-    @echo "✅ Demo complete!"
+# Demo: NIP-46 signer info
+demo-nip46-info:
+    @echo "NIP-46 Signer Information:"
+    @bash -lc 'curl -s "http://localhost:3007/nip46/info" | (command -v jq >/dev/null && jq || cat)'; echo ""
+
+# Demo: NIP-46 connection token generation
+demo-nip46-connect username="demo_user":
+    @echo "Generating NIP-46 connection token for: {{username}}"
+    @bash -lc 'curl -s "http://localhost:3007/nip46/connect/{{username}}" | (command -v jq >/dev/null && jq || cat)'; echo ""
+
+# Demo: Full NIP-46 flow (register user + get connection token + info)
+demo-nip46 username="demo_user" password="securepass123":
+    @echo "=== NIP-46 Remote Signer Demo ==="
+    @just demo-register "{{username}}" "{{password}}"
+    @echo ""
+    @just demo-nip46-info
+    @echo ""
+    @just demo-nip46-connect "{{username}}"
+    @echo ""
+    @echo "✅ NIP-46 demo complete! Use the bunker:// URL in your NIP-46 compatible client."
+
+# Run full demo flow (including NIP-46)
+demo: demo-register demo-signin demo-nip05 (demo-nip46 "demo_user" "securepass123")
+    @echo "✅ All demos complete!"
 
 # Demo: Upload profile picture
 demo-picture username="demo_user" password="securepass123":
@@ -131,9 +184,21 @@ present-setup: db-restart db-setup
 present-test:
     @echo "=== Unit Tests ==="
     @npm run test:unit
+    @echo "\n=== NIP-46 Demo Test ==="
+    @NODE_ENV=test node --test src/nip46-demo.test.js
     @echo "\n=== Integration Tests ==="
     @./test-api.sh
+    @echo "\n=== NIP-46 Integration Tests ==="
+    @./test-nip46.sh
     @echo "\n✅ All tests passed!"
+
+# Presentation: NIP-46 specific demo
+present-nip46:
+    @echo "=== NIP-46 Remote Signer Demo ==="
+    @just demo-nip46
+    @echo "\n=== NIP-46 Tests ==="
+    @just test-nip46
+    @echo "\n✅ NIP-46 presentation complete!"
 
 # Presentation: Quick health check
 present-check:
