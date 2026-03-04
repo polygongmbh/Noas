@@ -124,8 +124,9 @@ test('updateUserProfilePicture stores profile picture', async () => {
   // Verify the update operation succeeded
   assert.ok(updateResult);
 
-  const stored = await getUserProfilePictureByPublicKey(testUser.publicKey);
-  assert.ok(stored);
-  assert.strictEqual(stored.profile_picture_type, pictureType);
-  assert.deepStrictEqual(stored.profile_picture, pictureData);
+  // Retrieve the user by username to verify the profile picture was stored
+  const updatedUser = await getUserByUsername(testUser.username);
+  assert.ok(updatedUser);
+  assert.strictEqual(updatedUser.profile_picture_type, pictureType);
+  assert.deepStrictEqual(updatedUser.profile_picture, pictureData);
 });
