@@ -6,8 +6,12 @@
  */
 
 import express from 'express';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { config } from './config.js';
 import { router } from './routes.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
@@ -24,6 +28,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Serve landing page and static assets
+app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));
 
 // Mount all API routes
 app.use(router);

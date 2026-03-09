@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Noas is a minimal Nostr account service for secure key storage, relay updates, and account management." />
+    <title>Noas | Nostr Account Service</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"></div>
+    <main class="container">
+      <header class="hero">
+        <div class="badge">Noas · Nostr Account Service</div>
+        <h1>Simple account storage for Nostr identities.</h1>
+        <p class="lead">
+          Noas is primarily an API that stores NIP-49 encrypted keys, relay lists,
+          and profile images. Keep your private key safe and encrypted, retrieve it
+          when you need it, and manage your account in one place.
+        </p>
+        <div class="actions">
+          <a class="btn" href="/health">API status</a>
+          <a class="btn ghost" href="#portal">Account portal</a>
+          <a class="btn ghost" href="#endpoints">Endpoints</a>
+        </div>
+        <div class="warning">
+          Important: Save your private key somewhere safe. Noas only stores your
+          encrypted key and cannot recover a lost private key.
+        </div>
+      </header>
+
+      <section class="portal" id="portal">
+        <div class="panel">
+          <h2>Account Portal</h2>
+          <p>Sign in to retrieve your encrypted key, update relays, or delete your account.</p>
+          <form id="signinForm" class="form">
+            <label>
+              Username
+              <input type="text" name="username" autocomplete="username" required />
+            </label>
+            <label>
+              Password
+              <input type="password" name="password" autocomplete="current-password" required />
+            </label>
+            <button type="submit" class="btn">Sign in</button>
+            <div id="signinStatus" class="status" role="status"></div>
+          </form>
+        </div>
+
+        <div class="panel" id="accountPanel" hidden>
+          <h2>Account Details</h2>
+          <div class="field">
+            <span>Public key</span>
+            <code id="publicKey">—</code>
+          </div>
+          <div class="field">
+            <span>Encrypted private key</span>
+            <code id="encryptedKey">—</code>
+          </div>
+          <div class="field">
+            <span>Relays</span>
+            <code id="relayList">—</code>
+          </div>
+
+          <div class="actions inline">
+            <button id="copyEncrypted" class="btn ghost" type="button">Copy encrypted key</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Update Account</h2>
+          <p>Leave fields blank if you do not want to change them.</p>
+          <form id="updateForm" class="form">
+            <label>
+              New password
+              <input type="password" name="newPassword" autocomplete="new-password" />
+            </label>
+            <label>
+              New encrypted private key (NIP-49)
+              <input type="text" name="encryptedPrivateKey" placeholder="ncryptsec..." />
+            </label>
+            <label>
+              Relays (one per line)
+              <textarea name="relays" rows="4" placeholder="wss://relay.example.com"></textarea>
+            </label>
+            <button type="submit" class="btn">Update account</button>
+            <div id="updateStatus" class="status" role="status"></div>
+          </form>
+        </div>
+
+        <div class="panel danger">
+          <h2>Delete Account</h2>
+          <p>
+            Deleting your account is permanent. Make sure you have saved your private key
+            somewhere safe before continuing.
+          </p>
+          <form id="deleteForm" class="form">
+            <label class="checkline">
+              <input type="checkbox" name="savedKey" required />
+              I have saved my private key and understand deletion is permanent.
+            </label>
+            <label>
+              Type DELETE to confirm
+              <input type="text" name="confirm" placeholder="DELETE" required />
+            </label>
+            <button type="submit" class="btn danger">Delete account</button>
+            <div id="deleteStatus" class="status" role="status"></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="grid" id="endpoints">
+        <div class="card">
+          <h2>Register</h2>
+          <p>Create a new account with a username, NIP-49 encrypted key, and relays.</p>
+          <code>POST /register</code>
+        </div>
+        <div class="card">
+          <h2>Sign in</h2>
+          <p>Authenticate and retrieve your encrypted key.</p>
+          <code>POST /signin</code>
+        </div>
+        <div class="card">
+          <h2>Update</h2>
+          <p>Rotate your password, update relays, or replace encrypted key.</p>
+          <code>POST /update</code>
+        </div>
+        <div class="card">
+          <h2>Profile Picture</h2>
+          <p>Store and fetch a profile image for your pubkey.</p>
+          <code>POST /picture · GET /picture/:pubkey</code>
+        </div>
+        <div class="card">
+          <h2>NIP-05</h2>
+          <p>Verify usernames with standard NIP-05 lookups.</p>
+          <code>GET /.well-known/nostr.json</code>
+        </div>
+        <div class="card">
+          <h2>Health</h2>
+          <p>Check service status.</p>
+          <code>GET /health</code>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Example</h2>
+        <p>Minimal register payload:</p>
+        <pre><code>{
+  "username": "alice",
+  "password": "strong-password",
+  "publicKey": "&lt;pubkey hex&gt;",
+  "encryptedPrivateKey": "ncryptsec...",
+  "relays": ["wss://relay.example.com"]
+}
+</code></pre>
+      </section>
+
+      <footer class="footer">
+        <span>Domain: noas.progyssey.org</span>
+        <span>API first · minimal · secure</span>
+      </footer>
+    </main>
+
+    <script src=\"/app.js\" defer></script>
+  </body>
+</html>

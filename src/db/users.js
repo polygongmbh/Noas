@@ -131,3 +131,16 @@ export async function updateUser(username, updates) {
   
   return result.rows[0];
 }
+
+/**
+ * Delete a user account by username
+ * @param {string} username - Username of user to delete
+ * @returns {Promise<Object|undefined>} Deleted user summary or undefined if not found
+ */
+export async function deleteUser(username) {
+  const result = await query(
+    'DELETE FROM users WHERE username = $1 RETURNING id, username, public_key',
+    [username]
+  );
+  return result.rows[0];
+}

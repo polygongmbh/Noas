@@ -5,6 +5,7 @@
  * - POST /register - Create new user account
  * - POST /signin - Authenticate and get encrypted key
  * - POST /update - Update user password or relays
+ * - POST /delete - Delete user account
  * - POST /picture - Upload profile picture
  * - GET /picture/:pubkey - Serve profile picture by public key
  * - GET /.well-known/nostr.json - NIP-05 verification
@@ -22,6 +23,7 @@ import {
   getUserForNip05,
   getUserProfilePictureByPublicKey,
   updateUserProfilePicture,
+  deleteUser,
 } from './db/users.js';
 import { 
   hashPassword, 
@@ -245,6 +247,49 @@ router.post('/update', async (req, res) => {
   } catch (error) {
     console.error('Update error:', error);
     res.status(500).json({ error: 'Update failed' });
+  }
+});
+
+/**
+ * POST /delete
+ * Delete a user account
+ * 
+ * Requires authentication and an explicit confirmation that the user
+ * has saved their private key.
+ */
+router.post('/delete', async (req, res) => {
+  try {
+    const { username, password, savedKey } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    if (!savedKey) {
+      return res.status(400).json({ error: 'Confirm that you saved your private key' });
+    }
+
+    const user = await getUserByUsername(username);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    await deleteUser(username);
+
+    res.json({
+      success: true,
+      deleted: {
+        username: user.username,
+        publicKey: user.public_key,
+      },
+    });
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({ error: 'Account deletion failed' });
   }
 });
 
