@@ -101,7 +101,7 @@ function normalizeBase64Payload(data, contentType) {
  */
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, publicKey, encryptedPrivateKey, relays } = req.body;
+    const { username, password, nsecKey, relays } = req.body;
 
     // Validate inputs
     const usernameCheck = validateUsername(username);
@@ -109,18 +109,52 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: usernameCheck.error });
     }
 
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    if (!nsecKey || nsecKey.trim().length === 0) {
+      return res.status(400).json({ error: 'Private key (nsec) is required' });
+    }
+
+    // Import nostr-tools for server-side key processing
+    const { getPublicKey, nip19 } = await import('nostr-tools');
+    const nip49 = await import('nostr-tools/nip49');
+
+    // Parse nsec key and derive public key
+    let privateKey;
+    try {
+      // If it starts with nsec1, decode from bech32
+      if (nsecKey.startsWith('nsec1')) {
+        privateKey = nip19.decode(nsecKey).data;
+      }
+      // If it's 64 hex characters, use as-is
+      else if (/^[a-f0-9]{64}$/i.test(nsecKey)) {
+        privateKey = nsecKey.toLowerCase();
+      }
+      else {
+        return res.status(400).json({ error: 'Invalid private key format. Use nsec1... or 64-character hex' });
+      }
+    } catch (error) {
+      return res.status(400).json({ error: 'Invalid nsec key format' });
+    }
+
+    // Derive public key from private key
+    const publicKey = getPublicKey(privateKey);
+
+    // Validate derived public key
     const pubkeyCheck = validatePublicKey(publicKey);
     if (!pubkeyCheck.valid) {
       return res.status(400).json({ error: pubkeyCheck.error });
     }
 
+    // Encrypt private key with password
+    const encryptedPrivateKey = await nip49.encrypt(privateKey, password);
+
+    // Validate encrypted private key
     const encKeyCheck = validateEncryptedPrivateKey(encryptedPrivateKey);
     if (!encKeyCheck.valid) {
       return res.status(400).json({ error: encKeyCheck.error });
-    }
-
-    if (!password || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
     // Check if user already exists

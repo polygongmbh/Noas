@@ -80,3 +80,24 @@ export function validateEncryptedPrivateKey(encryptedKey) {
   }
   return { valid: true };
 }
+
+/**
+ * Validate private key format (hex or nsec)
+ * @param {string} privateKey - Private key to validate
+ * @returns {Object} {valid: boolean, error?: string}
+ */
+export function validatePrivateKey(privateKey) {
+  if (!privateKey || typeof privateKey !== 'string') {
+    return { valid: false, error: 'Private key is required' };
+  }
+  
+  // Accept either raw hex (64 chars) or nsec bech32 format
+  const isHexKey = /^[a-f0-9]{64}$/i.test(privateKey);
+  const isNsecKey = privateKey.startsWith('nsec1_') || privateKey.startsWith('nsec');
+  
+  if (!isHexKey && !isNsecKey) {
+    return { valid: false, error: 'Private key must be either 64 hex characters or nsec bech32 format' };
+  }
+  
+  return { valid: true };
+}

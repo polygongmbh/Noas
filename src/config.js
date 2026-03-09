@@ -19,6 +19,11 @@ dotenv.config({ path: join(__dirname, '../.env') });
 export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   databaseUrl: process.env.DATABASE_URL,
-  domain: process.env.DOMAIN || 'localhost:3000',
+  domain: process.env.DOMAIN || `localhost:${process.env.PORT || '3000'}`,
   isTest: process.env.NODE_ENV === 'test',
 };
+
+// Ensure domain matches the actual port being used
+if (!process.env.DOMAIN) {
+  config.domain = `localhost:${config.port}`;
+}

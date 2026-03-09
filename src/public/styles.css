@@ -279,3 +279,28 @@ h1 {
     align-items: stretch;
   }
 }
+
+/* Encryption tool specific styles */
+#createdEncryptedKey {
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.9em;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  width: 100%;
+  resize: none;
+  margin: 12px 0;
+}
+
+#encryptionTool {
+  margin-top: 16px;
+}
+
+#registrationResult {
+  background: rgba(118, 228, 181, 0.1);
+  border: 1px solid rgba(118, 228, 181, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+}

@@ -56,9 +56,24 @@ app.use(router);
 
 // Start server if not in test mode
 if (!config.isTest) {
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`Noas server running on port ${config.port}`);
     console.log(`Domain: ${config.domain}`);
+  });
+
+  // Handle port conflict gracefully
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${config.port} is already in use.`);
+      console.error('Try one of these solutions:');
+      console.error('1. Stop the existing server: docker stop noas');
+      console.error('2. Use a different port: change PORT in .env file');
+      console.error('3. Check running processes: ps aux | grep node');
+      process.exit(1);
+    } else {
+      console.error('Server error:', error);
+      process.exit(1);
+    }
   });
 }
 

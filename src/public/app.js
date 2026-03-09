@@ -1,7 +1,9 @@
-const state = {
-  username: null,
-  password: null,
-};
+// Wait for DOM to be fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+  const state = {
+    username: null,
+    password: null,
+  };
 
 const signinForm = document.getElementById('signinForm');
 const updateForm = document.getElementById('updateForm');
@@ -14,6 +16,23 @@ const publicKeyEl = document.getElementById('publicKey');
 const encryptedKeyEl = document.getElementById('encryptedKey');
 const relayListEl = document.getElementById('relayList');
 const copyEncrypted = document.getElementById('copyEncrypted');
+
+// Simple signup form elements
+const signupForm = document.getElementById('signupForm');
+const signupUsername = document.getElementById('signupUsername');
+const signupPassword = document.getElementById('signupPassword');
+const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
+const signupNsec = document.getElementById('signupNsec');
+const signupRelays = document.getElementById('signupRelays');
+const signupStatus = document.getElementById('signupStatus');
+const signupSuccess = document.getElementById('signupSuccess');
+const successUsername = document.getElementById('successUsername');
+const successPublicKey = document.getElementById('successPublicKey');
+
+console.log('📝 Signup form elements initialized:', {
+  signupForm: !!signupForm,
+  signupStatus: !!signupStatus
+});
 
 function setStatus(el, message, type = 'info') {
   if (!el) return;
@@ -149,4 +168,115 @@ deleteForm.addEventListener('submit', async (event) => {
   } catch (error) {
     setStatus(deleteStatus, error.message, 'error');
   }
+});
+
+// Simple Account Registration - Server handles all key processing
+function validateSignupForm() {
+  const username = signupUsername?.value.trim() || '';
+  const password = signupPassword?.value || '';
+  const passwordConfirm = signupPasswordConfirm?.value || '';
+  const nsecValue = signupNsec?.value.trim() || '';
+
+  // Validate required fields
+  if (!username) {
+    setStatus(signupStatus, 'Username is required', 'error');
+    signupUsername?.focus();
+    return false;
+  }
+  if (!password) {
+    setStatus(signupStatus, 'Password is required', 'error');
+    signupPassword?.focus();
+    return false;
+  }
+  if (!passwordConfirm) {
+    setStatus(signupStatus, 'Please confirm your password', 'error');
+    signupPasswordConfirm?.focus();
+    return false;
+  }
+  if (!nsecValue) {
+    setStatus(signupStatus, 'Private key is required', 'error');
+    signupNsec?.focus();
+    return false;
+  }
+
+  // Validate formats
+  if (!/^[a-z0-9_]{3,32}$/.test(username)) {
+    setStatus(signupStatus, 'Username must be 3-32 characters, lowercase letters, numbers, and underscore only', 'error');
+    signupUsername?.focus();
+    return false;
+  }
+  
+  if (password.length < 8) {
+    setStatus(signupStatus, 'Password must be at least 8 characters long', 'error');
+    signupPassword?.focus();
+    return false;
+  }
+  
+  if (password !== passwordConfirm) {
+    setStatus(signupStatus, 'Passwords do not match', 'error');
+    signupPasswordConfirm?.focus();
+    return false;
+  }
+
+  return true;
+}
+
+// Handle signup form submission  
+if (signupForm) {
+  signupForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    console.log('🚀 Creating new account...');
+    
+    if (!validateSignupForm()) return;
+    
+    const username = signupUsername.value.trim().toLowerCase();
+    const password = signupPassword.value;
+    const nsecKey = signupNsec.value.trim();
+    const relaysText = signupRelays?.value.trim() || '';
+    
+    setStatus(signupStatus, 'Creating account...', 'info');
+    
+    try {
+      // Parse relays
+      const relays = relaysText 
+        ? relaysText.split('\n').map(r => r.trim()).filter(r => r && r.startsWith('wss://'))
+        : [];
+      
+      // Register with server - server handles all key processing
+      const response = await fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          nsecKey,
+          relays
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
+      
+      // Show success
+      successUsername.textContent = data.user.username;
+      successPublicKey.textContent = data.user.publicKey;
+      signupSuccess.hidden = false;
+      
+      setStatus(signupStatus, '🎉 Account created successfully!', 'success');
+      
+      // Clear form
+      signupForm.reset();
+      
+      // Scroll to result
+      signupSuccess.scrollIntoView({ behavior: 'smooth' });
+      
+    } catch (error) {
+      console.error('❌ Registration failed:', error);
+      setStatus(signupStatus, `❌ Registration failed: ${error.message}`, 'error');
+    }
+  });
+}
 });
