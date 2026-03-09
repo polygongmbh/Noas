@@ -1,13 +1,14 @@
 services:
-  postgres:
+  noas-db:
     image: postgres:16-alpine
     container_name: noas-db
+    network_mode: bridge
     environment:
       POSTGRES_USER: noas
       POSTGRES_PASSWORD: noas
       POSTGRES_DB: noas
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,14 +20,15 @@ services:
   noas:
     build: .
     container_name: noas
+    network_mode: bridge
     depends_on:
-      postgres:
+      noas-db:
         condition: service_healthy
-    command: ["sh", "-lc", "npm run db:setup && npm start"]
+    command: ["sh", "-lc", "sleep 10 && npm run db:setup && npm start"]
     environment:
       PORT: 3000
-      DATABASE_URL: postgresql://noas:noas@postgres:5432/noas
-      DOMAIN: noas.progyssey.org
+      DATABASE_URL: postgresql://noas:noas@192.168.100.7:5433/noas
+      DOMAIN: localhost:3007
     ports:
       - "3007:3000"
     restart: unless-stopped
