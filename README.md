@@ -13,6 +13,34 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 
 ## Setup
 
+### Task runner (`justfile`)
+
+This project includes a [`justfile`](./justfile) with common development commands
+for setup, database lifecycle, testing, demos, and health checks.
+
+If you have [`just`](https://github.com/casey/just) installed, you can list all
+available recipes with:
+
+```bash
+just --list
+```
+
+Common examples:
+
+```bash
+# One-time local setup (install deps + start DB + apply schema)
+just setup
+
+# Run API in dev mode
+just dev
+
+# Unit tests
+just test
+
+# Integration tests (server must already be running)
+just test-integration
+```
+
 ### 1. Install dependencies
 
 ```bash
