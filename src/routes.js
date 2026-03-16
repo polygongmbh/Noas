@@ -44,6 +44,18 @@ export const router = express.Router();
 
 const MAX_PROFILE_PICTURE_BYTES = 2 * 1024 * 1024;
 
+function hexToBytes(hex) {
+  const normalized = String(hex || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(normalized)) {
+    throw new Error("Invalid hex private key");
+  }
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i += 1) {
+    bytes[i] = Number.parseInt(normalized.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
 function normalizeBase64Payload(data, contentType) {
   if (!data || typeof data !== 'string') {
     return { error: 'Image data is required' };
@@ -130,7 +142,7 @@ router.post('/register', async (req, res) => {
       }
       // If it's 64 hex characters, use as-is
       else if (/^[a-f0-9]{64}$/i.test(nsecKey)) {
-        privateKey = nsecKey.toLowerCase();
+        privateKey = hexToBytes(nsecKey);
       }
       else {
         return res.status(400).json({ error: 'Invalid private key format. Use nsec1... or 64-character hex' });
