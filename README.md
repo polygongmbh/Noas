@@ -64,7 +64,8 @@ PORT=3000
 REQUIRE_EMAIL_VERIFICATION=true
 EMAIL_VERIFICATION_ENABLED=true
 VERIFICATION_EXPIRY_MINUTES=15
-NOAS_DOMAIN=polygon.gmbh
+NIP05_DOMAIN=polygon.gmbh
+NOAS_PUBLIC_URL=https://noas.polygon.gmbh
 NOAS_BASE_PATH=/noas
 ALLOWED_ORIGINS=https://nodex.polygon.gmbh,https://polygon.gmbh
 ALLOWED_SIGNUP_EMAIL_DOMAIN=
@@ -83,6 +84,12 @@ SMTP_FROM="Noas <no-reply@example.com>"
 SMTP_REPLY_TO=
 SMTP_REJECT_UNAUTHORIZED=true
 ```
+
+Primary domain settings:
+- `NIP05_DOMAIN`: base identity domain for NIP-05 handles (`user@polygon.gmbh`)
+- `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API
+
+Most other domain-related behavior derives from these values.
 
 ### 3. Set up database
 
@@ -240,6 +247,8 @@ NIP-05 verification endpoint.
   }
 }
 ```
+
+When called without `name`, returns Noas instance metadata (version, public URL, API base, and NIP-05 domain) for client discovery.
 
 ## Security Notes
 

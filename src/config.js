@@ -73,6 +73,21 @@ function detectLocalHost(hostLike) {
   return domain === 'localhost' || domain === '127.0.0.1' || domain === '::1';
 }
 
+function stripTrailingSlash(value) {
+  return String(value || '').replace(/\/+$/, '');
+}
+
+function hostLikeFromUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    return parsed.host;
+  } catch {
+    return raw.replace(/^[a-z]+:\/\//i, '').split('/')[0];
+  }
+}
+
 // Export configuration object with all app settings
 export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
@@ -102,10 +117,11 @@ export const config = {
   smtpPass: process.env.SMTP_PASS || '',
   smtpFrom: (process.env.SMTP_FROM || '').trim(),
   smtpReplyTo: (process.env.SMTP_REPLY_TO || '').trim(),
-  noasDomain: (process.env.NOAS_DOMAIN || process.env.DOMAIN || '').trim(),
+  nip05Domain: (process.env.NIP05_DOMAIN || process.env.NOAS_DOMAIN || process.env.DOMAIN || '').trim(),
   noasPublicUrl: (process.env.NOAS_PUBLIC_URL || '').trim(),
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
+  apiVersion: process.env.NOAS_API_VERSION || '1.0.0',
 };
 
 // Ensure domain matches the actual port being used
@@ -113,11 +129,13 @@ if (!process.env.DOMAIN) {
   config.domain = `localhost:${config.port}`;
 }
 
-if (!config.noasDomain) {
-  config.noasDomain = config.domain;
+if (!config.nip05Domain) {
+  config.nip05Domain = config.domain;
 }
-config.noasRootDomain = rootDomainFromHostLike(config.noasDomain);
+config.nip05RootDomain = rootDomainFromHostLike(config.nip05Domain);
 if (!config.noasPublicUrl) {
-  const scheme = detectLocalHost(config.noasDomain) ? 'http' : 'https';
-  config.noasPublicUrl = `${scheme}://${config.noasDomain}`;
+  const scheme = detectLocalHost(config.nip05Domain) ? 'http' : 'https';
+  config.noasPublicUrl = `${scheme}://${config.nip05Domain}`;
 }
+config.noasPublicUrl = stripTrailingSlash(config.noasPublicUrl);
+config.noasServiceHost = hostLikeFromUrl(config.noasPublicUrl);

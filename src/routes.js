@@ -123,7 +123,7 @@ function isAllowedOrigin(origin) {
 
 function emailMatchesNip05RootDomain(email) {
   const domain = getEmailDomain(email);
-  return Boolean(domain) && domain === config.noasRootDomain;
+  return Boolean(domain) && domain === config.nip05RootDomain;
 }
 
 function minutesBetween(nowMs, thenValue) {
@@ -262,7 +262,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     }
     if (!emailMatchesNip05RootDomain(normalizedEmail)) {
       return res.status(400).json({
-        error: `Email domain must match NIP-05 root domain ${config.noasRootDomain}`,
+        error: `Email domain must match NIP-05 root domain ${config.nip05RootDomain}`,
       });
     }
     if (!isAllowedOrigin(normalizedOrigin)) {
@@ -320,7 +320,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       emailDelivery = await sendVerificationEmail({
         to: normalizedEmail,
         username: normalizedUsername,
-        identifier: `${normalizedUsername}@${config.noasRootDomain}`,
+        identifier: `${normalizedUsername}@${config.nip05RootDomain}`,
         pin: emailVerificationPin,
         verificationLink,
         expiresAt: verificationExpiresAt,
@@ -377,7 +377,7 @@ router.get('/api/v1/auth/verify', async (req, res) => {
     res.json({
       success: true,
       username: pending.username,
-      identifier: `${pending.username}@${config.noasRootDomain}`,
+      identifier: `${pending.username}@${config.nip05RootDomain}`,
       email: pending.email,
       expires_at: pending.email_verification_expires_at,
       redirect_to: pending.verification_origin || null,
@@ -511,7 +511,7 @@ async function handleOnboardingStart(req, res) {
       emailDelivery = await sendVerificationEmail({
         to: normalizedEmail,
         username: normalizedUsername,
-        identifier: `${normalizedUsername}@${config.noasRootDomain || getEmailDomain(normalizedEmail)}`,
+        identifier: `${normalizedUsername}@${config.nip05RootDomain || getEmailDomain(normalizedEmail)}`,
         pin: emailVerificationPin,
         verificationLink,
         expiresAt: emailVerificationExpiresAt,
@@ -1067,7 +1067,16 @@ router.get('/.well-known/nostr.json', async (req, res) => {
     const { name } = req.query;
 
     if (!name) {
-      return res.status(400).json({ error: 'Name parameter is required' });
+      return res.json({
+        noas: {
+          version: config.apiVersion,
+          nip05_domain: config.nip05RootDomain,
+          public_url: config.noasPublicUrl,
+          base_path: config.noasBasePath || '/',
+          api_base: `${config.noasPublicUrl}${config.noasBasePath}/api/v1`,
+          email_verification_enabled: config.emailVerificationEnabled,
+        },
+      });
     }
 
     const user = await getUserForNip05(name);
