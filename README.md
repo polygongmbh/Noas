@@ -248,7 +248,7 @@ NIP-05 verification endpoint.
 - Private key is only accepted after successful email verification
 - Uses HTTPS in production
 - Username validation: 3-32 chars, lowercase alphanumeric + underscore
-- Username must match email local-part (`alice` for `alice@domain.tld`)
+- Username can be independent from email local-part (must still be unique and valid format)
 - Optional email verification gate before sign-in (`EMAIL_VERIFICATION_ENABLED=true`)
 - When email verification is enabled, NIP-05 lookups only expose verified users
 - SMTP delivery is configurable via `SMTP_URL` or `SMTP_HOST`/`SMTP_PORT` + credentials

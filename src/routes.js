@@ -103,24 +103,6 @@ function buildVerificationPin() {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
 }
 
-function getEmailLocalPart(email) {
-  const normalized = normalizeEmail(email);
-  const atIndex = normalized.lastIndexOf('@');
-  if (atIndex <= 0) return '';
-  return normalized.slice(0, atIndex);
-}
-
-function enforceUsernameEmailConsistency(username, email) {
-  const localPart = getEmailLocalPart(email);
-  if (localPart !== String(username || '').trim().toLowerCase()) {
-    return {
-      valid: false,
-      error: 'Username must match the local-part of the email address',
-    };
-  }
-  return { valid: true };
-}
-
 function isExpired(timestampValue) {
   if (!timestampValue) return true;
   const expiresAt = new Date(timestampValue).getTime();
@@ -490,10 +472,6 @@ async function handleOnboardingStart(req, res) {
     if (normalizedOrigin && !isAllowedOrigin(normalizedOrigin)) {
       return res.status(400).json({ error: 'Origin is not allowed' });
     }
-    const consistencyCheck = enforceUsernameEmailConsistency(normalizedUsername, normalizedEmail);
-    if (!consistencyCheck.valid) {
-      return res.status(400).json({ error: consistencyCheck.error });
-    }
     await deleteExpiredUserOnboarding();
 
     const existingUser = await getUserByUsername(normalizedUsername);
@@ -635,11 +613,6 @@ router.post('/register', async (req, res) => {
         error: `Only ${config.allowedSignupEmailDomain} email addresses can sign up`,
       });
     }
-    const consistencyCheck = enforceUsernameEmailConsistency(normalizedUsername, normalizedEmail);
-    if (!consistencyCheck.valid) {
-      return res.status(400).json({ error: consistencyCheck.error });
-    }
-
     const existing = await getUserByUsername(normalizedUsername);
     if (existing) {
       return res.status(409).json({ error: 'Username already taken' });

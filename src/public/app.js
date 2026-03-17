@@ -117,13 +117,6 @@ document.addEventListener('DOMContentLoaded', function () {
       return false;
     }
 
-    const localPart = email.split('@')[0];
-    if (localPart !== username) {
-      setStatus(signupStatus, 'Username must match email local-part', 'error');
-      signupUsername?.focus();
-      return false;
-    }
-
     return true;
   }
 
