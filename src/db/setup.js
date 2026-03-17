@@ -23,11 +23,17 @@ CREATE TABLE IF NOT EXISTS users (
   profile_picture_type VARCHAR(100),
   profile_picture_updated_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT username_format CHECK (username ~ '^[a-z0-9_]{3,32}$')
+  CONSTRAINT username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$')
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_public_key ON users(public_key);
+
+ALTER TABLE users
+  DROP CONSTRAINT IF EXISTS username_format;
+
+ALTER TABLE users
+  ADD CONSTRAINT username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$');
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
@@ -68,13 +74,19 @@ CREATE TABLE IF NOT EXISTS user_onboarding (
   last_email_sent_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT onboarding_username_format CHECK (username ~ '^[a-z0-9_]{3,32}$')
+  CONSTRAINT onboarding_username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$')
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_onboarding_username ON user_onboarding(username);
 CREATE INDEX IF NOT EXISTS idx_user_onboarding_email ON user_onboarding(email);
 CREATE INDEX IF NOT EXISTS idx_user_onboarding_expires ON user_onboarding(email_verification_expires_at);
 CREATE INDEX IF NOT EXISTS idx_user_onboarding_token ON user_onboarding(email_verification_token);
+
+ALTER TABLE user_onboarding
+  DROP CONSTRAINT IF EXISTS onboarding_username_format;
+
+ALTER TABLE user_onboarding
+  ADD CONSTRAINT onboarding_username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$');
 
 ALTER TABLE user_onboarding
   ADD COLUMN IF NOT EXISTS verification_origin TEXT;

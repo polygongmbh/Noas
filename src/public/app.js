@@ -96,8 +96,8 @@ document.addEventListener('DOMContentLoaded', function () {
       return false;
     }
 
-    if (!/^[a-z0-9_]{3,32}$/.test(username)) {
-      setStatus(signupStatus, 'Username must be 3-32 characters, lowercase letters, numbers, and underscore only', 'error');
+    if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+      setStatus(signupStatus, 'Username must be 3-32 characters, lowercase letters, numbers, dash, underscore, and dot', 'error');
       signupUsername?.focus();
       return false;
     }

@@ -31,7 +31,7 @@ export async function verifyPassword(password, hash) {
 
 /**
  * Validate username format
- * Must be 3-32 characters, lowercase letters, numbers, and underscores only
+ * Must be 3-32 characters, lowercase letters, numbers, dash, underscore, and dot
  * @param {string} username - Username to validate
  * @returns {Object} {valid: boolean, error?: string}
  */
@@ -42,8 +42,8 @@ export function validateUsername(username) {
   if (username.length < 3 || username.length > 32) {
     return { valid: false, error: 'Username must be 3-32 characters' };
   }
-  if (!/^[a-z0-9_]+$/.test(username)) {
-    return { valid: false, error: 'Username must contain only lowercase letters, numbers, and underscores' };
+  if (!/^[a-z0-9._-]+$/.test(username)) {
+    return { valid: false, error: 'Username must contain only lowercase letters, numbers, dash, underscore, and dot' };
   }
   return { valid: true };
 }
