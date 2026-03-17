@@ -61,6 +61,10 @@ Edit `.env` with your PostgreSQL connection string:
 DATABASE_URL=postgresql://user:password@localhost:5432/noas
 DOMAIN=yourdomain.com
 PORT=3000
+REQUIRE_EMAIL_VERIFICATION=true
+ALLOWED_SIGNUP_EMAIL_DOMAIN=
+TENANT_DEFAULT_RELAYS=
+DOMAIN_RELAY_MAP=polygon.gmbh=wss://tasks.polygon.gmbh
 ```
 
 ### 3. Set up database
@@ -102,6 +106,7 @@ Register a new user.
 ```json
 {
   "username": "alice",
+  "email": "alice@polygon.gmbh",
   "password": "securepassword123",
   "publicKey": "a0b1c2d3...",
   "encryptedPrivateKey": "ncryptsec1...",
@@ -179,6 +184,26 @@ NIP-05 verification endpoint.
 - Client encrypts private key with user's password before sending
 - Uses HTTPS in production
 - Username validation: 3-32 chars, lowercase alphanumeric + underscore
+- Optional email verification gate before sign-in (`REQUIRE_EMAIL_VERIFICATION=true`)
+- When email verification is enabled, NIP-05 lookups only expose verified users
+
+## Relay Access Model (Domain Whitelist)
+
+For relays such as `nostr-rs-relay`, prefer domain-based access control:
+
+- Relay config enforces publishing from `nip05` identities at approved domains
+- Noas is the identity authority (accounts + email verification + NIP-05 mapping)
+- Noas does not need direct relay allowlist API integration for per-user writes
+- Keep `ALLOWED_SIGNUP_EMAIL_DOMAIN` empty if all domains should register
+- Use `DOMAIN_RELAY_MAP` to attach company-specific relays by email domain
+
+Example relay config:
+
+```toml
+[verified_users]
+mode = "enabled"
+domain_whitelist = ["polygon.gmbh"]
+```
 
 ## Development
 
