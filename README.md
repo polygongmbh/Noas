@@ -4,7 +4,7 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 
 ## Features
 
-- Username/password registration
+- Secure two-step onboarding (verify email before private key submission)
 - Secure password hashing (bcrypt)
 - NIP-49 encrypted private key storage
 - NIP-05 verification endpoint
@@ -62,9 +62,26 @@ DATABASE_URL=postgresql://user:password@localhost:5432/noas
 DOMAIN=yourdomain.com
 PORT=3000
 REQUIRE_EMAIL_VERIFICATION=true
+EMAIL_VERIFICATION_ENABLED=true
+VERIFICATION_EXPIRY_MINUTES=15
+NOAS_DOMAIN=polygon.gmbh
+NOAS_BASE_PATH=/noas
+ALLOWED_ORIGINS=https://nodex.polygon.gmbh,https://polygon.gmbh
 ALLOWED_SIGNUP_EMAIL_DOMAIN=
 TENANT_DEFAULT_RELAYS=
 DOMAIN_RELAY_MAP=polygon.gmbh=wss://tasks.polygon.gmbh
+EMAIL_VERIFICATION_TOKEN_TTL_MINUTES=30
+EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=false
+REQUIRE_EMAIL_DELIVERY=false
+SMTP_URL=
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM="Noas <no-reply@example.com>"
+SMTP_REPLY_TO=
+SMTP_REJECT_UNAUTHORIZED=true
 ```
 
 ### 3. Set up database
@@ -98,9 +115,9 @@ npm start
 
 ## API Endpoints
 
-### POST /register
+### POST /onboarding/start
 
-Register a new user.
+Start onboarding and send verification challenge.
 
 **Request:**
 ```json
@@ -108,8 +125,6 @@ Register a new user.
   "username": "alice",
   "email": "alice@polygon.gmbh",
   "password": "securepassword123",
-  "publicKey": "a0b1c2d3...",
-  "encryptedPrivateKey": "ncryptsec1...",
   "relays": ["wss://relay.example.com"]
 }
 ```
@@ -118,12 +133,61 @@ Register a new user.
 ```json
 {
   "success": true,
-  "user": {
+  "onboarding": {
     "username": "alice",
-    "publicKey": "a0b1c2d3..."
+    "email": "alice@polygon.gmbh",
+    "emailVerificationRequired": true,
+    "emailVerified": false,
+    "nextStep": "verify_email"
   }
 }
 ```
+
+If SMTP is configured, Noas sends both the verification link and PIN via email.  
+If SMTP is not configured, onboarding only works when `EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true` (dev fallback).  
+Set `REQUIRE_EMAIL_DELIVERY=true` to fail onboarding when mail cannot be delivered.
+
+Primary auth endpoints for email-first flow:
+
+- `POST /api/v1/auth/register` -> creates `pending` registration + sends verification email.
+- `POST /api/v1/auth/verify` -> verifies token + password and activates account.
+
+### POST /verify-email
+
+Verify email using either link token or short PIN.
+
+**Request (token):**
+```json
+{
+  "username": "alice",
+  "token": "<verification_token>"
+}
+```
+
+**Request (PIN):**
+```json
+{
+  "username": "alice",
+  "pin": "123456"
+}
+```
+
+### POST /onboarding/complete
+
+Complete onboarding by submitting private key after verification.
+
+```json
+{
+  "username": "alice",
+  "password": "securepassword123",
+  "nsecKey": "nsec1..."
+}
+```
+
+### POST /register
+
+Backward-compatible one-step registration.  
+When `EMAIL_VERIFICATION_ENABLED=true`, this endpoint switches to secure onboarding start and does not accept `nsecKey`.
 
 ### POST /signin
 
@@ -181,11 +245,13 @@ NIP-05 verification endpoint.
 
 - Passwords are hashed with bcrypt (never stored plain)
 - Private keys are stored encrypted (NIP-49 format)
-- Client encrypts private key with user's password before sending
+- Private key is only accepted after successful email verification
 - Uses HTTPS in production
 - Username validation: 3-32 chars, lowercase alphanumeric + underscore
-- Optional email verification gate before sign-in (`REQUIRE_EMAIL_VERIFICATION=true`)
+- Username must match email local-part (`alice` for `alice@domain.tld`)
+- Optional email verification gate before sign-in (`EMAIL_VERIFICATION_ENABLED=true`)
 - When email verification is enabled, NIP-05 lookups only expose verified users
+- SMTP delivery is configurable via `SMTP_URL` or `SMTP_HOST`/`SMTP_PORT` + credentials
 
 ## Relay Access Model (Domain Whitelist)
 

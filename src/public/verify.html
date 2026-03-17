@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Confirm Account | Noas</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="panel">
+        <h1>Confirm your Nodal account</h1>
+        <p id="verifyIdentifier">Checking verification link...</p>
+        <p id="verifyExpiry"></p>
+        <form id="verifyPinForm" class="form">
+          <label>
+            Verification PIN
+            <input id="verifyPin" type="text" inputmode="numeric" maxlength="6" required />
+          </label>
+          <button type="submit" class="btn">Confirm Email</button>
+          <div id="verifyStatus" class="status"></div>
+        </form>
+        <form id="completeSignupForm" class="form" hidden>
+          <label>
+            Noas account password
+            <input id="completePassword" type="password" autocomplete="current-password" required />
+          </label>
+          <label>
+            Nostr private key (nsec or hex)
+            <input id="completeNsec" type="password" autocomplete="off" required />
+          </label>
+          <button type="submit" class="btn">Complete Account Setup</button>
+          <div id="completeStatus" class="status"></div>
+        </form>
+      </section>
+    </main>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const token = (params.get('token') || '').trim();
+      const origin = (params.get('origin') || '').trim();
+      const verifyStatus = document.getElementById('verifyStatus');
+      const verifyIdentifier = document.getElementById('verifyIdentifier');
+      const form = document.getElementById('verifyPinForm');
+      const verifyPin = document.getElementById('verifyPin');
+      const verifyExpiry = document.getElementById('verifyExpiry');
+      const completeForm = document.getElementById('completeSignupForm');
+      const completePassword = document.getElementById('completePassword');
+      const completeNsec = document.getElementById('completeNsec');
+      const completeStatus = document.getElementById('completeStatus');
+      let verifiedUsername = null;
+      let verifiedRedirectTo = null;
+      let expiryInterval = null;
+
+      if (!token) {
+        verifyIdentifier.textContent = 'Invalid verification link.';
+        form.hidden = true;
+      } else {
+        verifyIdentifier.textContent = 'Loading account details...';
+      }
+
+      function setStatus(message, type = 'info') {
+        verifyStatus.textContent = message;
+        verifyStatus.dataset.type = type;
+      }
+
+      function startExpiryCountdown(expiresAt) {
+        const expiresMs = new Date(expiresAt).getTime();
+        if (Number.isNaN(expiresMs)) return;
+        if (expiryInterval) clearInterval(expiryInterval);
+        const tick = () => {
+          const remaining = Math.max(0, expiresMs - Date.now());
+          const minutes = Math.floor(remaining / 60000);
+          const seconds = Math.floor((remaining % 60000) / 1000);
+          verifyExpiry.textContent = `Link expires in ${minutes}:${String(seconds).padStart(2, '0')}`;
+          if (remaining <= 0) {
+            clearInterval(expiryInterval);
+          }
+        };
+        tick();
+        expiryInterval = setInterval(tick, 1000);
+      }
+
+      async function loadPreview() {
+        if (!token) return;
+        try {
+          const response = await fetch(`/api/v1/auth/verify?token=${encodeURIComponent(token)}`);
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || 'Invalid verification link');
+          }
+          verifiedUsername = data.username;
+          verifiedRedirectTo = data.redirect_to || origin || null;
+          verifyIdentifier.textContent = `You're confirming: ${data.identifier || data.email}`;
+          startExpiryCountdown(data.expires_at);
+        } catch (error) {
+          verifyIdentifier.textContent = error.message;
+          form.hidden = true;
+        }
+      }
+
+      loadPreview();
+
+      form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const pin = verifyPin.value.trim();
+        if (!pin) {
+          setStatus('PIN is required', 'error');
+          return;
+        }
+
+        setStatus('Verifying email...', 'info');
+        try {
+          const response = await fetch('/api/v1/auth/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, pin }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || 'Verification failed');
+          }
+
+          verifiedUsername = data.username || verifiedUsername;
+          verifiedRedirectTo = data.redirect_to || verifiedRedirectTo;
+          setStatus('Email verified. Complete step 2 below.', 'success');
+          completeForm.hidden = false;
+        } catch (error) {
+          setStatus(error.message, 'error');
+        }
+      });
+
+      completeForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!verifiedUsername) {
+          completeStatus.textContent = 'Verify email first.';
+          completeStatus.dataset.type = 'error';
+          return;
+        }
+        const password = completePassword.value;
+        const nsecKey = completeNsec.value.trim();
+        if (!password || !nsecKey) {
+          completeStatus.textContent = 'Password and private key are required.';
+          completeStatus.dataset.type = 'error';
+          return;
+        }
+        completeStatus.textContent = 'Completing account setup...';
+        completeStatus.dataset.type = 'info';
+        try {
+          const response = await fetch('/onboarding/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: verifiedUsername,
+              password,
+              nsecKey,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || 'Completion failed');
+          }
+          completeStatus.textContent = 'Account activated. Redirecting...';
+          completeStatus.dataset.type = 'success';
+          if (verifiedRedirectTo) {
+            window.location.href = verifiedRedirectTo;
+            return;
+          }
+          window.location.href = '/';
+        } catch (error) {
+          completeStatus.textContent = error.message;
+          completeStatus.dataset.type = 'error';
+        }
+      });
+    </script>
+  </body>
+</html>

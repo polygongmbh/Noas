@@ -1,297 +1,374 @@
-// Wait for DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   const state = {
     username: null,
     password: null,
+    signupUsername: null,
+    signupPassword: null,
+    signupEmail: null,
+    signupRelays: [],
+    signupVerified: false,
   };
 
-const signinForm = document.getElementById('signinForm');
-const updateForm = document.getElementById('updateForm');
-const deleteForm = document.getElementById('deleteForm');
-const signinStatus = document.getElementById('signinStatus');
-const updateStatus = document.getElementById('updateStatus');
-const deleteStatus = document.getElementById('deleteStatus');
-const accountPanel = document.getElementById('accountPanel');
-const publicKeyEl = document.getElementById('publicKey');
-const encryptedKeyEl = document.getElementById('encryptedKey');
-const relayListEl = document.getElementById('relayList');
-const copyEncrypted = document.getElementById('copyEncrypted');
+  const signinForm = document.getElementById('signinForm');
+  const updateForm = document.getElementById('updateForm');
+  const deleteForm = document.getElementById('deleteForm');
+  const signinStatus = document.getElementById('signinStatus');
+  const updateStatus = document.getElementById('updateStatus');
+  const deleteStatus = document.getElementById('deleteStatus');
+  const accountPanel = document.getElementById('accountPanel');
+  const updatePanel = document.getElementById('updatePanel');
+  const deletePanel = document.getElementById('deletePanel');
+  const publicKeyEl = document.getElementById('publicKey');
+  const encryptedKeyEl = document.getElementById('encryptedKey');
+  const relayListEl = document.getElementById('relayList');
+  const copyEncrypted = document.getElementById('copyEncrypted');
 
-// Simple signup form elements
-const signupForm = document.getElementById('signupForm');
-const signupUsername = document.getElementById('signupUsername');
-const signupPassword = document.getElementById('signupPassword');
-const signupEmail = document.getElementById('signupEmail');
-const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
-const signupNsec = document.getElementById('signupNsec');
-const signupRelays = document.getElementById('signupRelays');
-const signupStatus = document.getElementById('signupStatus');
-const signupSuccess = document.getElementById('signupSuccess');
-const successUsername = document.getElementById('successUsername');
-const successPublicKey = document.getElementById('successPublicKey');
+  const signupStartForm = document.getElementById('signupStartForm');
+  const verifyEmailForm = document.getElementById('verifyEmailForm');
+  const signupCompleteForm = document.getElementById('signupCompleteForm');
+  const signupUsername = document.getElementById('signupUsername');
+  const signupPassword = document.getElementById('signupPassword');
+  const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
+  const signupEmail = document.getElementById('signupEmail');
+  const signupRelays = document.getElementById('signupRelays');
+  const signupNsec = document.getElementById('signupNsec');
+  const signupPin = document.getElementById('signupPin');
+  const signupToken = document.getElementById('signupToken');
+  const signupStatus = document.getElementById('signupStatus');
+  const verifyStatus = document.getElementById('verifyStatus');
+  const completeStatus = document.getElementById('completeStatus');
+  const signupSuccess = document.getElementById('signupSuccess');
+  const successUsername = document.getElementById('successUsername');
+  const successPublicKey = document.getElementById('successPublicKey');
 
-console.log('📝 Signup form elements initialized:', {
-  signupForm: !!signupForm,
-  signupStatus: !!signupStatus
-});
-
-function setStatus(el, message, type = 'info') {
-  if (!el) return;
-  el.textContent = message;
-  el.dataset.type = type;
-}
-
-function parseRelays(text) {
-  if (!text) return [];
-  return text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-async function request(path, payload) {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = data.error || 'Request failed';
-    throw new Error(message);
-  }
-  return data;
-}
-
-signinForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  setStatus(signinStatus, 'Signing in...');
-  const formData = new FormData(signinForm);
-  const username = formData.get('username');
-  const password = formData.get('password');
-
-  try {
-    const data = await request('/signin', { username, password });
-    state.username = username;
-    state.password = password;
-
-    publicKeyEl.textContent = data.publicKey || '—';
-    encryptedKeyEl.textContent = data.encryptedPrivateKey || '—';
-    relayListEl.textContent = (data.relays || []).join(', ') || '—';
-    accountPanel.hidden = false;
-    setStatus(signinStatus, 'Signed in successfully.', 'success');
-    updateForm.querySelector('textarea[name="relays"]').value = (data.relays || []).join('\n');
-  } catch (error) {
-    setStatus(signinStatus, error.message, 'error');
-  }
-});
-
-copyEncrypted.addEventListener('click', async () => {
-  const value = encryptedKeyEl.textContent;
-  if (!value || value === '—') return;
-  try {
-    await navigator.clipboard.writeText(value);
-    setStatus(signinStatus, 'Encrypted key copied to clipboard.', 'success');
-  } catch (error) {
-    setStatus(signinStatus, 'Unable to copy key. Copy it manually.', 'error');
-  }
-});
-
-updateForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (!state.username || !state.password) {
-    setStatus(updateStatus, 'Sign in before updating your account.', 'error');
-    return;
+  function setStatus(el, message, type = 'info') {
+    if (!el) return;
+    el.textContent = message;
+    el.dataset.type = type;
   }
 
-  const formData = new FormData(updateForm);
-  const updates = {};
-  const newPassword = formData.get('newPassword');
-  const encryptedPrivateKey = formData.get('encryptedPrivateKey');
-  const relays = parseRelays(formData.get('relays'));
-
-  if (newPassword) updates.newPassword = newPassword;
-  if (encryptedPrivateKey) updates.encryptedPrivateKey = encryptedPrivateKey;
-  if (relays.length) updates.relays = relays;
-
-  if (Object.keys(updates).length === 0) {
-    setStatus(updateStatus, 'Add at least one field to update.', 'error');
-    return;
+  function parseRelays(text) {
+    if (!text) return [];
+    return text
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
 
-  setStatus(updateStatus, 'Updating account...');
-  try {
-    await request('/update', {
-      username: state.username,
-      password: state.password,
-      updates,
+  async function request(path, payload) {
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-    setStatus(updateStatus, 'Account updated successfully.', 'success');
-  } catch (error) {
-    setStatus(updateStatus, error.message, 'error');
-  }
-});
-
-deleteForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (!state.username || !state.password) {
-    setStatus(deleteStatus, 'Sign in before deleting your account.', 'error');
-    return;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = data.error || 'Request failed';
+      throw new Error(message);
+    }
+    return data;
   }
 
-  const formData = new FormData(deleteForm);
-  const savedKey = formData.get('savedKey');
-  const confirm = formData.get('confirm');
+  function validateSignupStartForm() {
+    const username = signupUsername?.value.trim().toLowerCase() || '';
+    const password = signupPassword?.value || '';
+    const email = signupEmail?.value.trim().toLowerCase() || '';
+    const passwordConfirm = signupPasswordConfirm?.value || '';
 
-  if (!savedKey) {
-    setStatus(deleteStatus, 'Please confirm you saved your private key.', 'error');
-    return;
-  }
-  if (confirm !== 'DELETE') {
-    setStatus(deleteStatus, 'Type DELETE to confirm account deletion.', 'error');
-    return;
-  }
+    if (!username) {
+      setStatus(signupStatus, 'Username is required', 'error');
+      signupUsername?.focus();
+      return false;
+    }
+    if (!password) {
+      setStatus(signupStatus, 'Password is required', 'error');
+      signupPassword?.focus();
+      return false;
+    }
+    if (!passwordConfirm) {
+      setStatus(signupStatus, 'Please confirm your password', 'error');
+      signupPasswordConfirm?.focus();
+      return false;
+    }
+    if (!email) {
+      setStatus(signupStatus, 'Email is required', 'error');
+      signupEmail?.focus();
+      return false;
+    }
 
-  setStatus(deleteStatus, 'Deleting account...');
-  try {
-    await request('/delete', {
-      username: state.username,
-      password: state.password,
-      savedKey: true,
-    });
-    setStatus(deleteStatus, 'Account deleted.', 'success');
-    accountPanel.hidden = true;
-    signinForm.reset();
-    updateForm.reset();
-    deleteForm.reset();
-    state.username = null;
-    state.password = null;
-  } catch (error) {
-    setStatus(deleteStatus, error.message, 'error');
-  }
-});
+    if (!/^[a-z0-9_]{3,32}$/.test(username)) {
+      setStatus(signupStatus, 'Username must be 3-32 characters, lowercase letters, numbers, and underscore only', 'error');
+      signupUsername?.focus();
+      return false;
+    }
+    if (password.length < 8) {
+      setStatus(signupStatus, 'Password must be at least 8 characters long', 'error');
+      signupPassword?.focus();
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setStatus(signupStatus, 'Email format is invalid', 'error');
+      signupEmail?.focus();
+      return false;
+    }
+    if (password !== passwordConfirm) {
+      setStatus(signupStatus, 'Passwords do not match', 'error');
+      signupPasswordConfirm?.focus();
+      return false;
+    }
 
-// Simple Account Registration - Server handles all key processing
-function validateSignupForm() {
-  const username = signupUsername?.value.trim() || '';
-  const password = signupPassword?.value || '';
-  const email = signupEmail?.value.trim().toLowerCase() || '';
-  const passwordConfirm = signupPasswordConfirm?.value || '';
-  const nsecValue = signupNsec?.value.trim() || '';
+    const localPart = email.split('@')[0];
+    if (localPart !== username) {
+      setStatus(signupStatus, 'Username must match email local-part', 'error');
+      signupUsername?.focus();
+      return false;
+    }
 
-  // Validate required fields
-  if (!username) {
-    setStatus(signupStatus, 'Username is required', 'error');
-    signupUsername?.focus();
-    return false;
-  }
-  if (!password) {
-    setStatus(signupStatus, 'Password is required', 'error');
-    signupPassword?.focus();
-    return false;
-  }
-  if (!passwordConfirm) {
-    setStatus(signupStatus, 'Please confirm your password', 'error');
-    signupPasswordConfirm?.focus();
-    return false;
-  }
-  if (!email) {
-    setStatus(signupStatus, 'Email is required', 'error');
-    signupEmail?.focus();
-    return false;
-  }
-  if (!nsecValue) {
-    setStatus(signupStatus, 'Private key is required', 'error');
-    signupNsec?.focus();
-    return false;
+    return true;
   }
 
-  // Validate formats
-  if (!/^[a-z0-9_]{3,32}$/.test(username)) {
-    setStatus(signupStatus, 'Username must be 3-32 characters, lowercase letters, numbers, and underscore only', 'error');
-    signupUsername?.focus();
-    return false;
-  }
-  
-  if (password.length < 8) {
-    setStatus(signupStatus, 'Password must be at least 8 characters long', 'error');
-    signupPassword?.focus();
-    return false;
-  }
+  if (signupStartForm) {
+    signupStartForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      signupSuccess.hidden = true;
+      if (!validateSignupStartForm()) return;
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    setStatus(signupStatus, 'Email format is invalid', 'error');
-    signupEmail?.focus();
-    return false;
-  }
-  
-  if (password !== passwordConfirm) {
-    setStatus(signupStatus, 'Passwords do not match', 'error');
-    signupPasswordConfirm?.focus();
-    return false;
-  }
+      const username = signupUsername.value.trim().toLowerCase();
+      const password = signupPassword.value;
+      const email = signupEmail.value.trim().toLowerCase();
+      const relays = parseRelays(signupRelays?.value.trim() || '').filter((relay) => relay.startsWith('wss://'));
 
-  return true;
-}
+      setStatus(signupStatus, 'Sending verification email...', 'info');
+      setStatus(verifyStatus, '', 'info');
+      setStatus(completeStatus, '', 'info');
 
-// Handle signup form submission  
-if (signupForm) {
-  signupForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    console.log('🚀 Creating new account...');
-    
-    if (!validateSignupForm()) return;
-    
-    const username = signupUsername.value.trim().toLowerCase();
-    const password = signupPassword.value;
-    const email = signupEmail.value.trim().toLowerCase();
-    const nsecKey = signupNsec.value.trim();
-    const relaysText = signupRelays?.value.trim() || '';
-    
-    setStatus(signupStatus, 'Creating account...', 'info');
-    
-    try {
-      // Parse relays
-      const relays = relaysText 
-        ? relaysText.split('\n').map(r => r.trim()).filter(r => r && r.startsWith('wss://'))
-        : [];
-      
-      // Register with server - server handles all key processing
-      const response = await fetch('/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      try {
+        const data = await request('/onboarding/start', {
           username,
           password,
           email,
-          nsecKey,
-          relays
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Registration failed');
+          relays,
+        });
+
+        state.signupUsername = username;
+        state.signupPassword = password;
+        state.signupEmail = email;
+        state.signupRelays = relays;
+        state.signupVerified = false;
+
+        verifyEmailForm.hidden = false;
+        signupCompleteForm.hidden = true;
+        setStatus(signupStatus, 'Verification sent. Enter the PIN or link token to continue.', 'success');
+
+      } catch (error) {
+        setStatus(signupStatus, `Registration start failed: ${error.message}`, 'error');
       }
-      
-      // Show success
-      successUsername.textContent = data.user.username;
-      successPublicKey.textContent = data.user.publicKey;
-      signupSuccess.hidden = false;
-      
-      setStatus(signupStatus, '🎉 Account created successfully!', 'success');
-      
-      // Clear form
-      signupForm.reset();
-      
-      // Scroll to result
-      signupSuccess.scrollIntoView({ behavior: 'smooth' });
-      
+    });
+  }
+
+  if (verifyEmailForm) {
+    verifyEmailForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const username = state.signupUsername || signupUsername?.value.trim().toLowerCase();
+      const pin = signupPin?.value.trim();
+      const token = signupToken?.value.trim();
+
+      if (!username) {
+        setStatus(verifyStatus, 'Start signup first.', 'error');
+        return;
+      }
+      if (!pin && !token) {
+        setStatus(verifyStatus, 'Enter either PIN or token.', 'error');
+        return;
+      }
+
+      setStatus(verifyStatus, 'Verifying email...', 'info');
+      try {
+        await request('/verify-email', {
+          username,
+          pin: pin || undefined,
+          token: token || undefined,
+        });
+        state.signupVerified = true;
+        signupCompleteForm.hidden = false;
+        setStatus(verifyStatus, 'Email verified. Continue to Step 3.', 'success');
+      } catch (error) {
+        setStatus(verifyStatus, `Verification failed: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  if (signupCompleteForm) {
+    signupCompleteForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      if (!state.signupVerified) {
+        setStatus(completeStatus, 'Verify email before submitting private key.', 'error');
+        return;
+      }
+
+      const username = state.signupUsername;
+      const password = state.signupPassword;
+      const nsecKey = signupNsec?.value.trim();
+
+      if (!nsecKey) {
+        setStatus(completeStatus, 'Private key is required', 'error');
+        signupNsec?.focus();
+        return;
+      }
+
+      setStatus(completeStatus, 'Completing account setup...', 'info');
+      try {
+        const data = await request('/onboarding/complete', {
+          username,
+          password,
+          nsecKey,
+        });
+
+        successUsername.textContent = data.user.username;
+        successPublicKey.textContent = data.user.publicKey;
+        signupSuccess.hidden = false;
+        setStatus(completeStatus, 'Account created successfully.', 'success');
+
+        signupStartForm.reset();
+        verifyEmailForm.reset();
+        signupCompleteForm.reset();
+        verifyEmailForm.hidden = true;
+        signupCompleteForm.hidden = true;
+        state.signupUsername = null;
+        state.signupPassword = null;
+        state.signupEmail = null;
+        state.signupRelays = [];
+        state.signupVerified = false;
+
+        signupSuccess.scrollIntoView({ behavior: 'smooth' });
+      } catch (error) {
+        setStatus(completeStatus, `Completion failed: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  signinForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setStatus(signinStatus, 'Signing in...');
+    const formData = new FormData(signinForm);
+    const username = formData.get('username');
+    const password = formData.get('password');
+
+    try {
+      const data = await request('/signin', { username, password });
+      state.username = username;
+      state.password = password;
+
+      publicKeyEl.textContent = data.publicKey || '—';
+      encryptedKeyEl.textContent = data.encryptedPrivateKey || '—';
+      relayListEl.textContent = (data.relays || []).join(', ') || '—';
+      accountPanel.hidden = false;
+      updatePanel.hidden = false;
+      deletePanel.hidden = false;
+      setStatus(signinStatus, 'Signed in successfully.', 'success');
+      updateForm.querySelector('textarea[name="relays"]').value = (data.relays || []).join('\n');
     } catch (error) {
-      console.error('❌ Registration failed:', error);
-      setStatus(signupStatus, `❌ Registration failed: ${error.message}`, 'error');
+      setStatus(signinStatus, error.message, 'error');
     }
   });
-}
+
+  copyEncrypted.addEventListener('click', async () => {
+    const value = encryptedKeyEl.textContent;
+    if (!value || value === '—') return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus(signinStatus, 'Encrypted key copied to clipboard.', 'success');
+    } catch (error) {
+      setStatus(signinStatus, 'Unable to copy key. Copy it manually.', 'error');
+    }
+  });
+
+  updateForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!state.username || !state.password) {
+      setStatus(updateStatus, 'Sign in before updating your account.', 'error');
+      return;
+    }
+
+    const formData = new FormData(updateForm);
+    const updates = {};
+    const newPassword = formData.get('newPassword');
+    const encryptedPrivateKey = formData.get('encryptedPrivateKey');
+    const relays = parseRelays(formData.get('relays'));
+
+    if (newPassword) updates.newPassword = newPassword;
+    if (encryptedPrivateKey) updates.encryptedPrivateKey = encryptedPrivateKey;
+    if (relays.length) updates.relays = relays;
+
+    if (Object.keys(updates).length === 0) {
+      setStatus(updateStatus, 'Add at least one field to update.', 'error');
+      return;
+    }
+
+    setStatus(updateStatus, 'Updating account...');
+    try {
+      await request('/update', {
+        username: state.username,
+        password: state.password,
+        updates,
+      });
+      setStatus(updateStatus, 'Account updated successfully.', 'success');
+    } catch (error) {
+      setStatus(updateStatus, error.message, 'error');
+    }
+  });
+
+  deleteForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!state.username || !state.password) {
+      setStatus(deleteStatus, 'Sign in before deleting your account.', 'error');
+      return;
+    }
+
+    const formData = new FormData(deleteForm);
+    const savedKey = formData.get('savedKey');
+    const confirm = formData.get('confirm');
+
+    if (!savedKey) {
+      setStatus(deleteStatus, 'Please confirm you saved your private key.', 'error');
+      return;
+    }
+    if (confirm !== 'DELETE') {
+      setStatus(deleteStatus, 'Type DELETE to confirm account deletion.', 'error');
+      return;
+    }
+
+    setStatus(deleteStatus, 'Deleting account...');
+    try {
+      await request('/delete', {
+        username: state.username,
+        password: state.password,
+        savedKey: true,
+      });
+      setStatus(deleteStatus, 'Account deleted.', 'success');
+      accountPanel.hidden = true;
+      updatePanel.hidden = true;
+      deletePanel.hidden = true;
+      signinForm.reset();
+      updateForm.reset();
+      deleteForm.reset();
+      state.username = null;
+      state.password = null;
+    } catch (error) {
+      setStatus(deleteStatus, error.message, 'error');
+    }
+  });
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const tokenFromLink = urlParams.get('token');
+  const userFromLink = urlParams.get('username');
+  if (tokenFromLink && userFromLink) {
+    verifyEmailForm.hidden = false;
+    signupToken.value = tokenFromLink;
+    signupUsername.value = userFromLink;
+    state.signupUsername = userFromLink.trim().toLowerCase();
+    setStatus(verifyStatus, 'Verification token loaded from link. Submit Step 2 to verify.', 'info');
+  }
 });

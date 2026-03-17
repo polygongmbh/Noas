@@ -30,19 +30,18 @@
       </header>
 
       <section class="panel">
-        <h2>� Create New Account</h2>
-        <p>Register a new Noas account with your Nostr key.</p>
+        <h2>Create New Account</h2>
+        <p>Secure two-step onboarding: verify email first, then submit your private key.</p>
         
         <div class="warning">
-          🔐 <strong>Security:</strong> Your private key will be encrypted with your password and stored securely.
-          Make sure to use a strong password you'll remember.
+          <strong>Security:</strong> Noas does not accept private key submission until your email is verified.
         </div>
-        
-        <form id="signupForm" class="form">
+
+        <form id="signupStartForm" class="form">
           <label>
             Username (3-32 chars, lowercase + underscore)
             <input type="text" id="signupUsername" placeholder="your_username" required />
-            <small>Choose a unique username for your account</small>
+            <small>Must match your email local-part (example: `alice` for `alice@polygon.gmbh`)</small>
           </label>
           
           <label>
@@ -59,27 +58,44 @@
             Work Email
             <input type="email" id="signupEmail" placeholder="you@polygon.gmbh" autocomplete="email" required />
           </label>
-          
-          <label>
-            Your Nostr Private Key
-            <input type="password" id="signupNsec" placeholder="nsec1... or hex format" autocomplete="off" data-lpignore="true" data-1p-ignore="true" spellcheck="false" required />
-            <small>Enter your nsec key or 64-character hex private key</small>
-          </label>
-          
+
           <label>
             Relays (optional, one per line)
             <textarea id="signupRelays" rows="3" placeholder="wss://relay.damus.io
 wss://nostr.wine"></textarea>
             <small>Relay servers where your profile will be published</small>
           </label>
-          
-          <button type="submit" class="btn">Create Account</button>
-          
+
+          <button type="submit" class="btn">Step 1: Send Verification</button>
           <div id="signupStatus" class="status"></div>
         </form>
-        
+
+        <form id="verifyEmailForm" class="form" hidden>
+          <label>
+            Verification PIN
+            <input type="text" id="signupPin" placeholder="6-digit PIN" inputmode="numeric" maxlength="6" />
+            <small>Use the PIN from your email, or verify via link token below</small>
+          </label>
+          <label>
+            Link Token (optional)
+            <input type="text" id="signupToken" placeholder="paste token from verification link" />
+          </label>
+          <button type="submit" class="btn">Step 2: Verify Email</button>
+          <div id="verifyStatus" class="status"></div>
+        </form>
+
+        <form id="signupCompleteForm" class="form" hidden>
+          <label>
+            Your Nostr Private Key
+            <input type="password" id="signupNsec" placeholder="nsec1... or hex format" autocomplete="off" data-lpignore="true" data-1p-ignore="true" spellcheck="false" required />
+            <small>Only enabled after email verification</small>
+          </label>
+          <button type="submit" class="btn">Step 3: Complete Account</button>
+          <div id="completeStatus" class="status"></div>
+        </form>
+
         <div id="signupSuccess" class="result" hidden>
-          <h3>🎉 Account Created Successfully!</h3>
+          <h3>Account Created Successfully</h3>
           <div class="field">
             <label>Username:</label>
             <code id="successUsername">—</code>
@@ -88,7 +104,7 @@ wss://nostr.wine"></textarea>
             <label>Public Key:</label>
             <code id="successPublicKey">—</code>
           </div>
-          <p>Your account has been created! You can now sign in using your username and password.</p>
+          <p>You can now sign in with your username and password.</p>
         </div>
       </section>
 
@@ -175,8 +191,18 @@ wss://nostr.wine"></textarea>
       <section class="grid" id="endpoints">
         <div class="card">
           <h2>Register</h2>
-          <p>Create a new account with a username, NIP-49 encrypted key, and relays.</p>
-          <code>POST /register</code>
+          <p>Start secure onboarding (no private key submitted yet).</p>
+          <code>POST /onboarding/start</code>
+        </div>
+        <div class="card">
+          <h2>Verify Email</h2>
+          <p>Verify using email link token or short PIN.</p>
+          <code>POST /verify-email · GET /verify-email</code>
+        </div>
+        <div class="card">
+          <h2>Complete Signup</h2>
+          <p>Submit private key after verification.</p>
+          <code>POST /onboarding/complete</code>
         </div>
         <div class="card">
           <h2>Sign in</h2>
@@ -207,12 +233,11 @@ wss://nostr.wine"></textarea>
 
       <section class="panel">
         <h2>Example</h2>
-        <p>Minimal register payload:</p>
+        <p>Onboarding start payload:</p>
         <pre><code>{
   "username": "alice",
   "password": "strong-password",
-  "publicKey": "&lt;pubkey hex&gt;",
-  "encryptedPrivateKey": "ncryptsec...",
+  "email": "alice@polygon.gmbh",
   "relays": ["wss://relay.example.com"]
 }
 </code></pre>

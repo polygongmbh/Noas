@@ -50,6 +50,49 @@ ALTER TABLE users
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
 
+-- Pending onboarding records for secure two-step signup
+CREATE TABLE IF NOT EXISTS user_onboarding (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(32) UNIQUE NOT NULL,
+  email VARCHAR(320) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  relays JSONB DEFAULT '[]'::jsonb,
+  email_verification_token VARCHAR(128) NOT NULL,
+  email_verification_pin_hash VARCHAR(255) NOT NULL,
+  email_verification_expires_at TIMESTAMP NOT NULL,
+  email_verified_at TIMESTAMP,
+  pin_attempt_count INTEGER NOT NULL DEFAULT 0,
+  verification_origin TEXT,
+  public_key VARCHAR(64),
+  encrypted_private_key TEXT,
+  last_email_sent_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT onboarding_username_format CHECK (username ~ '^[a-z0-9_]{3,32}$')
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_onboarding_username ON user_onboarding(username);
+CREATE INDEX IF NOT EXISTS idx_user_onboarding_email ON user_onboarding(email);
+CREATE INDEX IF NOT EXISTS idx_user_onboarding_expires ON user_onboarding(email_verification_expires_at);
+CREATE INDEX IF NOT EXISTS idx_user_onboarding_token ON user_onboarding(email_verification_token);
+
+ALTER TABLE user_onboarding
+  ADD COLUMN IF NOT EXISTS verification_origin TEXT;
+
+ALTER TABLE user_onboarding
+  ADD COLUMN IF NOT EXISTS public_key VARCHAR(64);
+
+ALTER TABLE user_onboarding
+  ADD COLUMN IF NOT EXISTS encrypted_private_key TEXT;
+
+ALTER TABLE user_onboarding
+  ADD COLUMN IF NOT EXISTS last_email_sent_at TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS used_verification_tokens (
+  token VARCHAR(128) PRIMARY KEY,
+  used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- NIP-46 Remote Signer tables
 CREATE TABLE IF NOT EXISTS nip46_sessions (
   id SERIAL PRIMARY KEY,

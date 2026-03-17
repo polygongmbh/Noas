@@ -51,6 +51,10 @@ app.use((req, res, next) => {
 // Serve landing page and static assets
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));
 
+app.get('/verify', (req, res) => {
+  res.sendFile(join(__dirname, 'public', 'verify.html'));
+});
+
 // Mount all API routes
 app.use(router);
 

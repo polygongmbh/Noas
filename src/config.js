@@ -44,6 +44,35 @@ function parseDomainRelayMap(value) {
   return map;
 }
 
+function parseAllowedOrigins(value) {
+  return String(value || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+function normalizeBasePath(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw === '/') return '';
+  const withLeading = raw.startsWith('/') ? raw : `/${raw}`;
+  return withLeading.endsWith('/') ? withLeading.slice(0, -1) : withLeading;
+}
+
+function rootDomainFromHostLike(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const withoutProtocol = raw.replace(/^[a-z]+:\/\//i, '');
+  const hostPortPath = withoutProtocol.split('/')[0];
+  const host = hostPortPath.split(':')[0];
+  return host.toLowerCase();
+}
+
+function detectLocalHost(hostLike) {
+  const domain = rootDomainFromHostLike(hostLike);
+  return domain === 'localhost' || domain === '127.0.0.1' || domain === '::1';
+}
+
 // Export configuration object with all app settings
 export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
@@ -51,14 +80,44 @@ export const config = {
   domain: process.env.DOMAIN || `localhost:${process.env.PORT || '3000'}`,
   isTest: process.env.NODE_ENV === 'test',
   requireEmailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
+  emailVerificationEnabled:
+    process.env.EMAIL_VERIFICATION_ENABLED
+      ? process.env.EMAIL_VERIFICATION_ENABLED === 'true'
+      : process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
   allowedSignupEmailDomain: (process.env.ALLOWED_SIGNUP_EMAIL_DOMAIN || '').trim().toLowerCase(),
   tenantDefaultRelays: parseRelayList(process.env.TENANT_DEFAULT_RELAYS),
   domainRelayMap: parseDomainRelayMap(process.env.DOMAIN_RELAY_MAP),
   exposeVerificationTokenInResponse: process.env.EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE === 'true',
   emailVerificationTokenTtlMinutes: parseInt(process.env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES || '30', 10),
+  verificationExpiryMinutes: parseInt(
+    process.env.VERIFICATION_EXPIRY_MINUTES || process.env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES || '15',
+    10
+  ),
+  requireEmailDelivery: process.env.REQUIRE_EMAIL_DELIVERY === 'true',
+  smtpUrl: (process.env.SMTP_URL || '').trim(),
+  smtpHost: (process.env.SMTP_HOST || '').trim(),
+  smtpPort: parseInt(process.env.SMTP_PORT || '0', 10) || null,
+  smtpSecure: process.env.SMTP_SECURE === 'true',
+  smtpUser: (process.env.SMTP_USER || '').trim(),
+  smtpPass: process.env.SMTP_PASS || '',
+  smtpFrom: (process.env.SMTP_FROM || '').trim(),
+  smtpReplyTo: (process.env.SMTP_REPLY_TO || '').trim(),
+  noasDomain: (process.env.NOAS_DOMAIN || process.env.DOMAIN || '').trim(),
+  noasPublicUrl: (process.env.NOAS_PUBLIC_URL || '').trim(),
+  noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
+  allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
 };
 
 // Ensure domain matches the actual port being used
 if (!process.env.DOMAIN) {
   config.domain = `localhost:${config.port}`;
+}
+
+if (!config.noasDomain) {
+  config.noasDomain = config.domain;
+}
+config.noasRootDomain = rootDomainFromHostLike(config.noasDomain);
+if (!config.noasPublicUrl) {
+  const scheme = detectLocalHost(config.noasDomain) ? 'http' : 'https';
+  config.noasPublicUrl = `${scheme}://${config.noasDomain}`;
 }

@@ -17,6 +17,7 @@ let serverReady = false;
 let apitestUserPubkey = '';
 const APITEST_PRIVATE_KEY = '1'.repeat(64);
 const UPDATEUSER_PRIVATE_KEY = '2'.repeat(64);
+const STAGED_PRIVATE_KEY = '3'.repeat(64);
 
 /**
  * Helper function to make HTTP requests to the test server
@@ -43,6 +44,32 @@ async function request(method, path, body) {
 before(async () => {
   // Clean up test data first
   try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_onboarding (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(32) UNIQUE NOT NULL,
+        email VARCHAR(320) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        relays JSONB DEFAULT '[]'::jsonb,
+        email_verification_token VARCHAR(128) NOT NULL,
+        email_verification_pin_hash VARCHAR(255) NOT NULL,
+        email_verification_expires_at TIMESTAMP NOT NULL,
+        email_verified_at TIMESTAMP,
+        pin_attempt_count INTEGER NOT NULL DEFAULT 0,
+        verification_origin TEXT,
+        public_key VARCHAR(64),
+        encrypted_private_key TEXT,
+        last_email_sent_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`
+      CREATE TABLE IF NOT EXISTS used_verification_tokens (
+        token VARCHAR(128) PRIMARY KEY,
+        used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     await query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
@@ -71,7 +98,8 @@ before(async () => {
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
     `);
-    await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
+    await query('DELETE FROM users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
+    await query('DELETE FROM user_onboarding WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
   } catch (e) {
     // Ignore if table doesn't exist yet
   }
@@ -92,7 +120,8 @@ before(async () => {
 after(async () => {
   // Clean up test data
   try {
-    await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
+    await query('DELETE FROM users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
+    await query('DELETE FROM user_onboarding WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
   } catch (e) {
     // Ignore cleanup errors
   }
@@ -121,6 +150,55 @@ test('POST /register creates a new user', async () => {
   assert.strictEqual(data.user.username, 'apitestuser');
   assert.ok(/^[a-f0-9]{64}$/.test(data.user.publicKey));
   apitestUserPubkey = data.user.publicKey;
+});
+
+test('POST /onboarding/start -> /verify-email -> /onboarding/complete creates user', async () => {
+  const start = await request('POST', '/onboarding/start', {
+    username: 'stageduser',
+    password: 'stagepass123',
+    email: 'stageduser@polygon.gmbh',
+    relays: ['wss://relay.test.com'],
+  });
+
+  assert.strictEqual(start.status, 200);
+  assert.strictEqual(start.data.success, true);
+  assert.strictEqual(start.data.onboarding.username, 'stageduser');
+
+  const verify = await request('POST', '/verify-email', {
+    username: 'stageduser',
+    token: start.data.emailVerificationToken,
+    pin: start.data.emailVerificationPin,
+  });
+  assert.strictEqual(verify.status, 200);
+  assert.strictEqual(verify.data.success, true);
+  assert.strictEqual(verify.data.onboarding.emailVerified, true);
+
+  const complete = await request('POST', '/onboarding/complete', {
+    username: 'stageduser',
+    password: 'stagepass123',
+    nsecKey: STAGED_PRIVATE_KEY,
+  });
+
+  assert.strictEqual(complete.status, 201);
+  assert.strictEqual(complete.data.success, true);
+  assert.strictEqual(complete.data.user.username, 'stageduser');
+});
+
+test('POST /onboarding/complete rejects before verification', async () => {
+  await request('POST', '/onboarding/start', {
+    username: 'pendinguser',
+    password: 'stagepass123',
+    email: 'pendinguser@polygon.gmbh',
+  });
+
+  const complete = await request('POST', '/onboarding/complete', {
+    username: 'pendinguser',
+    password: 'stagepass123',
+    nsecKey: STAGED_PRIVATE_KEY,
+  });
+
+  assert.strictEqual(complete.status, 403);
+  assert.ok(complete.data.error.includes('Email must be verified'));
 });
 
 // Test: POST /register rejects duplicate usernames with 409 Conflict
