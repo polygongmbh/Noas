@@ -6,7 +6,7 @@
  * Uses a separate test server on port 3001.
  */
 
-import { test, before, after, describe } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert';
 import { app } from './index.js';
 import { query, closePool } from './db/pool.js';
@@ -14,6 +14,9 @@ import { query, closePool } from './db/pool.js';
 const baseURL = 'http://localhost:3001';
 let server;
 let serverReady = false;
+let apitestUserPubkey = '';
+const APITEST_PRIVATE_KEY = '1'.repeat(64);
+const UPDATEUSER_PRIVATE_KEY = '2'.repeat(64);
 
 /**
  * Helper function to make HTTP requests to the test server
@@ -51,6 +54,22 @@ before(async () => {
     await query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
+    `);
+    await query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS email VARCHAR(320);
+    `);
+    await query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP;
+    `);
+    await query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(128);
+    `);
+    await query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
     `);
     await query('DELETE FROM users WHERE username IN ($1, $2)', ['apitestuser', 'updateuser']);
   } catch (e) {
@@ -92,15 +111,16 @@ test('POST /register creates a new user', async () => {
   const { status, data } = await request('POST', '/register', {
     username: 'apitestuser',
     password: 'testpassword123',
-    publicKey: 'b'.repeat(64),
-    encryptedPrivateKey: 'ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p',
+    nsecKey: APITEST_PRIVATE_KEY,
+    email: 'apitestuser@polygon.gmbh',
     relays: ['wss://relay.test.com'],
   });
 
   assert.strictEqual(status, 201);
   assert.strictEqual(data.success, true);
   assert.strictEqual(data.user.username, 'apitestuser');
-  assert.strictEqual(data.user.publicKey, 'b'.repeat(64));
+  assert.ok(/^[a-f0-9]{64}$/.test(data.user.publicKey));
+  apitestUserPubkey = data.user.publicKey;
 });
 
 // Test: POST /register rejects duplicate usernames with 409 Conflict
@@ -108,8 +128,8 @@ test('POST /register rejects duplicate username', async () => {
   const { status, data } = await request('POST', '/register', {
     username: 'apitestuser',
     password: 'testpassword123',
-    publicKey: 'c'.repeat(64),
-    encryptedPrivateKey: 'ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p',
+    nsecKey: APITEST_PRIVATE_KEY,
+    email: 'apitestuser@polygon.gmbh',
   });
 
   assert.strictEqual(status, 409);
@@ -121,8 +141,8 @@ test('POST /register validates username format', async () => {
   const { status, data } = await request('POST', '/register', {
     username: 'Invalid-User',
     password: 'testpassword123',
-    publicKey: 'd'.repeat(64),
-    encryptedPrivateKey: 'ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p',
+    nsecKey: APITEST_PRIVATE_KEY,
+    email: 'invalid@polygon.gmbh',
   });
 
   assert.strictEqual(status, 400);
@@ -139,7 +159,7 @@ test('POST /signin returns encrypted key for valid credentials', async () => {
   assert.strictEqual(status, 200);
   assert.strictEqual(data.success, true);
   assert.ok(data.encryptedPrivateKey.startsWith('ncryptsec'));
-  assert.strictEqual(data.publicKey, 'b'.repeat(64));
+  assert.strictEqual(data.publicKey, apitestUserPubkey);
   assert.ok(Array.isArray(data.relays));
 });
 
@@ -171,8 +191,8 @@ test('POST /update changes password', async () => {
   await request('POST', '/register', {
     username: 'updateuser',
     password: 'oldpassword123',
-    publicKey: 'e'.repeat(64),
-    encryptedPrivateKey: 'ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p',
+    nsecKey: UPDATEUSER_PRIVATE_KEY,
+    email: 'updateuser@polygon.gmbh',
   });
 
   // Update password
@@ -203,7 +223,7 @@ test('GET /.well-known/nostr.json returns user public key', async () => {
 
   assert.strictEqual(response.status, 200);
   assert.ok(data.names);
-  assert.strictEqual(data.names.apitestuser, 'b'.repeat(64));
+  assert.strictEqual(data.names.apitestuser, apitestUserPubkey);
 });
 
 // Test: GET /.well-known/nostr.json returns 404 for non-existent users
@@ -237,9 +257,9 @@ test('POST /picture uploads and GET /picture/:pubkey serves image', async () => 
 
   assert.strictEqual(upload.status, 200);
   assert.strictEqual(upload.data.success, true);
-  assert.ok(upload.data.url.includes(`/picture/${'b'.repeat(64)}`));
+  assert.ok(upload.data.url.includes(`/picture/${apitestUserPubkey}`));
 
-  const pictureResponse = await fetch(`${baseURL}/picture/${'b'.repeat(64)}`);
+  const pictureResponse = await fetch(`${baseURL}/picture/${apitestUserPubkey}`);
   assert.strictEqual(pictureResponse.status, 200);
   assert.strictEqual(pictureResponse.headers.get('content-type'), 'image/png');
 

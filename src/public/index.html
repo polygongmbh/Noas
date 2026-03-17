@@ -47,17 +47,22 @@
           
           <label>
             Password (minimum 8 characters)
-            <input type="password" id="signupPassword" placeholder="Create a strong password" required />
+            <input type="password" id="signupPassword" placeholder="Create a strong password" autocomplete="new-password" required />
           </label>
           
           <label>
             Confirm Password
-            <input type="password" id="signupPasswordConfirm" placeholder="Confirm your password" required />
+            <input type="password" id="signupPasswordConfirm" placeholder="Confirm your password" autocomplete="new-password" required />
+          </label>
+
+          <label>
+            Work Email
+            <input type="email" id="signupEmail" placeholder="you@polygon.gmbh" autocomplete="email" required />
           </label>
           
           <label>
             Your Nostr Private Key
-            <input type="password" id="signupNsec" placeholder="nsec1... or hex format" required />
+            <input type="password" id="signupNsec" placeholder="nsec1... or hex format" autocomplete="off" data-lpignore="true" data-1p-ignore="true" spellcheck="false" required />
             <small>Enter your nsec key or 64-character hex private key</small>
           </label>
           

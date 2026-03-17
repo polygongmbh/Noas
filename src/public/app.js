@@ -21,6 +21,7 @@ const copyEncrypted = document.getElementById('copyEncrypted');
 const signupForm = document.getElementById('signupForm');
 const signupUsername = document.getElementById('signupUsername');
 const signupPassword = document.getElementById('signupPassword');
+const signupEmail = document.getElementById('signupEmail');
 const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
 const signupNsec = document.getElementById('signupNsec');
 const signupRelays = document.getElementById('signupRelays');
@@ -174,6 +175,7 @@ deleteForm.addEventListener('submit', async (event) => {
 function validateSignupForm() {
   const username = signupUsername?.value.trim() || '';
   const password = signupPassword?.value || '';
+  const email = signupEmail?.value.trim().toLowerCase() || '';
   const passwordConfirm = signupPasswordConfirm?.value || '';
   const nsecValue = signupNsec?.value.trim() || '';
 
@@ -193,6 +195,11 @@ function validateSignupForm() {
     signupPasswordConfirm?.focus();
     return false;
   }
+  if (!email) {
+    setStatus(signupStatus, 'Email is required', 'error');
+    signupEmail?.focus();
+    return false;
+  }
   if (!nsecValue) {
     setStatus(signupStatus, 'Private key is required', 'error');
     signupNsec?.focus();
@@ -209,6 +216,12 @@ function validateSignupForm() {
   if (password.length < 8) {
     setStatus(signupStatus, 'Password must be at least 8 characters long', 'error');
     signupPassword?.focus();
+    return false;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setStatus(signupStatus, 'Email format is invalid', 'error');
+    signupEmail?.focus();
     return false;
   }
   
@@ -231,6 +244,7 @@ if (signupForm) {
     
     const username = signupUsername.value.trim().toLowerCase();
     const password = signupPassword.value;
+    const email = signupEmail.value.trim().toLowerCase();
     const nsecKey = signupNsec.value.trim();
     const relaysText = signupRelays?.value.trim() || '';
     
@@ -249,6 +263,7 @@ if (signupForm) {
         body: JSON.stringify({
           username,
           password,
+          email,
           nsecKey,
           relays
         })

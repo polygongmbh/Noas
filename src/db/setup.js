@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS users (
   public_key VARCHAR(64) NOT NULL,
   encrypted_private_key TEXT NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
+  email VARCHAR(320),
+  email_verified_at TIMESTAMP,
+  email_verification_token VARCHAR(128),
+  email_verification_expires_at TIMESTAMP,
   relays JSONB DEFAULT '[]'::jsonb,
   profile_picture BYTEA,
   profile_picture_type VARCHAR(100),
@@ -33,6 +37,18 @@ ALTER TABLE users
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email VARCHAR(320);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(128);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
 
 -- NIP-46 Remote Signer tables
 CREATE TABLE IF NOT EXISTS nip46_sessions (

@@ -40,6 +40,22 @@ before(async () => {
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
   `);
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS email VARCHAR(320);
+  `);
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP;
+  `);
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(128);
+  `);
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
+  `);
 
   // Clean up any existing test data
   await query('DELETE FROM users WHERE username = $1', [testUser.username]);

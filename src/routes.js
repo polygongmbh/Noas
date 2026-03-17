@@ -4,6 +4,7 @@
  * Defines all HTTP endpoints for the Noas server:
  * - POST /register - Create new user account
  * - POST /signin - Authenticate and get encrypted key
+ * - POST /verify-email - Verify account email with token
  * - POST /update - Update user password or relays
  * - POST /delete - Delete user account
  * - POST /picture - Upload profile picture
@@ -24,13 +25,15 @@ import {
   getUserProfilePictureByPublicKey,
   updateUserProfilePicture,
   deleteUser,
+  verifyUserEmail,
 } from './db/users.js';
 import { 
   hashPassword, 
   verifyPassword, 
   validateUsername, 
   validatePublicKey, 
-  validateEncryptedPrivateKey 
+  validateEncryptedPrivateKey,
+  validateEmail,
 } from './auth.js';
 import { 
   createConnectionToken,
@@ -39,10 +42,47 @@ import {
   signerPubkey 
 } from './nip46.js';
 import { config } from './config.js';
+import { randomBytes } from 'crypto';
 
 export const router = express.Router();
 
 const MAX_PROFILE_PICTURE_BYTES = 2 * 1024 * 1024;
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isEmailAllowedForTenant(email) {
+  if (!config.allowedSignupEmailDomain) return true;
+  return normalizeEmail(email).endsWith(`@${config.allowedSignupEmailDomain}`);
+}
+
+function getEmailDomain(email) {
+  const normalized = normalizeEmail(email);
+  const atIndex = normalized.lastIndexOf('@');
+  if (atIndex <= 0 || atIndex === normalized.length - 1) return '';
+  return normalized.slice(atIndex + 1);
+}
+
+function getDomainScopedRelays(email, fallbackRelays = []) {
+  const emailDomain = getEmailDomain(email);
+  const mappedRelays = config.domainRelayMap[emailDomain];
+  if (Array.isArray(mappedRelays) && mappedRelays.length > 0) {
+    return mappedRelays;
+  }
+  const protectedRelaySet = new Set(
+    Object.values(config.domainRelayMap).flat()
+  );
+  const sanitizeFallback = (relayUrls) => relayUrls.filter((relayUrl) => !protectedRelaySet.has(relayUrl));
+  if (config.tenantDefaultRelays.length > 0) {
+    return sanitizeFallback(config.tenantDefaultRelays);
+  }
+  return sanitizeFallback(fallbackRelays);
+}
+
+function buildVerificationToken() {
+  return randomBytes(24).toString('hex');
+}
 
 function hexToBytes(hex) {
   const normalized = String(hex || "").trim().toLowerCase();
@@ -113,7 +153,7 @@ function normalizeBase64Payload(data, contentType) {
  */
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, nsecKey, relays } = req.body;
+    const { username, password, nsecKey, relays, email } = req.body;
 
     // Validate inputs
     const usernameCheck = validateUsername(username);
@@ -127,6 +167,17 @@ router.post('/register', async (req, res) => {
 
     if (!nsecKey || nsecKey.trim().length === 0) {
       return res.status(400).json({ error: 'Private key (nsec) is required' });
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+    const emailCheck = validateEmail(normalizedEmail);
+    if (!emailCheck.valid) {
+      return res.status(400).json({ error: emailCheck.error });
+    }
+    if (!isEmailAllowedForTenant(normalizedEmail)) {
+      return res.status(403).json({
+        error: `Only ${config.allowedSignupEmailDomain} email addresses can sign up`,
+      });
     }
 
     // Import nostr-tools for server-side key processing
@@ -177,21 +228,40 @@ router.post('/register', async (req, res) => {
 
     // Hash password and create user
     const passwordHash = await hashPassword(password);
+    const requiresEmailVerification = config.requireEmailVerification;
+    const emailVerificationToken = requiresEmailVerification ? buildVerificationToken() : null;
+    const verificationMinutes = Math.max(1, config.emailVerificationTokenTtlMinutes);
+    const emailVerificationExpiresAt = requiresEmailVerification
+      ? new Date(Date.now() + verificationMinutes * 60 * 1000)
+      : null;
+    const resolvedRelays = getDomainScopedRelays(normalizedEmail, relays || []);
     const user = await createUser({
       username,
       publicKey,
       encryptedPrivateKey,
       passwordHash,
-      relays: relays || [],
+      relays: resolvedRelays,
+      email: normalizedEmail,
+      emailVerifiedAt: requiresEmailVerification ? null : new Date(),
+      emailVerificationToken,
+      emailVerificationExpiresAt,
     });
 
-    res.status(201).json({
+    const responseBody = {
       success: true,
       user: {
         username: user.username,
         publicKey: user.public_key,
+        email: user.email,
       },
-    });
+      emailVerificationRequired: requiresEmailVerification,
+    };
+
+    if (config.exposeVerificationTokenInResponse && emailVerificationToken) {
+      responseBody.emailVerificationToken = emailVerificationToken;
+    }
+
+    res.status(201).json(responseBody);
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({ error: 'Registration failed' });
@@ -223,15 +293,53 @@ router.post('/signin', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    if (config.requireEmailVerification && !user.email_verified_at) {
+      return res.status(403).json({
+        error: 'Email verification required before sign in',
+      });
+    }
+
     res.json({
       success: true,
       encryptedPrivateKey: user.encrypted_private_key,
       publicKey: user.public_key,
-      relays: user.relays,
+      relays: getDomainScopedRelays(user.email, user.relays || []),
+      emailVerified: Boolean(user.email_verified_at),
     });
   } catch (error) {
     console.error('Signin error:', error);
     res.status(500).json({ error: 'Sign in failed' });
+  }
+});
+
+/**
+ * POST /verify-email
+ * Verify a user's email address with a one-time token.
+ */
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { username, token } = req.body;
+
+    if (!username || !token) {
+      return res.status(400).json({ error: 'Username and token are required' });
+    }
+
+    const verified = await verifyUserEmail(username, String(token).trim());
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid or expired verification token' });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        username: verified.username,
+        publicKey: verified.public_key,
+        email: verified.email,
+      },
+    });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ error: 'Email verification failed' });
   }
 });
 
@@ -278,6 +386,12 @@ router.post('/update', async (req, res) => {
     }
 
     if (updates.relays) {
+      const mappedRelays = config.domainRelayMap[getEmailDomain(user.email)];
+      if (Array.isArray(mappedRelays) && mappedRelays.length > 0) {
+        return res.status(403).json({
+          error: 'Relay list is managed by domain policy for this account',
+        });
+      }
       updateData.relays = updates.relays;
     }
 
@@ -424,6 +538,7 @@ router.get('/picture/:pubkey', async (req, res) => {
  * 
  * Returns user's public key for Nostr identity verification.
  * Enables username@domain.com style identifiers.
+ * When email verification is enabled, only verified users are exposed.
  */
 router.get('/.well-known/nostr.json', async (req, res) => {
   try {
@@ -435,6 +550,9 @@ router.get('/.well-known/nostr.json', async (req, res) => {
 
     const user = await getUserForNip05(name);
     if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (config.requireEmailVerification && !user.email_verified_at) {
       return res.status(404).json({ error: 'User not found' });
     }
 

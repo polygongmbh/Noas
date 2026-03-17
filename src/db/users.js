@@ -15,14 +15,48 @@ import { query } from './pool.js';
  * @param {string} userData.encryptedPrivateKey - NIP-49 encrypted private key
  * @param {string} userData.passwordHash - Bcrypt hashed password
  * @param {Array} userData.relays - Optional array of relay URLs
+ * @param {string|null} userData.email - Optional email address
+ * @param {Date|null} userData.emailVerifiedAt - Optional verification timestamp
+ * @param {string|null} userData.emailVerificationToken - Optional email verification token
+ * @param {Date|null} userData.emailVerificationExpiresAt - Optional email verification expiry
  * @returns {Promise<Object>} Created user object
  */
-export async function createUser({ username, publicKey, encryptedPrivateKey, passwordHash, relays = [] }) {
+export async function createUser({
+  username,
+  publicKey,
+  encryptedPrivateKey,
+  passwordHash,
+  relays = [],
+  email = null,
+  emailVerifiedAt = null,
+  emailVerificationToken = null,
+  emailVerificationExpiresAt = null,
+}) {
   const result = await query(
-    `INSERT INTO users (username, public_key, encrypted_private_key, password_hash, relays)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, username, public_key, created_at`,
-    [username, publicKey, encryptedPrivateKey, passwordHash, JSON.stringify(relays)]
+    `INSERT INTO users (
+      username,
+      public_key,
+      encrypted_private_key,
+      password_hash,
+      relays,
+      email,
+      email_verified_at,
+      email_verification_token,
+      email_verification_expires_at
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, username, public_key, email, email_verified_at, created_at`,
+    [
+      username,
+      publicKey,
+      encryptedPrivateKey,
+      passwordHash,
+      JSON.stringify(relays),
+      email,
+      emailVerifiedAt,
+      emailVerificationToken,
+      emailVerificationExpiresAt,
+    ]
   );
   return result.rows[0];
 }
@@ -43,13 +77,13 @@ export async function getUserByUsername(username) {
 
 /**
  * Retrieve user for NIP-05 verification
- * Returns only username and public key (no sensitive data)
+ * Returns only NIP-05-safe public fields (no password/key material)
  * @param {string} username - Username to look up
- * @returns {Promise<Object|undefined>} Object with username and public_key
+ * @returns {Promise<Object|undefined>} Object with username/public_key/verification state
  */
 export async function getUserForNip05(username) {
   const result = await query(
-    'SELECT username, public_key FROM users WHERE username = $1',
+    'SELECT username, public_key, email_verified_at FROM users WHERE username = $1',
     [username]
   );
   return result.rows[0];
@@ -141,6 +175,27 @@ export async function deleteUser(username) {
   const result = await query(
     'DELETE FROM users WHERE username = $1 RETURNING id, username, public_key',
     [username]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Mark a user email as verified if the token is valid and not expired.
+ * @param {string} username - Username of user to verify
+ * @param {string} token - Email verification token
+ * @returns {Promise<Object|undefined>} Updated user summary or undefined if not verified
+ */
+export async function verifyUserEmail(username, token) {
+  const result = await query(
+    `UPDATE users
+     SET email_verified_at = CURRENT_TIMESTAMP,
+         email_verification_token = NULL,
+         email_verification_expires_at = NULL
+     WHERE username = $1
+       AND email_verification_token = $2
+       AND (email_verification_expires_at IS NULL OR email_verification_expires_at > CURRENT_TIMESTAMP)
+     RETURNING id, username, public_key, email, email_verified_at`,
+    [username, token]
   );
   return result.rows[0];
 }

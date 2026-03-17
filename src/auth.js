@@ -101,3 +101,22 @@ export function validatePrivateKey(privateKey) {
   
   return { valid: true };
 }
+
+/**
+ * Validate email format
+ * @param {string} email - Email to validate
+ * @returns {Object} {valid: boolean, error?: string}
+ */
+export function validateEmail(email) {
+  if (!email || typeof email !== 'string') {
+    return { valid: false, error: 'Email is required' };
+  }
+  const normalized = email.trim().toLowerCase();
+  if (normalized.length > 320) {
+    return { valid: false, error: 'Email is too long' };
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    return { valid: false, error: 'Invalid email format' };
+  }
+  return { valid: true };
+}
