@@ -12,8 +12,11 @@ import { dirname, join } from 'path';
 // Get the current directory for ES modules
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load environment variables from .env file
-dotenv.config({ path: join(__dirname, '../.env') });
+// Load environment variables from .env file unless explicitly disabled
+// (compose should be the runtime source of truth when NOAS_LOAD_DOTENV=false).
+if (process.env.NOAS_LOAD_DOTENV !== 'false') {
+  dotenv.config({ path: join(__dirname, '../.env') });
+}
 
 function parseRelayList(value) {
   return String(value || '')

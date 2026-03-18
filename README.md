@@ -13,6 +13,10 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 
 ## Setup
 
+Runtime config model:
+- Docker: `docker-compose.yml` is the runtime source of truth (`NOAS_LOAD_DOTENV=false`).
+- Local `npm run dev`: `.env` is used (`NOAS_LOAD_DOTENV=true`).
+
 ### Task runner (`justfile`)
 
 This project includes a [`justfile`](./justfile) with common development commands
