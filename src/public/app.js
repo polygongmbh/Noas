@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const signupPublicKey = document.getElementById('signupPublicKey');
   const signupPrivateKeyEncrypted = document.getElementById('signupPrivateKeyEncrypted');
   const signupStatus = document.getElementById('signupStatus');
+  const verificationFlash = document.getElementById('verificationFlash');
   const resendForm = document.getElementById('resendForm');
   const resendUsername = document.getElementById('resendUsername');
   const resendStatus = document.getElementById('resendStatus');
@@ -327,6 +328,17 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('verified') === '1') {
+    const nip05 = (urlParams.get('nip05') || '').trim();
+    const message = nip05
+      ? `Account verified for ${nip05}. You can now sign in.`
+      : 'Account verified. You can now sign in.';
+    setStatus(verificationFlash, message, 'success');
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('verified');
+    cleanUrl.searchParams.delete('nip05');
+    window.history.replaceState({}, '', cleanUrl.toString());
+  }
   const tokenFromLink = urlParams.get('token');
   if (tokenFromLink) {
     const redirectFromLink = urlParams.get('redirect');

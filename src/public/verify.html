@@ -29,7 +29,7 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       const token = (params.get('token') || '').trim();
-      const redirect = (params.get('redirect') || params.get('origin') || '').trim();
+      const redirectRaw = (params.get('redirect') || params.get('origin') || '').trim();
       const verifyForm = document.getElementById('verifyForm');
       const verifyPassword = document.getElementById('verifyPassword');
       const verifyStatus = document.getElementById('verifyStatus');
@@ -38,11 +38,42 @@
       const verifyPublicKey = document.getElementById('verifyPublicKey');
       const verifyExpiry = document.getElementById('verifyExpiry');
       const backToApp = document.getElementById('backToApp');
+      let verifiedNip05 = '';
+
+      function tryDecodeURIComponent(value) {
+        try {
+          return decodeURIComponent(value);
+        } catch {
+          return value;
+        }
+      }
+
+      function decodeRedirectValue(value) {
+        let decoded = String(value || '').trim();
+        for (let i = 0; i < 2; i += 1) {
+          const next = tryDecodeURIComponent(decoded);
+          if (next === decoded) break;
+          decoded = next;
+        }
+        return decoded;
+      }
+
+      function normalizeRedirect(value) {
+        const decoded = decodeRedirectValue(value);
+        if (!decoded) return '';
+        if (decoded.startsWith('https://') || decoded.startsWith('http://')) return decoded;
+        if (decoded.startsWith('//')) return `${window.location.protocol}${decoded}`;
+        if (decoded.startsWith('/')) return decoded;
+        if (/^[a-z0-9.-]+\.[a-z]{2,}([/:?#]|$)/i.test(decoded)) return `https://${decoded}`;
+        return '';
+      }
+
+      const redirect = normalizeRedirect(redirectRaw);
 
       if (redirect) {
         backToApp.hidden = false;
         backToApp.addEventListener('click', () => {
-          window.location.href = redirect;
+          window.location.assign(redirect);
         });
       }
 
@@ -66,7 +97,8 @@
 
       function renderPreview(data) {
         verifyMessage.textContent = 'Enter your password to activate this account.';
-        verifyNip05.textContent = `NIP-05: ${data.nip05}`;
+        verifiedNip05 = String(data.nip05 || '').trim();
+        verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
         verifyPublicKey.textContent = data.public_key ? `Public key: ${data.public_key}` : '';
         if (data.expires_at) {
           verifyExpiry.textContent = `Expires at: ${new Date(data.expires_at).toLocaleString()}`;
@@ -114,11 +146,15 @@
             throw new Error(data.error || 'Verification failed.');
           }
           setStatus('Account verified. You can now sign in.', 'success');
-          if (redirect) {
-            setTimeout(() => {
-              window.location.href = redirect;
-            }, 300);
+          const homeUrl = new URL('/', window.location.origin);
+          homeUrl.searchParams.set('verified', '1');
+          if (verifiedNip05) {
+            homeUrl.searchParams.set('nip05', verifiedNip05);
           }
+          const destination = redirect || homeUrl.toString();
+          setTimeout(() => {
+            window.location.assign(destination);
+          }, 700);
         } catch (error) {
           setStatus(error.message || 'Verification failed.', 'error');
         }
