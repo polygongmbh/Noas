@@ -186,7 +186,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const verificationHint = data.verify_url
           ? ` Verification link: ${data.verify_url}`
           : '';
-        setStatus(signupStatus, `${data.message || 'Verification sent.'}${verificationHint}`, 'success');
+        const keyHint = data.key_source === 'generated'
+          ? ` A Nostr keypair was generated automatically (pubkey: ${data.public_key || 'unknown'}).`
+          : '';
+        setStatus(signupStatus, `${data.message || 'Verification sent.'}${keyHint}${verificationHint}`, 'success');
 
       } catch (error) {
         setStatus(signupStatus, `Registration start failed: ${error.message}`, 'error');

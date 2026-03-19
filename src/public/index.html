@@ -64,11 +64,13 @@
           <label>
             Public Key (optional)
             <input type="text" id="signupPublicKey" placeholder="npub1... or 64-char hex pubkey" />
+            <small>Leave blank to auto-generate a Nostr keypair.</small>
           </label>
 
           <label>
             Encrypted Private Key (optional)
             <input type="text" id="signupPrivateKeyEncrypted" placeholder="ncryptsec1..." />
+            <small>Provide together with Public Key, or leave both blank for auto-generation.</small>
           </label>
 
           <button type="submit" class="btn">Register & Send Verification</button>

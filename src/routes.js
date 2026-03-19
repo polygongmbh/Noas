@@ -114,6 +114,54 @@ function isNostrUserVerificationExpired(user, expiryMinutes) {
   return Date.now() > createdAtMs + ttlMs;
 }
 
+async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedRaw) {
+  const hasPublic = Boolean(String(publicKeyRaw || '').trim());
+  const hasPrivate = Boolean(String(privateKeyEncryptedRaw || '').trim());
+
+  if (!hasPublic && !hasPrivate) {
+    const { generateSecretKey, getPublicKey, nip19 } = await import('nostr-tools');
+    const secretKey = generateSecretKey();
+    return {
+      publicKey: getPublicKey(secretKey).toLowerCase(),
+      privateKeyEncrypted: nip19.nsecEncode(secretKey),
+      keySource: 'generated',
+    };
+  }
+
+  if (hasPublic !== hasPrivate) {
+    throw new Error('Provide both public_key and private_key_encrypted together, or omit both to auto-generate');
+  }
+
+  const candidate = String(publicKeyRaw || '').trim();
+  let normalizedPublicKey = null;
+  if (candidate.startsWith('npub1')) {
+    const { nip19 } = await import('nostr-tools');
+    const decoded = nip19.decode(candidate);
+    if (decoded.type !== 'npub' || typeof decoded.data !== 'string') {
+      throw new Error('public_key must be a valid npub or hex pubkey');
+    }
+    normalizedPublicKey = decoded.data.toLowerCase();
+  } else {
+    normalizedPublicKey = candidate.toLowerCase();
+  }
+
+  const publicKeyCheck = validatePublicKey(normalizedPublicKey);
+  if (!publicKeyCheck.valid) {
+    throw new Error(publicKeyCheck.error);
+  }
+  const normalizedPrivateKeyEncrypted = String(privateKeyEncryptedRaw || '').trim();
+  const encryptedCheck = validateEncryptedPrivateKey(normalizedPrivateKeyEncrypted);
+  if (!encryptedCheck.valid) {
+    throw new Error(encryptedCheck.error);
+  }
+
+  return {
+    publicKey: normalizedPublicKey,
+    privateKeyEncrypted: normalizedPrivateKeyEncrypted,
+    keySource: 'provided',
+  };
+}
+
 function minutesBetween(nowMs, thenValue) {
   const thenMs = new Date(thenValue).getTime();
   if (Number.isNaN(thenMs)) return Number.POSITIVE_INFINITY;
@@ -201,29 +249,11 @@ router.post('/api/v1/auth/register', async (req, res) => {
         return res.status(400).json({ error: 'Redirect is not allowed' });
       }
     }
-    let normalizedPublicKey = null;
-    if (publicKeyRaw) {
-      const candidate = String(publicKeyRaw || '').trim();
-      if (candidate.startsWith('npub1')) {
-        try {
-          const { nip19 } = await import('nostr-tools');
-          const decoded = nip19.decode(candidate);
-          if (decoded.type !== 'npub' || typeof decoded.data !== 'string') {
-            return res.status(400).json({ error: 'public_key must be a valid npub or hex pubkey' });
-          }
-          normalizedPublicKey = decoded.data.toLowerCase();
-        } catch {
-          return res.status(400).json({ error: 'public_key must be a valid npub or hex pubkey' });
-        }
-      } else {
-        normalizedPublicKey = candidate.toLowerCase();
-      }
-      const publicKeyCheck = validatePublicKey(normalizedPublicKey);
-      if (!publicKeyCheck.valid) return res.status(400).json({ error: publicKeyCheck.error });
-    }
-    if (privateKeyEncrypted) {
-      const encryptedCheck = validateEncryptedPrivateKey(String(privateKeyEncrypted || '').trim());
-      if (!encryptedCheck.valid) return res.status(400).json({ error: encryptedCheck.error });
+    let keyMaterial;
+    try {
+      keyMaterial = await resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncrypted);
+    } catch (error) {
+      return res.status(400).json({ error: error.message || 'Invalid key material' });
     }
 
     const nip05 = buildNip05Identifier(normalizedUsername);
@@ -245,8 +275,8 @@ router.post('/api/v1/auth/register', async (req, res) => {
       await createNostrUser({
         username: normalizedUsername,
         passwordHash: normalizedPasswordHash,
-        publicKey: normalizedPublicKey,
-        privateKeyEncrypted: privateKeyEncrypted ? String(privateKeyEncrypted).trim() : null,
+        publicKey: keyMaterial.publicKey,
+        privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
         status: 'active',
         verificationToken: null,
       });
@@ -254,6 +284,8 @@ router.post('/api/v1/auth/register', async (req, res) => {
         success: true,
         status: 'active',
         nip05,
+        public_key: keyMaterial.publicKey,
+        key_source: keyMaterial.keySource,
         message: 'Account is active. You can now sign in.',
       });
     }
@@ -262,8 +294,8 @@ router.post('/api/v1/auth/register', async (req, res) => {
     await createNostrUser({
       username: normalizedUsername,
       passwordHash: normalizedPasswordHash,
-      publicKey: normalizedPublicKey,
-      privateKeyEncrypted: privateKeyEncrypted ? String(privateKeyEncrypted).trim() : null,
+      publicKey: keyMaterial.publicKey,
+      privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
       status: 'unverified_email',
       verificationToken,
     });
@@ -279,7 +311,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         identifier: nip05,
         verificationLink,
         expiresAt,
-        publicKey: normalizedPublicKey,
+        publicKey: keyMaterial.publicKey,
       });
     } catch (error) {
       emailDelivery = { sent: false, reason: 'smtp_send_failed' };
@@ -296,6 +328,8 @@ router.post('/api/v1/auth/register', async (req, res) => {
       success: true,
       status: 'unverified_email',
       nip05,
+      public_key: keyMaterial.publicKey,
+      key_source: keyMaterial.keySource,
       message: `Check ${email} to verify your account.`,
     };
     if (config.exposeVerificationTokenInResponse || config.isTest) {
