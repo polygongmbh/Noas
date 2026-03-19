@@ -3,10 +3,6 @@ document.addEventListener('DOMContentLoaded', function () {
     username: null,
     password: null,
     signupUsername: null,
-    signupPassword: null,
-    signupEmail: null,
-    signupRelays: [],
-    signupVerified: false,
   };
 
   const signinForm = document.getElementById('signinForm');
@@ -24,22 +20,43 @@ document.addEventListener('DOMContentLoaded', function () {
   const copyEncrypted = document.getElementById('copyEncrypted');
 
   const signupStartForm = document.getElementById('signupStartForm');
-  const verifyEmailForm = document.getElementById('verifyEmailForm');
-  const signupCompleteForm = document.getElementById('signupCompleteForm');
   const signupUsername = document.getElementById('signupUsername');
   const signupPassword = document.getElementById('signupPassword');
   const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
-  const signupEmail = document.getElementById('signupEmail');
-  const signupRelays = document.getElementById('signupRelays');
-  const signupNsec = document.getElementById('signupNsec');
-  const signupPin = document.getElementById('signupPin');
-  const signupToken = document.getElementById('signupToken');
+  const signupRedirect = document.getElementById('signupRedirect');
+  const signupPublicKey = document.getElementById('signupPublicKey');
+  const signupPrivateKeyEncrypted = document.getElementById('signupPrivateKeyEncrypted');
   const signupStatus = document.getElementById('signupStatus');
-  const verifyStatus = document.getElementById('verifyStatus');
-  const completeStatus = document.getElementById('completeStatus');
-  const signupSuccess = document.getElementById('signupSuccess');
-  const successUsername = document.getElementById('successUsername');
-  const successPublicKey = document.getElementById('successPublicKey');
+  const resendForm = document.getElementById('resendForm');
+  const resendUsername = document.getElementById('resendUsername');
+  const resendStatus = document.getElementById('resendStatus');
+  const noasVersion = document.getElementById('noasVersion');
+  const noasVersionFooter = document.getElementById('noasVersionFooter');
+
+  function normalizeVersionLabel(version) {
+    const trimmed = String(version || '').trim().replace(/^v/i, '');
+    if (!trimmed) return 'v—';
+    const parts = trimmed.split('.');
+    if (parts.length >= 2 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
+      return `v${parts[0]}.${parts[1]}`;
+    }
+    return `v${trimmed}`;
+  }
+
+  async function loadNoasVersion() {
+    try {
+      const response = await fetch('/.well-known/nostr.json');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return;
+      const label = normalizeVersionLabel(data?.noas?.version);
+      if (noasVersion) noasVersion.textContent = label;
+      if (noasVersionFooter) noasVersionFooter.textContent = label;
+    } catch {
+      // Non-blocking: keep placeholder when metadata is unavailable.
+    }
+  }
+
+  loadNoasVersion();
 
   function setStatus(el, message, type = 'info') {
     if (!el) return;
@@ -69,11 +86,21 @@ document.addEventListener('DOMContentLoaded', function () {
     return data;
   }
 
+  async function sha256Hex(value) {
+    const bytes = new TextEncoder().encode(value);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
   function validateSignupStartForm() {
     const username = signupUsername?.value.trim().toLowerCase() || '';
     const password = signupPassword?.value || '';
-    const email = signupEmail?.value.trim().toLowerCase() || '';
     const passwordConfirm = signupPasswordConfirm?.value || '';
+    const publicKey = signupPublicKey?.value.trim() || '';
+    const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
+    const redirect = signupRedirect?.value.trim() || '';
 
     if (!username) {
       setStatus(signupStatus, 'Username is required', 'error');
@@ -90,11 +117,6 @@ document.addEventListener('DOMContentLoaded', function () {
       signupPasswordConfirm?.focus();
       return false;
     }
-    if (!email) {
-      setStatus(signupStatus, 'Email is required', 'error');
-      signupEmail?.focus();
-      return false;
-    }
 
     if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
       setStatus(signupStatus, 'Username must be 3-32 characters, lowercase letters, numbers, dash, underscore, and dot', 'error');
@@ -106,52 +128,64 @@ document.addEventListener('DOMContentLoaded', function () {
       signupPassword?.focus();
       return false;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setStatus(signupStatus, 'Email format is invalid', 'error');
-      signupEmail?.focus();
+    if (publicKey && !(/^[a-f0-9]{64}$/i.test(publicKey) || publicKey.startsWith('npub1'))) {
+      setStatus(signupStatus, 'Public key must be npub1... or 64-char hex', 'error');
+      signupPublicKey?.focus();
       return false;
+    }
+    if (privateKeyEncrypted && !privateKeyEncrypted.startsWith('ncryptsec')) {
+      setStatus(signupStatus, 'Encrypted private key must start with ncryptsec', 'error');
+      signupPrivateKeyEncrypted?.focus();
+      return false;
+    }
+    if (redirect) {
+      try {
+        new URL(redirect);
+      } catch {
+        setStatus(signupStatus, 'Redirect must be a valid URL', 'error');
+        signupRedirect?.focus();
+        return false;
+      }
     }
     if (password !== passwordConfirm) {
       setStatus(signupStatus, 'Passwords do not match', 'error');
       signupPasswordConfirm?.focus();
       return false;
     }
-
     return true;
   }
 
   if (signupStartForm) {
     signupStartForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      signupSuccess.hidden = true;
       if (!validateSignupStartForm()) return;
 
       const username = signupUsername.value.trim().toLowerCase();
       const password = signupPassword.value;
-      const email = signupEmail.value.trim().toLowerCase();
-      const relays = parseRelays(signupRelays?.value.trim() || '').filter((relay) => relay.startsWith('wss://'));
+      const publicKey = signupPublicKey?.value.trim() || '';
+      const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
+      const redirect = signupRedirect?.value.trim() || '';
 
       setStatus(signupStatus, 'Sending verification email...', 'info');
-      setStatus(verifyStatus, '', 'info');
-      setStatus(completeStatus, '', 'info');
 
       try {
-        const data = await request('/onboarding/start', {
+        const passwordHash = await sha256Hex(password);
+        const data = await request('/api/v1/auth/register', {
           username,
-          password,
-          email,
-          relays,
+          password_hash: passwordHash,
+          public_key: publicKey || undefined,
+          private_key_encrypted: privateKeyEncrypted || undefined,
+          redirect: redirect || undefined,
         });
 
         state.signupUsername = username;
-        state.signupPassword = password;
-        state.signupEmail = email;
-        state.signupRelays = relays;
-        state.signupVerified = false;
-
-        verifyEmailForm.hidden = false;
-        signupCompleteForm.hidden = true;
-        setStatus(signupStatus, 'Verification sent. Enter the PIN or link token to continue.', 'success');
+        if (resendUsername && !resendUsername.value) {
+          resendUsername.value = username;
+        }
+        const verificationHint = data.verify_url
+          ? ` Verification link: ${data.verify_url}`
+          : '';
+        setStatus(signupStatus, `${data.message || 'Verification sent.'}${verificationHint}`, 'success');
 
       } catch (error) {
         setStatus(signupStatus, `Registration start failed: ${error.message}`, 'error');
@@ -159,85 +193,23 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  if (verifyEmailForm) {
-    verifyEmailForm.addEventListener('submit', async (event) => {
+  if (resendForm) {
+    resendForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-
-      const username = state.signupUsername || signupUsername?.value.trim().toLowerCase();
-      const pin = signupPin?.value.trim();
-      const token = signupToken?.value.trim();
-
+      const username = (resendUsername?.value || state.signupUsername || '').trim().toLowerCase();
       if (!username) {
-        setStatus(verifyStatus, 'Start signup first.', 'error');
+        setStatus(resendStatus, 'Username is required.', 'error');
         return;
       }
-      if (!pin && !token) {
-        setStatus(verifyStatus, 'Enter either PIN or token.', 'error');
-        return;
-      }
-
-      setStatus(verifyStatus, 'Verifying email...', 'info');
+      setStatus(resendStatus, 'Resending verification email...', 'info');
       try {
-        await request('/verify-email', {
-          username,
-          pin: pin || undefined,
-          token: token || undefined,
-        });
-        state.signupVerified = true;
-        signupCompleteForm.hidden = false;
-        setStatus(verifyStatus, 'Email verified. Continue to Step 3.', 'success');
+        const data = await request('/api/v1/auth/resend', { username });
+        const message = data.verify_url
+          ? `${data.message} Verification link: ${data.verify_url}`
+          : (data.message || 'Verification email resent.');
+        setStatus(resendStatus, message, 'success');
       } catch (error) {
-        setStatus(verifyStatus, `Verification failed: ${error.message}`, 'error');
-      }
-    });
-  }
-
-  if (signupCompleteForm) {
-    signupCompleteForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      if (!state.signupVerified) {
-        setStatus(completeStatus, 'Verify email before submitting private key.', 'error');
-        return;
-      }
-
-      const username = state.signupUsername;
-      const password = state.signupPassword;
-      const nsecKey = signupNsec?.value.trim();
-
-      if (!nsecKey) {
-        setStatus(completeStatus, 'Private key is required', 'error');
-        signupNsec?.focus();
-        return;
-      }
-
-      setStatus(completeStatus, 'Completing account setup...', 'info');
-      try {
-        const data = await request('/onboarding/complete', {
-          username,
-          password,
-          nsecKey,
-        });
-
-        successUsername.textContent = data.user.username;
-        successPublicKey.textContent = data.user.publicKey;
-        signupSuccess.hidden = false;
-        setStatus(completeStatus, 'Account created successfully.', 'success');
-
-        signupStartForm.reset();
-        verifyEmailForm.reset();
-        signupCompleteForm.reset();
-        verifyEmailForm.hidden = true;
-        signupCompleteForm.hidden = true;
-        state.signupUsername = null;
-        state.signupPassword = null;
-        state.signupEmail = null;
-        state.signupRelays = [];
-        state.signupVerified = false;
-
-        signupSuccess.scrollIntoView({ behavior: 'smooth' });
-      } catch (error) {
-        setStatus(completeStatus, `Completion failed: ${error.message}`, 'error');
+        setStatus(resendStatus, error.message, 'error');
       }
     });
   }
@@ -356,12 +328,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const urlParams = new URLSearchParams(window.location.search);
   const tokenFromLink = urlParams.get('token');
-  const userFromLink = urlParams.get('username');
-  if (tokenFromLink && userFromLink) {
-    verifyEmailForm.hidden = false;
-    signupToken.value = tokenFromLink;
-    signupUsername.value = userFromLink;
-    state.signupUsername = userFromLink.trim().toLowerCase();
-    setStatus(verifyStatus, 'Verification token loaded from link. Submit Step 2 to verify.', 'info');
+  if (tokenFromLink) {
+    const redirectFromLink = urlParams.get('redirect');
+    const params = new URLSearchParams({ token: tokenFromLink });
+    if (redirectFromLink) params.set('redirect', redirectFromLink);
+    window.location.href = `/verify?${params.toString()}`;
   }
 });

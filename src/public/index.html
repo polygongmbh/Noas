@@ -11,7 +11,7 @@
     <div class="bg" aria-hidden="true"></div>
     <main class="container">
       <header class="hero">
-        <div class="badge">Noas · Nostr Account Service</div>
+        <div class="badge">Noas · Nostr Account Service · <span id="noasVersion">v—</span></div>
         <h1>Simple account storage for Nostr identities.</h1>
         <p class="lead">
           Noas is primarily an API that stores NIP-49 encrypted keys, relay lists,
@@ -31,10 +31,10 @@
 
       <section class="panel">
         <h2>Create New Account</h2>
-        <p>Secure two-step onboarding: verify email first, then submit your private key.</p>
+        <p>Register with username + password. Verification is sent to your NIP-05 email.</p>
         
         <div class="warning">
-          <strong>Security:</strong> Noas does not accept private key submission until your email is verified.
+          <strong>Identity rule:</strong> Email is always derived as <code>username@NIP05_DOMAIN</code>.
         </div>
 
         <form id="signupStartForm" class="form">
@@ -55,56 +55,37 @@
           </label>
 
           <label>
-            Work Email
-            <input type="email" id="signupEmail" placeholder="you@polygon.gmbh" autocomplete="email" required />
+            Redirect URL (optional)
+            <input type="url" id="signupRedirect" placeholder="https://nodex.polygon.gmbh" />
+            <small>Passed through verification link as <code>redirect=</code></small>
           </label>
 
           <label>
-            Relays (optional, one per line)
-            <textarea id="signupRelays" rows="3" placeholder="wss://relay.damus.io
-wss://nostr.wine"></textarea>
-            <small>Relay servers where your profile will be published</small>
+            Public Key (optional)
+            <input type="text" id="signupPublicKey" placeholder="npub1... or 64-char hex pubkey" />
           </label>
 
-          <button type="submit" class="btn">Step 1: Send Verification</button>
+          <label>
+            Encrypted Private Key (optional)
+            <input type="text" id="signupPrivateKeyEncrypted" placeholder="ncryptsec1..." />
+          </label>
+
+          <button type="submit" class="btn">Register & Send Verification</button>
           <div id="signupStatus" class="status"></div>
         </form>
 
-        <form id="verifyEmailForm" class="form" hidden>
+        <form id="resendForm" class="form">
           <label>
-            Verification PIN
-            <input type="text" id="signupPin" placeholder="6-digit PIN" inputmode="numeric" maxlength="6" />
-            <small>Use the PIN from your email, or verify via link token below</small>
+            Username for resend
+            <input type="text" id="resendUsername" placeholder="your_username" />
           </label>
-          <label>
-            Link Token (optional)
-            <input type="text" id="signupToken" placeholder="paste token from verification link" />
-          </label>
-          <button type="submit" class="btn">Step 2: Verify Email</button>
-          <div id="verifyStatus" class="status"></div>
+          <button type="submit" class="btn ghost">Resend Verification Email</button>
+          <div id="resendStatus" class="status"></div>
         </form>
 
-        <form id="signupCompleteForm" class="form" hidden>
-          <label>
-            Your Nostr Private Key
-            <input type="password" id="signupNsec" placeholder="nsec1... or hex format" autocomplete="off" data-lpignore="true" data-1p-ignore="true" spellcheck="false" required />
-            <small>Only enabled after email verification</small>
-          </label>
-          <button type="submit" class="btn">Step 3: Complete Account</button>
-          <div id="completeStatus" class="status"></div>
-        </form>
-
-        <div id="signupSuccess" class="result" hidden>
-          <h3>Account Created Successfully</h3>
-          <div class="field">
-            <label>Username:</label>
-            <code id="successUsername">—</code>
-          </div>
-          <div class="field">
-            <label>Public Key:</label>
-            <code id="successPublicKey">—</code>
-          </div>
-          <p>You can now sign in with your username and password.</p>
+        <div class="result">
+          <h3>Next Step</h3>
+          <p>Open your verification email and continue at <code>/verify?token=...</code>.</p>
         </div>
       </section>
 
@@ -191,18 +172,18 @@ wss://nostr.wine"></textarea>
       <section class="grid" id="endpoints">
         <div class="card">
           <h2>Register</h2>
-          <p>Start secure onboarding (no private key submitted yet).</p>
-          <code>POST /onboarding/start</code>
+          <p>Create account and send verification email.</p>
+          <code>POST /api/v1/auth/register</code>
         </div>
         <div class="card">
-          <h2>Verify Email</h2>
-          <p>Verify using email link token or short PIN.</p>
-          <code>POST /verify-email · GET /verify-email</code>
+          <h2>Verify (GET/POST)</h2>
+          <p>Preview token and verify using password hash.</p>
+          <code>GET /api/v1/auth/verify · POST /api/v1/auth/verify</code>
         </div>
         <div class="card">
-          <h2>Complete Signup</h2>
-          <p>Submit private key after verification.</p>
-          <code>POST /onboarding/complete</code>
+          <h2>Resend</h2>
+          <p>Resend verification link with cooldown.</p>
+          <code>POST /api/v1/auth/resend</code>
         </div>
         <div class="card">
           <h2>Sign in</h2>
@@ -233,19 +214,20 @@ wss://nostr.wine"></textarea>
 
       <section class="panel">
         <h2>Example</h2>
-        <p>Onboarding start payload:</p>
+        <p>Registration payload:</p>
         <pre><code>{
   "username": "alice",
-  "password": "strong-password",
-  "email": "alice@polygon.gmbh",
-  "relays": ["wss://relay.example.com"]
+  "password_hash": "sha256_hex_of_password",
+  "public_key": "npub1...",
+  "private_key_encrypted": "ncryptsec1...",
+  "redirect": "https://nodex.polygon.gmbh"
 }
 </code></pre>
       </section>
 
       <footer class="footer">
         <span>Domain: noas.progyssey.org</span>
-        <span>API first · minimal · secure</span>
+        <span>API first · minimal · secure · <span id="noasVersionFooter">v—</span></span>
       </footer>
     </main>
 
