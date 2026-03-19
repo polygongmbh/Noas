@@ -68,6 +68,7 @@ PORT=3000
 REQUIRE_EMAIL_VERIFICATION=true
 EMAIL_VERIFICATION_ENABLED=true
 VERIFICATION_EXPIRY_MINUTES=15
+RESEND_COOLDOWN_MINUTES=1
 NIP05_DOMAIN=polygon.gmbh
 NOAS_PUBLIC_URL=https://noas.polygon.gmbh
 NOAS_BASE_PATH=/noas
@@ -126,17 +127,18 @@ npm start
 
 ## API Endpoints
 
-### POST /onboarding/start
+### POST /api/v1/auth/register
 
-Start onboarding and send verification challenge.
+Create account and send verification email.
 
 **Request:**
 ```json
 {
   "username": "alice",
-  "email": "alice@polygon.gmbh",
-  "password": "securepassword123",
-  "relays": ["wss://relay.example.com"]
+  "password_hash": "sha256_hex_of_password",
+  "public_key": "npub1...",
+  "private_key_encrypted": "ncryptsec1...",
+  "redirect": "https://nodex.polygon.gmbh"
 }
 ```
 
@@ -144,65 +146,52 @@ Start onboarding and send verification challenge.
 ```json
 {
   "success": true,
-  "onboarding": {
-    "username": "alice",
-    "email": "alice@polygon.gmbh",
-    "emailVerificationRequired": true,
-    "emailVerified": false,
-    "nextStep": "verify_email"
-  }
+  "status": "unverified_email",
+  "nip05": "alice@polygon.gmbh",
+  "message": "Check alice@polygon.gmbh to verify your account."
 }
 ```
 
-If SMTP is configured, Noas sends both the verification link and PIN via email.  
-If SMTP is not configured, onboarding only works when `EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true` (dev fallback).  
+If SMTP is configured, Noas sends a verification link to `username@NIP05_DOMAIN`.  
+If SMTP is not configured, verification-only dev mode works with `EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true`.  
 Set `REQUIRE_EMAIL_DELIVERY=true` to fail onboarding when mail cannot be delivered.
 
-Primary auth endpoints for email-first flow:
+Primary auth endpoints (v1.2):
 
-- `POST /api/v1/auth/register` -> creates `pending` registration + sends verification email.
-- `POST /api/v1/auth/verify` -> verifies token + password and activates account.
+- `POST /api/v1/auth/register` -> creates unverified account and sends verification email.
+- `GET /api/v1/auth/verify?token=...` -> previews verification link state.
+- `POST /api/v1/auth/verify` -> verifies token + password hash and activates account.
+- `POST /api/v1/auth/resend` -> resends verification email with cooldown.
 
-### POST /verify-email
+### POST /api/v1/auth/verify
 
-Verify email using either link token or short PIN.
+Activate account by confirming token + password hash.
 
-**Request (token):**
+**Request:**
 ```json
 {
-  "username": "alice",
-  "token": "<verification_token>"
+  "token": "<verification_token>",
+  "password_hash": "sha256_hex_of_password"
 }
 ```
 
-**Request (PIN):**
-```json
-{
-  "username": "alice",
-  "pin": "123456"
-}
-```
+### POST /api/v1/auth/resend
 
-### POST /onboarding/complete
-
-Complete onboarding by submitting private key after verification.
+Resend verification email for a pending account.
 
 ```json
 {
-  "username": "alice",
-  "password": "securepassword123",
-  "nsecKey": "nsec1..."
+  "username": "alice"
 }
 ```
 
 ### POST /register
 
-Backward-compatible one-step registration.  
-When `EMAIL_VERIFICATION_ENABLED=true`, this endpoint switches to secure onboarding start and does not accept `nsecKey`.
+Deprecated legacy endpoint. Returns `410 Gone`. Use `POST /api/v1/auth/register`.
 
 ### POST /signin
 
-Sign in and retrieve encrypted private key.
+Sign in and retrieve encrypted private key (active accounts only).
 
 **Request:**
 ```json
@@ -224,7 +213,7 @@ Sign in and retrieve encrypted private key.
 
 ### POST /update
 
-Update password or relays (requires authentication).
+Update password hash, encrypted private key, or relays (requires authentication).
 
 **Request:**
 ```json
@@ -232,7 +221,7 @@ Update password or relays (requires authentication).
   "username": "alice",
   "password": "currentpassword",
   "updates": {
-    "newPassword": "newpassword123",
+    "newPasswordHash": "sha256_hex_of_new_password",
     "encryptedPrivateKey": "ncryptsec1...",
     "relays": ["wss://new-relay.com"]
   }
