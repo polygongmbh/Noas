@@ -29,6 +29,34 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_public_key ON users(public_key);
 
+DO $$
+BEGIN
+  CREATE TYPE nostr_user_status AS ENUM ('unverified_email', 'active', 'disabled');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS nostr_users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(32) UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  public_key TEXT,
+  private_key_encrypted TEXT,
+  relays JSONB DEFAULT '[]'::jsonb,
+  profile_picture BYTEA,
+  profile_picture_type VARCHAR(100),
+  profile_picture_updated_at TIMESTAMPTZ,
+  status nostr_user_status NOT NULL DEFAULT 'unverified_email',
+  verification_token TEXT UNIQUE,
+  last_resend_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT nostr_username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$')
+);
+
+CREATE INDEX IF NOT EXISTS idx_nostr_users_username ON nostr_users(username);
+CREATE INDEX IF NOT EXISTS idx_nostr_users_status_created_at ON nostr_users(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token);
+
 ALTER TABLE users
   DROP CONSTRAINT IF EXISTS username_format;
 
@@ -55,6 +83,24 @@ ALTER TABLE users
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
+
+ALTER TABLE nostr_users
+  DROP CONSTRAINT IF EXISTS nostr_username_format;
+
+ALTER TABLE nostr_users
+  ADD CONSTRAINT nostr_username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$');
+
+ALTER TABLE nostr_users
+  ADD COLUMN IF NOT EXISTS relays JSONB DEFAULT '[]'::jsonb;
+
+ALTER TABLE nostr_users
+  ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
+
+ALTER TABLE nostr_users
+  ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
+
+ALTER TABLE nostr_users
+  ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMPTZ;
 
 -- Pending onboarding records for secure two-step signup
 CREATE TABLE IF NOT EXISTS user_onboarding (

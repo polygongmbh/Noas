@@ -7,6 +7,12 @@
 
 import { query } from './pool.js';
 
+const NOSTR_USER_STATUSES = {
+  UNVERIFIED_EMAIL: 'unverified_email',
+  ACTIVE: 'active',
+  DISABLED: 'disabled',
+};
+
 /**
  * Create a new user in the database
  * @param {Object} userData - User data object
@@ -413,4 +419,243 @@ export async function isVerificationTokenUsed(token) {
     [token]
   );
   return result.rows.length > 0;
+}
+
+/**
+ * Delete expired pending nostr users and return number of deleted rows.
+ * Expiry is derived from created_at + expiry window.
+ * @param {number} expiryMinutes
+ * @returns {Promise<number>}
+ */
+export async function deleteExpiredPendingNostrUsers(expiryMinutes) {
+  const minutes = Math.max(1, Number(expiryMinutes) || 1);
+  const result = await query(
+    `DELETE FROM nostr_users
+     WHERE status = $1
+       AND created_at < NOW() - ($2::int * INTERVAL '1 minute')`,
+    [NOSTR_USER_STATUSES.UNVERIFIED_EMAIL, minutes]
+  );
+  return result.rowCount || 0;
+}
+
+/**
+ * Retrieve nostr user by username.
+ * @param {string} username
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getNostrUserByUsername(username) {
+  const result = await query(
+    'SELECT * FROM nostr_users WHERE username = $1',
+    [username]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Retrieve nostr user by verification token.
+ * @param {string} token
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getNostrUserByVerificationToken(token) {
+  const result = await query(
+    'SELECT * FROM nostr_users WHERE verification_token = $1',
+    [token]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Create a nostr user.
+ * @param {Object} data
+ * @returns {Promise<Object>}
+ */
+export async function createNostrUser({
+  username,
+  passwordHash,
+  publicKey = null,
+  privateKeyEncrypted = null,
+  relays = [],
+  status = NOSTR_USER_STATUSES.UNVERIFIED_EMAIL,
+  verificationToken = null,
+  lastResendAt = null,
+}) {
+  const result = await query(
+    `INSERT INTO nostr_users (
+      username,
+      password_hash,
+      public_key,
+      private_key_encrypted,
+      relays,
+      status,
+      verification_token,
+      last_resend_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    RETURNING *`,
+    [
+      username,
+      passwordHash,
+      publicKey,
+      privateKeyEncrypted,
+      JSON.stringify(relays),
+      status,
+      verificationToken,
+      lastResendAt,
+    ]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Activate user and clear verification token.
+ * @param {string} username
+ * @returns {Promise<Object|undefined>}
+ */
+export async function activateNostrUserByUsername(username) {
+  const result = await query(
+    `UPDATE nostr_users
+     SET status = $1,
+         verification_token = NULL
+     WHERE username = $2
+     RETURNING *`,
+    [NOSTR_USER_STATUSES.ACTIVE, username]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Rotate verification token for resend.
+ * @param {string} username
+ * @param {string} verificationToken
+ * @returns {Promise<Object|undefined>}
+ */
+export async function updateNostrUserResendToken(username, verificationToken) {
+  const result = await query(
+    `UPDATE nostr_users
+     SET verification_token = $1,
+         last_resend_at = NOW()
+     WHERE username = $2
+     RETURNING *`,
+    [verificationToken, username]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Retrieve active nostr user for NIP-05.
+ * @param {string} username
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getActiveNostrUserForNip05(username) {
+  const result = await query(
+    `SELECT username, public_key
+     FROM nostr_users
+     WHERE username = $1
+       AND status = $2`,
+    [username, NOSTR_USER_STATUSES.ACTIVE]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Retrieve active nostr user by username for sign-in.
+ * @param {string} username
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getActiveNostrUserByUsername(username) {
+  const result = await query(
+    `SELECT *
+     FROM nostr_users
+     WHERE username = $1
+       AND status = $2`,
+    [username, NOSTR_USER_STATUSES.ACTIVE]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Update nostr user fields.
+ * @param {string} username
+ * @param {Object} updates
+ * @returns {Promise<Object|undefined>}
+ */
+export async function updateNostrUser(username, updates) {
+  const fields = [];
+  const values = [];
+  let param = 1;
+
+  if (updates.passwordHash) {
+    fields.push(`password_hash = $${param++}`);
+    values.push(updates.passwordHash);
+  }
+  if (updates.privateKeyEncrypted) {
+    fields.push(`private_key_encrypted = $${param++}`);
+    values.push(updates.privateKeyEncrypted);
+  }
+  if (updates.relays) {
+    fields.push(`relays = $${param++}`);
+    values.push(JSON.stringify(updates.relays));
+  }
+
+  if (fields.length === 0) {
+    throw new Error('No fields to update');
+  }
+
+  values.push(username);
+  const result = await query(
+    `UPDATE nostr_users
+     SET ${fields.join(', ')}
+     WHERE username = $${param}
+     RETURNING *`,
+    values
+  );
+  return result.rows[0];
+}
+
+/**
+ * Delete nostr user by username.
+ * @param {string} username
+ * @returns {Promise<Object|undefined>}
+ */
+export async function deleteNostrUser(username) {
+  const result = await query(
+    'DELETE FROM nostr_users WHERE username = $1 RETURNING *',
+    [username]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Store profile picture in nostr_users.
+ * @param {string} username
+ * @param {Buffer} pictureData
+ * @param {string} pictureType
+ * @returns {Promise<Object|undefined>}
+ */
+export async function updateNostrUserProfilePicture(username, pictureData, pictureType) {
+  const result = await query(
+    `UPDATE nostr_users
+     SET profile_picture = $1,
+         profile_picture_type = $2,
+         profile_picture_updated_at = NOW()
+     WHERE username = $3
+     RETURNING username, public_key`,
+    [pictureData, pictureType, username]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get profile picture from nostr_users by public key.
+ * @param {string} publicKey
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getNostrUserProfilePictureByPublicKey(publicKey) {
+  const result = await query(
+    `SELECT profile_picture, profile_picture_type
+     FROM nostr_users
+     WHERE public_key = $1`,
+    [publicKey]
+  );
+  return result.rows[0];
 }
