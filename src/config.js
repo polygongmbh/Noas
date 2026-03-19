@@ -6,6 +6,7 @@
  */
 
 import dotenv from 'dotenv';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -17,6 +18,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 if (process.env.NOAS_LOAD_DOTENV !== 'false') {
   dotenv.config({ path: join(__dirname, '../.env') });
 }
+
+function readPackageVersion() {
+  try {
+    const packagePath = join(__dirname, '../package.json');
+    const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+    return String(packageJson.version || '').trim() || '1.0.0';
+  } catch {
+    return '1.0.0';
+  }
+}
+
+const packageVersion = readPackageVersion();
 
 function parseRelayList(value) {
   return String(value || '')
@@ -111,6 +124,7 @@ export const config = {
     process.env.VERIFICATION_EXPIRY_MINUTES || process.env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES || '15',
     10
   ),
+  resendCooldownMinutes: parseInt(process.env.RESEND_COOLDOWN_MINUTES || '1', 10),
   requireEmailDelivery: process.env.REQUIRE_EMAIL_DELIVERY === 'true',
   smtpUrl: (process.env.SMTP_URL || '').trim(),
   smtpHost: (process.env.SMTP_HOST || '').trim(),
@@ -124,7 +138,7 @@ export const config = {
   noasPublicUrl: (process.env.NOAS_PUBLIC_URL || '').trim(),
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
-  apiVersion: process.env.NOAS_API_VERSION || '1.0.0',
+  apiVersion: process.env.NOAS_API_VERSION || packageVersion,
 };
 
 // Ensure domain matches the actual port being used

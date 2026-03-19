@@ -6,7 +6,7 @@
  */
 
 import { nip44, nip19, getPublicKey, generateSecretKey, finalizeEvent } from 'nostr-tools';
-import { getUserByUsername } from './db/users.js';
+import { getActiveNostrUserByUsername } from './db/users.js';
 import {
   createNip46Session,
   getNip46Session,
@@ -87,7 +87,7 @@ export async function handleConnect(requestData, clientPubkey, username) {
     }
 
     // Get user by username
-    const user = await getUserByUsername(username);
+    const user = await getActiveNostrUserByUsername(String(username || '').trim().toLowerCase());
     if (!user) {
       return {
         id,

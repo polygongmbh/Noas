@@ -60,9 +60,9 @@ export async function sendVerificationEmail({
   to,
   username,
   identifier,
-  pin,
   verificationLink,
   expiresAt,
+  publicKey = null,
 }) {
   const transporter = getTransporter();
   if (!transporter) {
@@ -76,42 +76,45 @@ export async function sendVerificationEmail({
   const from = config.smtpFrom || `Noas <no-reply@${config.domain.split(':')[0]}>`;
 
   const text = [
-    `Hello ${username},`,
+    'Hi,',
     '',
     `Someone registered the Nostr identity ${identifier}.`,
     '',
-    pin ? `Verification PIN: ${pin}` : null,
+    publicKey ? `Your public key:\n${publicKey}` : null,
     '',
-    'If this was you, confirm your account:',
+    'If this was you, verify your account:',
     verificationLink,
     '',
-    'Enter the verification PIN on the confirmation page.',
+    'You will be asked to enter your password to confirm ownership.',
     '',
-    `This expires at ${ttlLabel}.`,
+    `This link expires at ${ttlLabel}.`,
     '',
-    "If you didn't register, ignore this email.",
-    'Your address will be released after expiry.',
+    'If you did not register this account, ignore this email.',
+    'The username will be released automatically after the link expires.',
+    '',
+    '— Nodal',
   ].join('\n');
 
   const html = [
-    `<p>Hello <strong>${escapeHtml(username)}</strong>,</p>`,
+    '<p>Hi,</p>',
     `<p>Someone registered the Nostr identity <strong>${escapeHtml(identifier)}</strong>.</p>`,
-    pin
-      ? `<p>Your verification PIN: <strong style="font-size: 20px; letter-spacing: 3px;">${escapeHtml(pin)}</strong></p>`
+    publicKey
+      ? `<p>Your public key:<br /><code>${escapeHtml(publicKey)}</code></p>`
       : '',
-    '<p>If this was you, confirm your account:</p>',
+    '<p>If this was you, verify your account:</p>',
     `<p><a href="${escapeHtml(verificationLink)}">${escapeHtml(verificationLink)}</a></p>`,
-    '<p>Enter the verification PIN on the confirmation page.</p>',
-    `<p>This expires at <strong>${escapeHtml(ttlLabel)}</strong>.</p>`,
-    "<p>If you didn't register, ignore this email.</p>",
-    '<p>Your address will be released after expiry.</p>',
+    '<p>You will be asked to enter your password to confirm ownership.</p>',
+    `<p>This link expires at <strong>${escapeHtml(ttlLabel)}</strong>.</p>`,
+    '<p>If you did not register this account, ignore this email.</p>',
+    '<p>The username will be released automatically after the link expires.</p>',
+    '<p>— Nodal</p>',
   ].filter(Boolean).join('');
 
   await transporter.sendMail({
     from,
     to,
     replyTo: config.smtpReplyTo || undefined,
-    subject: 'Verify your Noas account',
+    subject: `Verify your Nostr identity: ${identifier}`,
     text,
     html,
   });

@@ -2,11 +2,13 @@
  * API Routes
  * 
  * Defines all HTTP endpoints for the Noas server:
- * - POST /onboarding/start - Begin two-step account onboarding
- * - POST /onboarding/complete - Finalize account with private key after verification
- * - POST /register - Create new user account
+ * - POST /api/v1/auth/register - Create account and send verification email
+ * - GET /api/v1/auth/verify - Preview verification token state
+ * - POST /api/v1/auth/verify - Verify token + password hash and activate account
+ * - POST /api/v1/auth/resend - Resend verification email
+ * - POST /register - Legacy alias (deprecated)
  * - POST /signin - Authenticate and get encrypted key
- * - POST /verify-email - Verify account email with token
+ * - POST /verify-email - Legacy alias (deprecated)
  * - POST /update - Update user password or relays
  * - POST /delete - Delete user account
  * - POST /picture - Upload profile picture
@@ -20,34 +22,25 @@
 
 import express from 'express';
 import { 
-  createUser, 
-  getUserByUsername, 
-  getUserByEmail,
-  updateUser, 
-  getUserForNip05,
-  getUserProfilePictureByPublicKey,
-  updateUserProfilePicture,
-  deleteUser,
-  verifyUserEmail,
-  upsertUserOnboarding,
-  getUserOnboardingByUsername,
-  getUserOnboardingByEmail,
-  getUserOnboardingByVerificationToken,
-  markUserOnboardingEmailVerified,
-  incrementUserOnboardingPinAttempt,
-  deleteUserOnboarding,
-  deleteUserOnboardingByToken,
-  deleteExpiredUserOnboarding,
   recordUsedVerificationToken,
   isVerificationTokenUsed,
+  createNostrUser,
+  getNostrUserByUsername,
+  getNostrUserByVerificationToken,
+  activateNostrUserByUsername,
+  updateNostrUserResendToken,
+  deleteExpiredPendingNostrUsers,
+  getActiveNostrUserForNip05,
+  getActiveNostrUserByUsername,
+  updateNostrUser,
+  deleteNostrUser,
+  getNostrUserProfilePictureByPublicKey,
+  updateNostrUserProfilePicture,
 } from './db/users.js';
 import { 
-  hashPassword, 
-  verifyPassword, 
   validateUsername, 
   validatePublicKey, 
   validateEncryptedPrivateKey,
-  validateEmail,
 } from './auth.js';
 import { 
   createConnectionToken,
@@ -57,7 +50,7 @@ import {
 } from './nip46.js';
 import { sendVerificationEmail } from './email.js';
 import { config } from './config.js';
-import { randomBytes, randomInt, randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 export const router = express.Router();
 
@@ -65,11 +58,6 @@ const MAX_PROFILE_PICTURE_BYTES = 2 * 1024 * 1024;
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
-}
-
-function isEmailAllowedForTenant(email) {
-  if (!config.allowedSignupEmailDomain) return true;
-  return normalizeEmail(email).endsWith(`@${config.allowedSignupEmailDomain}`);
 }
 
 function getEmailDomain(email) {
@@ -99,19 +87,9 @@ function buildVerificationToken() {
   return randomUUID();
 }
 
-function buildVerificationPin() {
-  return String(randomInt(0, 1_000_000)).padStart(6, '0');
-}
-
-function isExpired(timestampValue) {
-  if (!timestampValue) return true;
-  const expiresAt = new Date(timestampValue).getTime();
-  return Number.isNaN(expiresAt) || expiresAt <= Date.now();
-}
-
-function buildVerificationLinkWithOrigin(token, origin) {
+function buildVerificationLinkWithRedirect(token, redirect) {
   const params = new URLSearchParams({ token });
-  if (origin) params.set('origin', origin);
+  if (redirect) params.set('redirect', redirect);
   return `${config.noasPublicUrl}${config.noasBasePath}/verify?${params.toString()}`;
 }
 
@@ -121,59 +99,25 @@ function isAllowedOrigin(origin) {
   return config.allowedOrigins.includes(origin);
 }
 
-function emailMatchesNip05RootDomain(email) {
-  const domain = getEmailDomain(email);
-  return Boolean(domain) && domain === config.nip05RootDomain;
+function isValidSha256Hex(value) {
+  return /^[a-f0-9]{64}$/i.test(String(value || '').trim());
+}
+
+function buildNip05Identifier(username) {
+  return `${username}@${config.nip05RootDomain}`;
+}
+
+function isNostrUserVerificationExpired(user, expiryMinutes) {
+  const createdAtMs = new Date(user.created_at).getTime();
+  if (Number.isNaN(createdAtMs)) return true;
+  const ttlMs = Math.max(1, Number(expiryMinutes) || 1) * 60 * 1000;
+  return Date.now() > createdAtMs + ttlMs;
 }
 
 function minutesBetween(nowMs, thenValue) {
   const thenMs = new Date(thenValue).getTime();
   if (Number.isNaN(thenMs)) return Number.POSITIVE_INFINITY;
   return (nowMs - thenMs) / 1000 / 60;
-}
-
-async function parseAndEncryptPrivateKey(nsecKey, password) {
-  const { getPublicKey, nip19 } = await import('nostr-tools');
-  const nip49 = await import('nostr-tools/nip49');
-  let privateKey;
-
-  try {
-    if (String(nsecKey || '').startsWith('nsec1')) {
-      privateKey = nip19.decode(nsecKey).data;
-    } else if (/^[a-f0-9]{64}$/i.test(String(nsecKey || ''))) {
-      privateKey = hexToBytes(nsecKey);
-    } else {
-      throw new Error('invalid-format');
-    }
-  } catch (error) {
-    throw new Error('Invalid private key format. Use nsec1... or 64-character hex');
-  }
-
-  const publicKey = getPublicKey(privateKey);
-  const pubkeyCheck = validatePublicKey(publicKey);
-  if (!pubkeyCheck.valid) {
-    throw new Error(pubkeyCheck.error);
-  }
-
-  const encryptedPrivateKey = await nip49.encrypt(privateKey, password);
-  const encKeyCheck = validateEncryptedPrivateKey(encryptedPrivateKey);
-  if (!encKeyCheck.valid) {
-    throw new Error(encKeyCheck.error);
-  }
-
-  return { publicKey, encryptedPrivateKey };
-}
-
-function hexToBytes(hex) {
-  const normalized = String(hex || "").trim().toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(normalized)) {
-    throw new Error("Invalid hex private key");
-  }
-  const bytes = new Uint8Array(32);
-  for (let i = 0; i < 32; i += 1) {
-    bytes[i] = Number.parseInt(normalized.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
 }
 
 function normalizeBase64Payload(data, contentType) {
@@ -226,104 +170,116 @@ function normalizeBase64Payload(data, contentType) {
 
 /**
  * POST /api/v1/auth/register
- * Create or refresh pending account and send verification email.
+ * Create account and send verification email.
  */
 router.post('/api/v1/auth/register', async (req, res) => {
   try {
     const {
       username,
-      email,
-      password,
-      origin,
-      relays,
+      password_hash: passwordHash,
+      public_key: publicKeyRaw,
+      private_key_encrypted: privateKeyEncrypted,
+      redirect,
     } = req.body || {};
-    if (req.body?.public_key || req.body?.private_key_encrypted) {
-      return res.status(400).json({
-        error: 'Submit key material only after email confirmation',
-      });
-    }
-
-    if (!config.emailVerificationEnabled) {
-      return res.status(400).json({
-        error: 'Email verification flow is disabled on this server',
-      });
-    }
-
     const normalizedUsername = String(username || '').trim().toLowerCase();
-    const normalizedEmail = normalizeEmail(email);
-    const normalizedOrigin = origin ? String(origin).trim() : null;
+    const normalizedPasswordHash = String(passwordHash || '').trim().toLowerCase();
+    const normalizedRedirect = String(redirect || '').trim() || null;
 
     const usernameCheck = validateUsername(normalizedUsername);
     if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
-    const emailCheck = validateEmail(normalizedEmail);
-    if (!emailCheck.valid) return res.status(400).json({ error: emailCheck.error });
-    if (!password || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (!isValidSha256Hex(normalizedPasswordHash)) {
+      return res.status(400).json({ error: 'password_hash must be a 64-character SHA-256 hex string' });
     }
-    if (!emailMatchesNip05RootDomain(normalizedEmail)) {
-      return res.status(400).json({
-        error: `Email domain must match NIP-05 root domain ${config.nip05RootDomain}`,
-      });
+    if (normalizedRedirect) {
+      let redirectOrigin = '';
+      try {
+        redirectOrigin = new URL(normalizedRedirect).origin;
+      } catch {
+        return res.status(400).json({ error: 'Redirect must be a valid URL' });
+      }
+      if (!isAllowedOrigin(redirectOrigin)) {
+        return res.status(400).json({ error: 'Redirect is not allowed' });
+      }
     }
-    if (!isAllowedOrigin(normalizedOrigin)) {
-      return res.status(400).json({ error: 'Origin is not allowed' });
+    let normalizedPublicKey = null;
+    if (publicKeyRaw) {
+      const candidate = String(publicKeyRaw || '').trim();
+      if (candidate.startsWith('npub1')) {
+        try {
+          const { nip19 } = await import('nostr-tools');
+          const decoded = nip19.decode(candidate);
+          if (decoded.type !== 'npub' || typeof decoded.data !== 'string') {
+            return res.status(400).json({ error: 'public_key must be a valid npub or hex pubkey' });
+          }
+          normalizedPublicKey = decoded.data.toLowerCase();
+        } catch {
+          return res.status(400).json({ error: 'public_key must be a valid npub or hex pubkey' });
+        }
+      } else {
+        normalizedPublicKey = candidate.toLowerCase();
+      }
+      const publicKeyCheck = validatePublicKey(normalizedPublicKey);
+      if (!publicKeyCheck.valid) return res.status(400).json({ error: publicKeyCheck.error });
+    }
+    if (privateKeyEncrypted) {
+      const encryptedCheck = validateEncryptedPrivateKey(String(privateKeyEncrypted || '').trim());
+      if (!encryptedCheck.valid) return res.status(400).json({ error: encryptedCheck.error });
     }
 
-    await deleteExpiredUserOnboarding();
+    const nip05 = buildNip05Identifier(normalizedUsername);
+    const email = normalizeEmail(nip05);
+    await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
 
-    const existingActiveByUsername = await getUserByUsername(normalizedUsername);
-    if (existingActiveByUsername) {
+    const existing = await getNostrUserByUsername(normalizedUsername);
+    if (existing?.status === 'active') {
       return res.status(409).json({ error: 'Username already active. Sign in.' });
     }
-    const existingActiveByEmail = await getUserByEmail(normalizedEmail);
-    if (existingActiveByEmail) {
-      return res.status(409).json({ error: 'Email already active. Sign in.' });
+    if (existing?.status === 'disabled') {
+      return res.status(403).json({ error: 'Account is disabled.' });
+    }
+    if (existing?.status === 'unverified_email') {
+      return res.status(409).json({ error: 'Username is currently pending verification.' });
     }
 
-    const existingPendingByUsername = await getUserOnboardingByUsername(normalizedUsername);
-    const existingPendingByEmail = await getUserOnboardingByEmail(normalizedEmail);
-    const existingPending = existingPendingByUsername || existingPendingByEmail;
-    if (existingPending) {
-      if (existingPending.username !== normalizedUsername || existingPending.email !== normalizedEmail) {
-        return res.status(409).json({ error: 'Username or email is currently pending verification' });
-      }
-      const sinceLastEmailMinutes = minutesBetween(Date.now(), existingPending.last_email_sent_at);
-      if (sinceLastEmailMinutes < 1) {
-        return res.status(429).json({ error: 'Resend available after one minute' });
-      }
+    if (!config.emailVerificationEnabled) {
+      await createNostrUser({
+        username: normalizedUsername,
+        passwordHash: normalizedPasswordHash,
+        publicKey: normalizedPublicKey,
+        privateKeyEncrypted: privateKeyEncrypted ? String(privateKeyEncrypted).trim() : null,
+        status: 'active',
+        verificationToken: null,
+      });
+      return res.status(200).json({
+        success: true,
+        status: 'active',
+        nip05,
+        message: 'Account is active. You can now sign in.',
+      });
     }
 
-    const passwordHash = await hashPassword(password);
     const verificationToken = buildVerificationToken();
-    const verificationMinutes = Math.max(1, config.verificationExpiryMinutes);
-    const verificationExpiresAt = new Date(Date.now() + verificationMinutes * 60 * 1000);
-    const resolvedRelays = getDomainScopedRelays(normalizedEmail, relays || []);
-    const emailVerificationPin = buildVerificationPin();
-    const compatibilityPinHash = await hashPassword(emailVerificationPin);
-
-    await upsertUserOnboarding({
+    await createNostrUser({
       username: normalizedUsername,
-      email: normalizedEmail,
-      passwordHash,
-      relays: resolvedRelays,
-      emailVerificationToken: verificationToken,
-      emailVerificationPinHash: compatibilityPinHash,
-      emailVerificationExpiresAt: verificationExpiresAt,
-      verificationOrigin: normalizedOrigin,
-      publicKey: null,
-      encryptedPrivateKey: null,
+      passwordHash: normalizedPasswordHash,
+      publicKey: normalizedPublicKey,
+      privateKeyEncrypted: privateKeyEncrypted ? String(privateKeyEncrypted).trim() : null,
+      status: 'unverified_email',
+      verificationToken,
     });
 
-    const verificationLink = buildVerificationLinkWithOrigin(verificationToken, normalizedOrigin);
+    const verificationMinutes = Math.max(1, config.verificationExpiryMinutes);
+    const verificationLink = buildVerificationLinkWithRedirect(verificationToken, normalizedRedirect);
+    const expiresAt = new Date(Date.now() + verificationMinutes * 60 * 1000);
     let emailDelivery = { sent: false, reason: 'not_attempted' };
     try {
       emailDelivery = await sendVerificationEmail({
-        to: normalizedEmail,
+        to: email,
         username: normalizedUsername,
-        identifier: `${normalizedUsername}@${config.nip05RootDomain}`,
-        pin: emailVerificationPin,
+        identifier: nip05,
         verificationLink,
-        expiresAt: verificationExpiresAt,
+        expiresAt,
+        publicKey: normalizedPublicKey,
       });
     } catch (error) {
       emailDelivery = { sent: false, reason: 'smtp_send_failed' };
@@ -338,9 +294,9 @@ router.post('/api/v1/auth/register', async (req, res) => {
 
     const responseBody = {
       success: true,
-      status: 'pending',
-      message: `Check ${normalizedEmail} to confirm your account.`,
-      verification_pin: emailVerificationPin,
+      status: 'unverified_email',
+      nip05,
+      message: `Check ${email} to verify your account.`,
     };
     if (config.exposeVerificationTokenInResponse || config.isTest) {
       responseBody.verification_token = verificationToken;
@@ -348,6 +304,9 @@ router.post('/api/v1/auth/register', async (req, res) => {
     }
     res.status(200).json(responseBody);
   } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'Username is currently pending verification.' });
+    }
     console.error('V1 register error:', error);
     res.status(500).json({ error: 'Registration failed' });
   }
@@ -355,7 +314,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
 
 /**
  * GET /api/v1/auth/verify
- * Preview pending verification details by token.
+ * Preview verification details by token.
  */
 router.get('/api/v1/auth/verify', async (req, res) => {
   try {
@@ -363,24 +322,29 @@ router.get('/api/v1/auth/verify', async (req, res) => {
     if (!token) {
       return res.status(400).json({ error: 'token is required' });
     }
-    const pending = await getUserOnboardingByVerificationToken(token);
-    if (!pending) {
+    const user = await getNostrUserByVerificationToken(token);
+    if (!user) {
       if (await isVerificationTokenUsed(token)) {
         return res.status(410).json({ error: 'Link already used.' });
       }
       return res.status(404).json({ error: 'Invalid link.' });
     }
-    if (isExpired(pending.email_verification_expires_at)) {
-      await deleteUserOnboardingByToken(token);
+    if (isNostrUserVerificationExpired(user, config.verificationExpiryMinutes)) {
+      await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
       return res.status(410).json({ error: 'Link expired. Register again.' });
     }
+    if (user.status === 'active') {
+      return res.status(409).json({ error: 'Account already active. Sign in.' });
+    }
+    const expiresAt = new Date(
+      new Date(user.created_at).getTime() + Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
+    );
     res.json({
       success: true,
-      username: pending.username,
-      identifier: `${pending.username}@${config.nip05RootDomain}`,
-      email: pending.email,
-      expires_at: pending.email_verification_expires_at,
-      redirect_to: pending.verification_origin || null,
+      username: user.username,
+      nip05: buildNip05Identifier(user.username),
+      public_key: user.public_key || null,
+      expires_at: expiresAt.toISOString(),
     });
   } catch (error) {
     console.error('V1 verify preview error:', error);
@@ -390,53 +354,51 @@ router.get('/api/v1/auth/verify', async (req, res) => {
 
 /**
  * POST /api/v1/auth/verify
- * Confirm pending email using token + PIN.
+ * Confirm pending email using token + password hash.
  */
 router.post('/api/v1/auth/verify', async (req, res) => {
   try {
-    const { token, pin } = req.body || {};
+    const { token, password_hash: passwordHash } = req.body || {};
     const normalizedToken = String(token || '').trim();
-    const normalizedPin = String(pin || '').trim();
-    if (!normalizedToken || !normalizedPin) {
-      return res.status(400).json({ error: 'token and pin are required' });
+    const normalizedPasswordHash = String(passwordHash || '').trim().toLowerCase();
+    if (!normalizedToken || !normalizedPasswordHash) {
+      return res.status(400).json({ error: 'token and password_hash are required' });
+    }
+    if (!isValidSha256Hex(normalizedPasswordHash)) {
+      return res.status(400).json({ error: 'password_hash must be a 64-character SHA-256 hex string' });
     }
 
     if (await isVerificationTokenUsed(normalizedToken)) {
       return res.status(410).json({ error: 'Link already used.' });
     }
 
-    const pending = await getUserOnboardingByVerificationToken(normalizedToken);
-    if (!pending) {
+    const user = await getNostrUserByVerificationToken(normalizedToken);
+    if (!user) {
       return res.status(404).json({ error: 'Invalid link.' });
     }
 
-    if (isExpired(pending.email_verification_expires_at)) {
-      await deleteUserOnboardingByToken(normalizedToken);
-      return res.status(410).json({ error: 'Link expired. Register again.' });
-    }
-
-    if (pending.email_verified_at) {
+    if (user.status === 'active') {
       return res.status(409).json({ error: 'Account already active. Sign in.' });
     }
 
-    if (pending.pin_attempt_count >= 5) {
-      return res.status(429).json({ error: 'Too many failed PIN attempts. Register again.' });
-    }
-    const pinMatch = await verifyPassword(normalizedPin, pending.email_verification_pin_hash);
-    if (!pinMatch) {
-      await incrementUserOnboardingPinAttempt(pending.username);
-      return res.status(401).json({ error: 'Incorrect verification PIN.' });
+    if (isNostrUserVerificationExpired(user, config.verificationExpiryMinutes)) {
+      await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
+      return res.status(410).json({ error: 'Link expired. Register again.' });
     }
 
-    await markUserOnboardingEmailVerified(pending.username);
+    if (user.password_hash !== normalizedPasswordHash) {
+      return res.status(401).json({
+        error: 'Incorrect password. Someone may have tried to register your email.',
+      });
+    }
+
+    await activateNostrUserByUsername(user.username);
     await recordUsedVerificationToken(normalizedToken);
 
     res.json({
       success: true,
-      status: 'email_confirmed',
-      redirect_to: pending.verification_origin || null,
-      username: pending.username,
-      next_step: 'submit_private_key',
+      activated: true,
+      nip05: buildNip05Identifier(user.username),
     });
   } catch (error) {
     console.error('V1 verify error:', error);
@@ -444,424 +406,154 @@ router.post('/api/v1/auth/verify', async (req, res) => {
   }
 });
 
-async function handleOnboardingStart(req, res) {
+/**
+ * POST /api/v1/auth/resend
+ * Resend verification email for an unverified account.
+ */
+router.post('/api/v1/auth/resend', async (req, res) => {
   try {
-    const { username, password, relays, email, origin } = req.body;
-    const normalizedUsername = String(username || '').trim().toLowerCase();
-    const normalizedOrigin = origin ? String(origin).trim() : null;
-
+    const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
     const usernameCheck = validateUsername(normalizedUsername);
-    if (!usernameCheck.valid) {
-      return res.status(400).json({ error: usernameCheck.error });
+    if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
+
+    await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
+    const user = await getNostrUserByUsername(normalizedUsername);
+    if (!user || user.status !== 'unverified_email') {
+      return res.status(404).json({ error: 'Invalid link.' });
     }
 
-    if (!password || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (isNostrUserVerificationExpired(user, config.verificationExpiryMinutes)) {
+      await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
+      return res.status(410).json({ error: 'Link expired. Register again.' });
     }
 
-    const normalizedEmail = normalizeEmail(email);
-    const emailCheck = validateEmail(normalizedEmail);
-    if (!emailCheck.valid) {
-      return res.status(400).json({ error: emailCheck.error });
-    }
-    if (!isEmailAllowedForTenant(normalizedEmail)) {
-      return res.status(403).json({
-        error: `Only ${config.allowedSignupEmailDomain} email addresses can sign up`,
-      });
-    }
-    if (normalizedOrigin && !isAllowedOrigin(normalizedOrigin)) {
-      return res.status(400).json({ error: 'Origin is not allowed' });
-    }
-    await deleteExpiredUserOnboarding();
-
-    const existingUser = await getUserByUsername(normalizedUsername);
-    if (existingUser) {
-      return res.status(409).json({ error: 'Username already taken' });
+    const cooldownMinutes = Math.max(1, Number(config.resendCooldownMinutes) || 1);
+    const minutesSinceLastSend = minutesBetween(Date.now(), user.last_resend_at);
+    if (Number.isFinite(minutesSinceLastSend) && minutesSinceLastSend < cooldownMinutes) {
+      return res.status(429).json({ error: 'Resend available after one minute' });
     }
 
-    const emailPending = await getUserOnboardingByEmail(normalizedEmail);
-    if (emailPending && emailPending.username !== normalizedUsername) {
-      return res.status(409).json({
-        error: 'Email is already used by another pending onboarding',
-      });
-    }
+    const verificationToken = buildVerificationToken();
+    const updated = await updateNostrUserResendToken(normalizedUsername, verificationToken);
+    const verificationLink = buildVerificationLinkWithRedirect(verificationToken, null);
+    const expiresAt = new Date(
+      new Date(updated.created_at).getTime() + Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
+    );
+    const email = normalizeEmail(buildNip05Identifier(normalizedUsername));
 
-    const passwordHash = await hashPassword(password);
-    const emailVerificationToken = buildVerificationToken();
-    const emailVerificationPin = buildVerificationPin();
-    const emailVerificationPinHash = await hashPassword(emailVerificationPin);
-    const verificationMinutes = Math.max(1, config.verificationExpiryMinutes);
-    const emailVerificationExpiresAt = new Date(Date.now() + verificationMinutes * 60 * 1000);
-    const resolvedRelays = getDomainScopedRelays(normalizedEmail, relays || []);
-
-    const onboarding = await upsertUserOnboarding({
-      username: normalizedUsername,
-      email: normalizedEmail,
-      passwordHash,
-      relays: resolvedRelays,
-      emailVerificationToken,
-      emailVerificationPinHash,
-      emailVerificationExpiresAt,
-      verificationOrigin: normalizedOrigin,
-    });
-
-    const verificationLink = buildVerificationLinkWithOrigin(emailVerificationToken, normalizedOrigin);
     let emailDelivery = { sent: false, reason: 'not_attempted' };
     try {
       emailDelivery = await sendVerificationEmail({
-        to: normalizedEmail,
+        to: email,
         username: normalizedUsername,
-        identifier: `${normalizedUsername}@${config.nip05RootDomain || getEmailDomain(normalizedEmail)}`,
-        pin: emailVerificationPin,
+        identifier: buildNip05Identifier(normalizedUsername),
         verificationLink,
-        expiresAt: emailVerificationExpiresAt,
+        expiresAt,
+        publicKey: updated.public_key || null,
       });
     } catch (error) {
-      emailDelivery = {
-        sent: false,
-        reason: 'smtp_send_failed',
-      };
-      console.error('Email delivery error:', error);
+      emailDelivery = { sent: false, reason: 'smtp_send_failed' };
+      console.error('Verification resend delivery error:', error);
     }
 
-    const canFallbackWithoutEmail = config.exposeVerificationTokenInResponse || config.isTest;
-    if (!emailDelivery.sent && (config.requireEmailDelivery || !canFallbackWithoutEmail)) {
+    if (!emailDelivery.sent && config.requireEmailDelivery) {
       return res.status(502).json({
         error: 'Failed to send verification email. Check SMTP configuration.',
       });
     }
 
-    console.log(
-      `Email verification for ${normalizedUsername} (${normalizedEmail})\n` +
-      `Link: ${verificationLink}\nPIN: ${emailVerificationPin}`
-    );
-
     const responseBody = {
       success: true,
-      onboarding: {
-        username: onboarding.username,
-        email: onboarding.email,
-        emailVerificationRequired: true,
-        emailVerified: false,
-        expiresAt: onboarding.email_verification_expires_at,
-        nextStep: 'verify_email',
-        delivery: emailDelivery.sent ? 'email' : 'fallback',
-      },
+      message: 'Verification email resent.',
     };
-
-    responseBody.emailVerificationPin = emailVerificationPin;
     if (config.exposeVerificationTokenInResponse || config.isTest) {
-      responseBody.emailVerificationToken = emailVerificationToken;
-      responseBody.emailVerificationLink = verificationLink;
+      responseBody.verification_token = verificationToken;
+      responseBody.verify_url = verificationLink;
     }
-
-    res.status(200).json(responseBody);
+    return res.status(200).json(responseBody);
   } catch (error) {
-    if (String(error.message || '').includes('duplicate key')) {
-      return res.status(409).json({ error: 'Username or email already has pending onboarding' });
-    }
-    console.error('Onboarding start error:', error);
-    res.status(500).json({ error: 'Failed to start onboarding' });
-  }
-}
-
-/**
- * POST /onboarding/start
- * Start secure two-step onboarding without submitting private key.
- */
-router.post('/onboarding/start', handleOnboardingStart);
-
-/**
- * POST /register
- * Backward-compatible registration endpoint.
- * In strict mode, starts onboarding and blocks private key submission.
- */
-router.post('/register', async (req, res) => {
-  if (config.emailVerificationEnabled) {
-    if (req.body?.nsecKey) {
-      return res.status(400).json({
-        error: 'Private key submission is only allowed after email verification',
-      });
-    }
-    return handleOnboardingStart(req, res);
-  }
-
-  try {
-    const { username, password, nsecKey, relays, email } = req.body;
-    const normalizedUsername = String(username || '').trim().toLowerCase();
-
-    const usernameCheck = validateUsername(normalizedUsername);
-    if (!usernameCheck.valid) {
-      return res.status(400).json({ error: usernameCheck.error });
-    }
-
-    if (!password || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-
-    if (!nsecKey || nsecKey.trim().length === 0) {
-      return res.status(400).json({ error: 'Private key (nsec) is required' });
-    }
-
-    const normalizedEmail = normalizeEmail(email);
-    const emailCheck = validateEmail(normalizedEmail);
-    if (!emailCheck.valid) {
-      return res.status(400).json({ error: emailCheck.error });
-    }
-    if (!isEmailAllowedForTenant(normalizedEmail)) {
-      return res.status(403).json({
-        error: `Only ${config.allowedSignupEmailDomain} email addresses can sign up`,
-      });
-    }
-    const existing = await getUserByUsername(normalizedUsername);
-    if (existing) {
-      return res.status(409).json({ error: 'Username already taken' });
-    }
-
-    const { publicKey, encryptedPrivateKey } = await parseAndEncryptPrivateKey(nsecKey, password);
-    const passwordHash = await hashPassword(password);
-    const resolvedRelays = getDomainScopedRelays(normalizedEmail, relays || []);
-
-    const user = await createUser({
-      username: normalizedUsername,
-      publicKey,
-      encryptedPrivateKey,
-      passwordHash,
-      relays: resolvedRelays,
-      email: normalizedEmail,
-      emailVerifiedAt: new Date(),
-      emailVerificationToken: null,
-      emailVerificationExpiresAt: null,
-    });
-
-    res.status(201).json({
-      success: true,
-      user: {
-        username: user.username,
-        publicKey: user.public_key,
-        email: user.email,
-      },
-      emailVerificationRequired: false,
-    });
-  } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    console.error('V1 resend error:', error);
+    return res.status(500).json({ error: 'Resend failed' });
   }
 });
 
-/**
- * POST /signin
- * Authenticate user and return encrypted private key
- * 
- * Verifies username and password, then returns the NIP-49 encrypted
- * private key that the client can decrypt locally.
- */
+router.post('/onboarding/start', (req, res) => {
+  res.status(410).json({
+    error: 'Legacy endpoint removed. Use POST /api/v1/auth/register.',
+  });
+});
+
+router.post('/onboarding/complete', (req, res) => {
+  res.status(410).json({
+    error: 'Legacy endpoint removed. Use /api/v1/auth/verify flow.',
+  });
+});
+
+router.post('/verify-email', (req, res) => {
+  res.status(410).json({
+    error: 'Legacy endpoint removed. Use POST /api/v1/auth/verify.',
+  });
+});
+
+router.get('/verify-email', (req, res) => {
+  const token = String(req.query.token || '').trim();
+  const redirect = String(req.query.redirect || req.query.origin || '').trim();
+  const params = new URLSearchParams();
+  if (token) params.set('token', token);
+  if (redirect) params.set('redirect', redirect);
+  return res.redirect(`/verify?${params.toString()}`);
+});
+
+router.post('/register', (req, res) => {
+  res.status(410).json({
+    error: 'Legacy endpoint removed. Use POST /api/v1/auth/register.',
+  });
+});
+
+function normalizePasswordHashFromSignin(passwordHash, password) {
+  const fromHash = String(passwordHash || '').trim().toLowerCase();
+  if (isValidSha256Hex(fromHash)) return fromHash;
+  const raw = String(password || '');
+  if (!raw) return '';
+  return createHash('sha256').update(raw).digest('hex');
+}
+
 router.post('/signin', async (req, res) => {
   try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
+    const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
+    const normalizedPasswordHash = normalizePasswordHashFromSignin(
+      req.body?.password_hash,
+      req.body?.password
+    );
+    if (!normalizedUsername || !normalizedPasswordHash) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getUserByUsername(username);
+    const user = await getNostrUserByUsername(normalizedUsername);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    const valid = await verifyPassword(password, user.password_hash);
-    if (!valid) {
+    if (user.status === 'disabled') {
+      return res.status(403).json({ error: 'Account is disabled.' });
+    }
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Email verification required before sign in' });
+    }
+    if (user.password_hash !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (config.emailVerificationEnabled && !user.email_verified_at) {
-      return res.status(403).json({
-        error: 'Email verification required before sign in',
-      });
-    }
-
+    const derivedEmail = normalizeEmail(buildNip05Identifier(normalizedUsername));
     res.json({
       success: true,
-      encryptedPrivateKey: user.encrypted_private_key,
-      publicKey: user.public_key,
-      relays: getDomainScopedRelays(user.email, user.relays || []),
-      emailVerified: Boolean(user.email_verified_at),
+      encryptedPrivateKey: user.private_key_encrypted || null,
+      publicKey: user.public_key || null,
+      relays: getDomainScopedRelays(derivedEmail, user.relays || []),
+      status: user.status,
     });
   } catch (error) {
     console.error('Signin error:', error);
     res.status(500).json({ error: 'Sign in failed' });
-  }
-});
-
-/**
- * POST /verify-email
- * Verify a user's email address with a one-time token.
- */
-router.post('/verify-email', async (req, res) => {
-  try {
-    const { username, token, pin } = req.body;
-    const normalizedUsername = String(username || '').trim().toLowerCase();
-
-    if (!normalizedUsername) {
-      return res.status(400).json({ error: 'Username is required' });
-    }
-    if (!token && !pin) {
-      return res.status(400).json({ error: 'Either token or pin is required' });
-    }
-
-    const onboarding = await getUserOnboardingByUsername(normalizedUsername);
-    if (!onboarding) {
-      if (!token) {
-        return res.status(404).json({ error: 'Pending onboarding not found' });
-      }
-      // Backward compatibility for legacy flow.
-      const verifiedLegacy = await verifyUserEmail(normalizedUsername, String(token).trim());
-      if (!verifiedLegacy) {
-        return res.status(400).json({ error: 'Invalid or expired verification token' });
-      }
-      return res.json({
-        success: true,
-        user: {
-          username: verifiedLegacy.username,
-          publicKey: verifiedLegacy.public_key,
-          email: verifiedLegacy.email,
-        },
-      });
-    }
-
-    if (isExpired(onboarding.email_verification_expires_at)) {
-      return res.status(400).json({ error: 'Verification has expired. Start onboarding again.' });
-    }
-
-    if (onboarding.email_verified_at) {
-      return res.json({
-        success: true,
-        onboarding: {
-          username: onboarding.username,
-          email: onboarding.email,
-          emailVerified: true,
-          nextStep: 'submit_private_key',
-        },
-      });
-    }
-
-    let verified = false;
-
-    if (token) {
-      verified = String(token).trim() === onboarding.email_verification_token;
-    } else if (pin) {
-      if (onboarding.pin_attempt_count >= 5) {
-        return res.status(429).json({ error: 'Too many failed PIN attempts. Start onboarding again.' });
-      }
-      verified = await verifyPassword(String(pin).trim(), onboarding.email_verification_pin_hash);
-      if (!verified) {
-        await incrementUserOnboardingPinAttempt(normalizedUsername);
-      }
-    }
-
-    if (!verified) {
-      return res.status(400).json({ error: 'Invalid verification token or PIN' });
-    }
-
-    const marked = await markUserOnboardingEmailVerified(normalizedUsername);
-    res.json({
-      success: true,
-      onboarding: {
-        username: marked.username,
-        email: marked.email,
-        emailVerified: true,
-        nextStep: 'submit_private_key',
-      },
-    });
-  } catch (error) {
-    console.error('Verify email error:', error);
-    res.status(500).json({ error: 'Email verification failed' });
-  }
-});
-
-/**
- * GET /verify-email
- * Link-friendly email verification endpoint.
- */
-router.get('/verify-email', async (req, res) => {
-  try {
-    const token = String(req.query.token || '').trim();
-    const origin = String(req.query.origin || '').trim();
-    if (!token) {
-      return res.status(400).send('Missing token');
-    }
-    const params = new URLSearchParams({ token });
-    if (origin) params.set('origin', origin);
-    return res.redirect(`/verify?${params.toString()}`);
-  } catch (error) {
-    console.error('Verify email link error:', error);
-    res.status(500).send('Email verification failed');
-  }
-});
-
-/**
- * POST /onboarding/complete
- * Accept private key only after verified email.
- */
-router.post('/onboarding/complete', async (req, res) => {
-  try {
-    const { username, password, nsecKey } = req.body;
-    const normalizedUsername = String(username || '').trim().toLowerCase();
-
-    if (!normalizedUsername || !password || !nsecKey) {
-      return res.status(400).json({ error: 'Username, password, and private key are required' });
-    }
-
-    const existingUser = await getUserByUsername(normalizedUsername);
-    if (existingUser) {
-      return res.status(409).json({ error: 'Username already taken' });
-    }
-
-    const onboarding = await getUserOnboardingByUsername(normalizedUsername);
-    if (!onboarding) {
-      return res.status(404).json({ error: 'Pending onboarding not found' });
-    }
-    if (isExpired(onboarding.email_verification_expires_at)) {
-      return res.status(400).json({ error: 'Onboarding expired. Start again.' });
-    }
-    if (!onboarding.email_verified_at) {
-      return res.status(403).json({ error: 'Email must be verified before private key submission' });
-    }
-
-    const validPassword = await verifyPassword(password, onboarding.password_hash);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const { publicKey, encryptedPrivateKey } = await parseAndEncryptPrivateKey(nsecKey, password);
-    const user = await createUser({
-      username: onboarding.username,
-      publicKey,
-      encryptedPrivateKey,
-      passwordHash: onboarding.password_hash,
-      relays: onboarding.relays || [],
-      email: onboarding.email,
-      emailVerifiedAt: onboarding.email_verified_at,
-      emailVerificationToken: null,
-      emailVerificationExpiresAt: null,
-    });
-
-    await deleteUserOnboarding(normalizedUsername);
-
-    res.status(201).json({
-      success: true,
-      user: {
-        username: user.username,
-        publicKey: user.public_key,
-        email: user.email,
-      },
-    });
-  } catch (error) {
-    if (String(error.message || '').includes('Invalid private key format')) {
-      return res.status(400).json({ error: error.message });
-    }
-    console.error('Onboarding complete error:', error);
-    res.status(500).json({ error: 'Failed to complete onboarding' });
   }
 });
 
@@ -874,41 +566,44 @@ router.post('/onboarding/complete', async (req, res) => {
  */
 router.post('/update', async (req, res) => {
   try {
-    const { username, password, updates } = req.body;
+    const { username, password, password_hash: passwordHashInput, updates } = req.body;
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
 
-    if (!username || !password) {
+    if (!normalizedUsername || !normalizedPasswordHash) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getUserByUsername(username);
+    const user = await getActiveNostrUserByUsername(normalizedUsername);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    const valid = await verifyPassword(password, user.password_hash);
-    if (!valid) {
+    if (user.password_hash !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const updateData = {};
     
-    if (updates.newPassword) {
-      if (updates.newPassword.length < 8) {
-        return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    if (updates?.newPasswordHash || updates?.newPassword) {
+      const nextPasswordHash = String(
+        updates.newPasswordHash || normalizePasswordHashFromSignin('', updates.newPassword)
+      ).trim().toLowerCase();
+      if (!isValidSha256Hex(nextPasswordHash)) {
+        return res.status(400).json({ error: 'newPasswordHash must be a 64-character SHA-256 hex string' });
       }
-      updateData.passwordHash = await hashPassword(updates.newPassword);
+      updateData.passwordHash = nextPasswordHash;
     }
 
-    if (updates.encryptedPrivateKey) {
+    if (updates?.encryptedPrivateKey) {
       const encKeyCheck = validateEncryptedPrivateKey(updates.encryptedPrivateKey);
       if (!encKeyCheck.valid) {
         return res.status(400).json({ error: encKeyCheck.error });
       }
-      updateData.encryptedPrivateKey = updates.encryptedPrivateKey;
+      updateData.privateKeyEncrypted = updates.encryptedPrivateKey;
     }
 
-    if (updates.relays) {
-      const mappedRelays = config.domainRelayMap[getEmailDomain(user.email)];
+    if (updates?.relays) {
+      const mappedRelays = config.domainRelayMap[config.nip05RootDomain];
       if (Array.isArray(mappedRelays) && mappedRelays.length > 0) {
         return res.status(403).json({
           error: 'Relay list is managed by domain policy for this account',
@@ -917,13 +612,13 @@ router.post('/update', async (req, res) => {
       updateData.relays = updates.relays;
     }
 
-    const updated = await updateUser(username, updateData);
+    const updated = await updateNostrUser(normalizedUsername, updateData);
 
     res.json({
       success: true,
       user: {
         username: updated.username,
-        publicKey: updated.public_key,
+        publicKey: updated.public_key || null,
       },
     });
   } catch (error) {
@@ -941,32 +636,33 @@ router.post('/update', async (req, res) => {
  */
 router.post('/delete', async (req, res) => {
   try {
-    const { username, password, savedKey } = req.body;
+    const { username, password, password_hash: passwordHashInput, savedKey } = req.body;
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
 
-    if (!username || !password) {
+    if (!normalizedUsername || !normalizedPasswordHash) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
     if (!savedKey) {
       return res.status(400).json({ error: 'Confirm that you saved your private key' });
     }
 
-    const user = await getUserByUsername(username);
+    const user = await getActiveNostrUserByUsername(normalizedUsername);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const valid = await verifyPassword(password, user.password_hash);
-    if (!valid) {
+    if (user.password_hash !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    await deleteUser(username);
+    await deleteNostrUser(normalizedUsername);
 
     res.json({
       success: true,
       deleted: {
         username: user.username,
-        publicKey: user.public_key,
+        publicKey: user.public_key || null,
       },
     });
   } catch (error) {
@@ -984,19 +680,20 @@ router.post('/delete', async (req, res) => {
  */
 router.post('/picture', async (req, res) => {
   try {
-    const { username, password, data, contentType } = req.body;
+    const { username, password, password_hash: passwordHashInput, data, contentType } = req.body;
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
 
-    if (!username || !password) {
+    if (!normalizedUsername || !normalizedPasswordHash) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getUserByUsername(username);
+    const user = await getActiveNostrUserByUsername(normalizedUsername);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const valid = await verifyPassword(password, user.password_hash);
-    if (!valid) {
+    if (user.password_hash !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -1005,8 +702,8 @@ router.post('/picture', async (req, res) => {
       return res.status(400).json({ error: imageResult.error });
     }
 
-    const updated = await updateUserProfilePicture(
-      username,
+    const updated = await updateNostrUserProfilePicture(
+      normalizedUsername,
       imageResult.buffer,
       imageResult.contentType
     );
@@ -1040,7 +737,7 @@ router.get('/picture/:pubkey', async (req, res) => {
       return res.status(400).json({ error: pubkeyCheck.error });
     }
 
-    const picture = await getUserProfilePictureByPublicKey(pubkey);
+    const picture = await getNostrUserProfilePictureByPublicKey(pubkey);
     if (!picture || !picture.profile_picture) {
       return res.status(404).json({ error: 'Profile picture not found' });
     }
@@ -1079,11 +776,11 @@ router.get('/.well-known/nostr.json', async (req, res) => {
       });
     }
 
-    const user = await getUserForNip05(name);
+    const user = await getActiveNostrUserForNip05(String(name).trim().toLowerCase());
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    if (config.emailVerificationEnabled && !user.email_verified_at) {
+    if (!user.public_key) {
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -1143,7 +840,7 @@ router.get('/nip46/connect/:username', async (req, res) => {
     const { username } = req.params;
 
     // Validate username exists
-    const user = await getUserByUsername(username);
+    const user = await getActiveNostrUserByUsername(String(username || '').trim().toLowerCase());
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -1251,7 +948,7 @@ router.post('/nip46/nostrconnect', async (req, res) => {
     };
 
     // For demo purposes, we'll simulate the connection
-    const user = await getUserByUsername(username);
+    const user = await getActiveNostrUserByUsername(String(username || '').trim().toLowerCase());
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
