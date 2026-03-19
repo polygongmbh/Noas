@@ -2,6 +2,7 @@ services:
   noas-db:
     image: postgres:16-alpine
     container_name: noas-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: noas
       POSTGRES_PASSWORD: noas
@@ -17,6 +18,7 @@ services:
   noas:
     build: .
     container_name: noas
+    restart: unless-stopped
     depends_on:
       noas-db:
         condition: service_healthy
@@ -24,7 +26,7 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://noas:noas@noas-db:5432/noas
-      DOMAIN: localhost:3007
+      DOMAIN: ${DOMAIN:-localhost:3007}
       REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-false}
       EMAIL_VERIFICATION_ENABLED: ${EMAIL_VERIFICATION_ENABLED:-false}
       VERIFICATION_EXPIRY_MINUTES: ${VERIFICATION_EXPIRY_MINUTES:-15}
@@ -47,9 +49,13 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
       SMTP_REJECT_UNAUTHORIZED: ${SMTP_REJECT_UNAUTHORIZED:-true}
-    ports:
-      - "3007:3000"
-    restart: unless-stopped
+    networks:
+      - noas
+      - default
 
 volumes:
   postgres_data:
+
+networks:
+  noas:
+    external: true
