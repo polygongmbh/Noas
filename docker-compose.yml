@@ -25,6 +25,8 @@ services:
     command: ["sh", "-lc", "npm run db:setup && npm start"]
     environment:
       PORT: 3000
+      # Keep container runtime env owned by docker-compose.
+      NOAS_LOAD_DOTENV: "false"
       DATABASE_URL: postgresql://noas:noas@noas-db:5432/noas
       DOMAIN: ${DOMAIN:-localhost:3007}
       REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-false}
