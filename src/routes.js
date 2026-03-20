@@ -835,6 +835,7 @@ router.get('/.well-known/nostr.json', async (req, res) => {
           base_path: config.noasBasePath || '/',
           api_base: `${config.noasPublicUrl}${config.noasBasePath}/api/v1`,
           email_verification_enabled: config.emailVerificationEnabled,
+          trusted_redirect_origins: config.allowedOrigins,
         },
       });
     }
