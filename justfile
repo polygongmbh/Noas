@@ -1,4 +1,5 @@
 # Noas - Just Commands
+noas_base_url := env_var_or_default("NOAS_BASE_URL", "http://localhost:3000")
 
 # Default recipe (shows available commands)
 default:
@@ -102,32 +103,32 @@ test-watch:
 
 # Health check
 health:
-    @curl -s http://localhost:3007/health | jq || curl http://localhost:3007/health
+    @curl -s "{{noas_base_url}}/health" | jq || curl "{{noas_base_url}}/health"
 
 # Demo: Register a user
 demo-register username="demo_user" password="securepass123":
     @echo "Registering user: {{username}}"
-    @bash -lc 'curl -s -X POST http://localhost:3007/register -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","publicKey":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","encryptedPrivateKey":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s -X POST "{{noas_base_url}}/register" -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","publicKey":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","encryptedPrivateKey":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: Sign in
 demo-signin username="demo_user" password="securepass123":
     @echo "Signing in: {{username}}"
-    @bash -lc 'curl -s -X POST http://localhost:3007/signin -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s -X POST "{{noas_base_url}}/signin" -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: NIP-05 verification
 demo-nip05 username="demo_user":
     @echo "NIP-05 lookup: {{username}}"
-    @bash -lc 'curl -s "http://localhost:3007/.well-known/nostr.json?name={{username}}" | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s "{{noas_base_url}}/.well-known/nostr.json?name={{username}}" | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: NIP-46 signer info
 demo-nip46-info:
     @echo "NIP-46 Signer Information:"
-    @bash -lc 'curl -s "http://localhost:3007/nip46/info" | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s "{{noas_base_url}}/nip46/info" | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: NIP-46 connection token generation
 demo-nip46-connect username="demo_user":
     @echo "Generating NIP-46 connection token for: {{username}}"
-    @bash -lc 'curl -s "http://localhost:3007/nip46/connect/{{username}}" | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s "{{noas_base_url}}/nip46/connect/{{username}}" | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: Full NIP-46 flow (register user + get connection token + info)
 demo-nip46 username="demo_user" password="securepass123":
@@ -147,10 +148,10 @@ demo: demo-register demo-signin demo-nip05 (demo-nip46 "demo_user" "securepass12
 # Demo: Upload profile picture
 demo-picture username="demo_user" password="securepass123":
     @echo "Uploading profile picture for: {{username}}"
-    @bash -lc 'curl -s -X POST http://localhost:3007/picture -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","contentType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2S+0sAAAAASUVORK5CYII="}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s -X POST "{{noas_base_url}}/picture" -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","contentType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2S+0sAAAAASUVORK5CYII="}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
     @echo ""
     @echo "Fetch image:"
-    @curl -s -o /tmp/noas_demo_pic.bin http://localhost:3007/picture/abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234
+    @curl -s -o /tmp/noas_demo_pic.bin "{{noas_base_url}}/picture/abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234"
     @echo "Saved to /tmp/noas_demo_pic.bin (size: $(wc -c < /tmp/noas_demo_pic.bin) bytes)"
 
 # Demo: Full profile picture flow (register + upload + fetch)
@@ -211,7 +212,7 @@ present-check:
 
 # Check if server is running
 check-server:
-    @curl -s http://localhost:3007/health > /dev/null && echo "✅ Server is running" || echo "❌ Server is not running"
+    @curl -s "{{noas_base_url}}/health" > /dev/null && echo "✅ Server is running" || echo "❌ Server is not running"
 
 # Push to git remote
 push remote="origin" branch="master":
