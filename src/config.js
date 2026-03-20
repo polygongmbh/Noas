@@ -104,11 +104,32 @@ function hostLikeFromUrl(value) {
   }
 }
 
+function resolveDomain({ domainEnv, noasPublicUrl, nip05Domain, port }) {
+  const explicitDomain = String(domainEnv || '').trim();
+  if (explicitDomain) return explicitDomain;
+
+  const publicHost = hostLikeFromUrl(noasPublicUrl);
+  if (publicHost) return publicHost.toLowerCase();
+
+  const nip05 = String(nip05Domain || '').trim();
+  if (nip05) return nip05;
+
+  return `localhost:${port}`;
+}
+
+const configuredPort = parseInt(process.env.PORT || '3000', 10);
+const configuredNip05Domain = process.env.NIP05_DOMAIN || process.env.NOAS_DOMAIN || '';
+
 // Export configuration object with all app settings
 export const config = {
-  port: parseInt(process.env.PORT || '3000', 10),
+  port: configuredPort,
   databaseUrl: process.env.DATABASE_URL,
-  domain: process.env.DOMAIN || `localhost:${process.env.PORT || '3000'}`,
+  domain: resolveDomain({
+    domainEnv: process.env.DOMAIN,
+    noasPublicUrl: process.env.NOAS_PUBLIC_URL,
+    nip05Domain: configuredNip05Domain,
+    port: configuredPort,
+  }),
   isTest: process.env.NODE_ENV === 'test',
   requireEmailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
   emailVerificationEnabled:
@@ -134,17 +155,12 @@ export const config = {
   smtpPass: process.env.SMTP_PASS || '',
   smtpFrom: (process.env.SMTP_FROM || '').trim(),
   smtpReplyTo: (process.env.SMTP_REPLY_TO || '').trim(),
-  nip05Domain: (process.env.NIP05_DOMAIN || process.env.NOAS_DOMAIN || process.env.DOMAIN || '').trim(),
+  nip05Domain: (configuredNip05Domain || process.env.DOMAIN || '').trim(),
   noasPublicUrl: (process.env.NOAS_PUBLIC_URL || '').trim(),
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,
 };
-
-// Ensure domain matches the actual port being used
-if (!process.env.DOMAIN) {
-  config.domain = `localhost:${config.port}`;
-}
 
 if (!config.nip05Domain) {
   config.nip05Domain = config.domain;
