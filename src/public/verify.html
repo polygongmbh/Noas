@@ -137,7 +137,11 @@
         const displayPubkey = String(data.public_npub || data.public_key || '').trim();
         verifyPublicKey.textContent = displayPubkey ? `Public key: ${displayPubkey}` : '';
         if (data.expires_at) {
-          verifyExpiry.textContent = `Expires at: ${new Date(data.expires_at).toLocaleString()}`;
+          const minutesLeft = Math.max(
+            1,
+            Math.ceil((new Date(data.expires_at).getTime() - Date.now()) / (1000 * 60))
+          );
+          verifyExpiry.textContent = `Expires in about ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}.`;
         }
         verifyForm.hidden = false;
       }

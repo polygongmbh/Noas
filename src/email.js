@@ -73,7 +73,13 @@ export async function sendVerificationEmail({
     };
   }
 
-  const ttlLabel = expiresAt ? new Date(expiresAt).toISOString() : 'soon';
+  const expiresInMinutes = (() => {
+    if (!expiresAt) return null;
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (!Number.isFinite(ms)) return null;
+    return Math.max(1, Math.ceil(ms / 1000 / 60));
+  })();
+  const ttlLabel = expiresInMinutes ? `${expiresInMinutes} minute${expiresInMinutes === 1 ? '' : 's'}` : 'soon';
   const redirectLabel = String(redirectTarget || '').trim();
   const from = config.smtpFrom || `Noas <no-reply@${config.domain.split(':')[0]}>`;
 
@@ -91,7 +97,7 @@ export async function sendVerificationEmail({
     '',
     'You will be asked to enter your password to confirm ownership.',
     '',
-    `This link expires at ${ttlLabel}.`,
+    `This link expires in ${ttlLabel}.`,
     '',
     'If you did not register this account, ignore this email.',
     'The username will be released automatically after the link expires.',
@@ -110,7 +116,7 @@ export async function sendVerificationEmail({
     '<p>If this was you, verify your account:</p>',
     `<p><a href="${escapeHtml(verificationLink)}">${escapeHtml(verificationLink)}</a></p>`,
     '<p>You will be asked to enter your password to confirm ownership.</p>',
-    `<p>This link expires at <strong>${escapeHtml(ttlLabel)}</strong>.</p>`,
+    `<p>This link expires in <strong>${escapeHtml(ttlLabel)}</strong>.</p>`,
     '<p>If you did not register this account, ignore this email.</p>',
     '<p>The username will be released automatically after the link expires.</p>',
     '<p>— Noas Team</p>',
