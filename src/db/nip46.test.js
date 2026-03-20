@@ -40,7 +40,15 @@ const testSession = {
   permissions: ['sign_event', 'get_public_key']
 };
 
-describe('NIP-46 Database Operations', () => {
+let dbAvailable = true;
+try {
+  await pool.query('SELECT 1');
+} catch (error) {
+  dbAvailable = false;
+  console.warn('[db/nip46.test] Skipping DB tests: database unavailable:', error.code || error.message);
+}
+
+describe('NIP-46 Database Operations', { skip: !dbAvailable }, () => {
   let testUserId;
 
   // Clean up before and after tests

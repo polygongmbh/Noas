@@ -99,7 +99,8 @@
         verifyMessage.textContent = 'Enter your password to activate this account.';
         verifiedNip05 = String(data.nip05 || '').trim();
         verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
-        verifyPublicKey.textContent = data.public_key ? `Public key: ${data.public_key}` : '';
+        const displayPubkey = String(data.public_npub || data.public_key || '').trim();
+        verifyPublicKey.textContent = displayPubkey ? `Public key: ${displayPubkey}` : '';
         if (data.expires_at) {
           verifyExpiry.textContent = `Expires at: ${new Date(data.expires_at).toLocaleString()}`;
         }

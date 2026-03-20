@@ -5,7 +5,7 @@
  * Uses a test user and cleans up data before and after tests.
  */
 
-import { test, before, after } from 'node:test';
+import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert';
 import { pool, query, closePool } from './pool.js';
 import { 
@@ -30,6 +30,16 @@ const testUser = {
   passwordHash: '$2b$10$abcdefghijklmnopqrstuv',
   relays: ['wss://relay.example.com'],
 };
+
+let dbAvailable = true;
+try {
+  await query('SELECT 1');
+} catch (error) {
+  dbAvailable = false;
+  console.warn('[users.test] Skipping DB tests: database unavailable:', error.code || error.message);
+}
+
+describe('User Database Operations', { skip: !dbAvailable }, () => {
 
 // Setup: Clean up any existing test data before running tests
 before(async () => {
@@ -208,4 +218,5 @@ test('onboarding CRUD helpers work', async () => {
   await deleteUserOnboarding(testUser.username);
   const deleted = await getUserOnboardingByUsername(testUser.username);
   assert.strictEqual(deleted, undefined);
+});
 });

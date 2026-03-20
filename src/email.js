@@ -80,7 +80,7 @@ export async function sendVerificationEmail({
     '',
     `Someone registered the Nostr identity ${identifier}.`,
     '',
-    publicKey ? `Your public key:\n${publicKey}` : null,
+    publicKey ? `Your public key (npub):\n${publicKey}` : null,
     '',
     'If this was you, verify your account:',
     verificationLink,
@@ -99,7 +99,7 @@ export async function sendVerificationEmail({
     '<p>Hi,</p>',
     `<p>Someone registered the Nostr identity <strong>${escapeHtml(identifier)}</strong>.</p>`,
     publicKey
-      ? `<p>Your public key:<br /><code>${escapeHtml(publicKey)}</code></p>`
+      ? `<p>Your public key (npub):<br /><code>${escapeHtml(publicKey)}</code></p>`
       : '',
     '<p>If this was you, verify your account:</p>',
     `<p><a href="${escapeHtml(verificationLink)}">${escapeHtml(verificationLink)}</a></p>`,

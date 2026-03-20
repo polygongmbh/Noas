@@ -7,17 +7,17 @@
  * - POST /api/v1/auth/verify - Verify token + password hash and activate account
  * - POST /api/v1/auth/resend - Resend verification email
  * - POST /register - Legacy alias (deprecated)
- * - POST /signin - Authenticate and get encrypted key
+ * - POST /api/v1/auth/signin - Authenticate and get encrypted key
  * - POST /verify-email - Legacy alias (deprecated)
- * - POST /update - Update user password or relays
- * - POST /delete - Delete user account
- * - POST /picture - Upload profile picture
- * - GET /picture/:pubkey - Serve profile picture by public key
+ * - POST /api/v1/auth/update - Update user password or relays
+ * - POST /api/v1/auth/delete - Delete user account
+ * - POST /api/v1/picture - Upload profile picture
+ * - GET /api/v1/picture/:pubkey - Serve profile picture by public key
  * - GET /.well-known/nostr.json - NIP-05 verification
- * - GET /health - Health check endpoint
- * - POST /nip46/request - Handle NIP-46 requests
- * - GET /nip46/connect/:username - Get connection token
- * - GET /nip46/info - Get signer information
+ * - GET /api/v1/health - Health check endpoint
+ * - POST /api/v1/nip46/request - Handle NIP-46 requests
+ * - GET /api/v1/nip46/connect/:username - Get connection token
+ * - GET /api/v1/nip46/info - Get signer information
  */
 
 import express from 'express';
@@ -105,6 +105,17 @@ function isValidSha256Hex(value) {
 
 function buildNip05Identifier(username) {
   return `${username}@${config.nip05RootDomain}`;
+}
+
+async function toNpub(publicKey) {
+  const candidate = String(publicKey || '').trim().toLowerCase();
+  if (!candidate || !isValidSha256Hex(candidate)) return null;
+  try {
+    const { nip19 } = await import('nostr-tools');
+    return nip19.npubEncode(candidate);
+  } catch {
+    return null;
+  }
 }
 
 function isNostrUserVerificationExpired(user, expiryMinutes) {
@@ -285,6 +296,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         status: 'active',
         nip05,
         public_key: keyMaterial.publicKey,
+        public_npub: await toNpub(keyMaterial.publicKey),
         key_source: keyMaterial.keySource,
         message: 'Account is active. You can now sign in.',
       });
@@ -311,7 +323,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         identifier: nip05,
         verificationLink,
         expiresAt,
-        publicKey: keyMaterial.publicKey,
+        publicKey: (await toNpub(keyMaterial.publicKey)) || keyMaterial.publicKey,
       });
     } catch (error) {
       emailDelivery = { sent: false, reason: 'smtp_send_failed' };
@@ -329,6 +341,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       status: 'unverified_email',
       nip05,
       public_key: keyMaterial.publicKey,
+      public_npub: await toNpub(keyMaterial.publicKey),
       key_source: keyMaterial.keySource,
       message: `Check ${email} to verify your account.`,
     };
@@ -378,6 +391,7 @@ router.get('/api/v1/auth/verify', async (req, res) => {
       username: user.username,
       nip05: buildNip05Identifier(user.username),
       public_key: user.public_key || null,
+      public_npub: await toNpub(user.public_key),
       expires_at: expiresAt.toISOString(),
     });
   } catch (error) {
@@ -483,7 +497,7 @@ router.post('/api/v1/auth/resend', async (req, res) => {
         identifier: buildNip05Identifier(normalizedUsername),
         verificationLink,
         expiresAt,
-        publicKey: updated.public_key || null,
+        publicKey: (await toNpub(updated.public_key)) || updated.public_key || null,
       });
     } catch (error) {
       emailDelivery = { sent: false, reason: 'smtp_send_failed' };
@@ -552,7 +566,7 @@ function normalizePasswordHashFromSignin(passwordHash, password) {
   return createHash('sha256').update(raw).digest('hex');
 }
 
-router.post('/signin', async (req, res) => {
+const handleSignin = async (req, res) => {
   try {
     const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
     const normalizedPasswordHash = normalizePasswordHashFromSignin(
@@ -582,6 +596,7 @@ router.post('/signin', async (req, res) => {
       success: true,
       encryptedPrivateKey: user.private_key_encrypted || null,
       publicKey: user.public_key || null,
+      publicKeyNpub: await toNpub(user.public_key),
       relays: getDomainScopedRelays(derivedEmail, user.relays || []),
       status: user.status,
     });
@@ -589,7 +604,7 @@ router.post('/signin', async (req, res) => {
     console.error('Signin error:', error);
     res.status(500).json({ error: 'Sign in failed' });
   }
-});
+};
 
 /**
  * POST /update
@@ -598,7 +613,7 @@ router.post('/signin', async (req, res) => {
  * Allows changing password, re-encrypting private key, or updating relay list.
  * Requires authentication with current password.
  */
-router.post('/update', async (req, res) => {
+const handleUpdate = async (req, res) => {
   try {
     const { username, password, password_hash: passwordHashInput, updates } = req.body;
     const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -653,13 +668,14 @@ router.post('/update', async (req, res) => {
       user: {
         username: updated.username,
         publicKey: updated.public_key || null,
+        publicKeyNpub: await toNpub(updated.public_key),
       },
     });
   } catch (error) {
     console.error('Update error:', error);
     res.status(500).json({ error: 'Update failed' });
   }
-});
+};
 
 /**
  * POST /delete
@@ -668,7 +684,7 @@ router.post('/update', async (req, res) => {
  * Requires authentication and an explicit confirmation that the user
  * has saved their private key.
  */
-router.post('/delete', async (req, res) => {
+const handleDelete = async (req, res) => {
   try {
     const { username, password, password_hash: passwordHashInput, savedKey } = req.body;
     const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -697,13 +713,14 @@ router.post('/delete', async (req, res) => {
       deleted: {
         username: user.username,
         publicKey: user.public_key || null,
+        publicKeyNpub: await toNpub(user.public_key),
       },
     });
   } catch (error) {
     console.error('Delete error:', error);
     res.status(500).json({ error: 'Account deletion failed' });
   }
-});
+};
 
 /**
  * POST /picture
@@ -712,7 +729,7 @@ router.post('/delete', async (req, res) => {
  * Authenticates user and stores a profile picture (base64-encoded).
  * Returns a standard URL for use in kind:0 events.
  */
-router.post('/picture', async (req, res) => {
+const handlePictureUpload = async (req, res) => {
   try {
     const { username, password, password_hash: passwordHashInput, data, contentType } = req.body;
     const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -747,25 +764,40 @@ router.post('/picture', async (req, res) => {
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const publicKeyNpub = await toNpub(updated.public_key);
+    const pictureIdentifier = publicKeyNpub || updated.public_key;
     res.json({
       success: true,
       publicKey: updated.public_key,
-      url: `${baseUrl}/picture/${updated.public_key}`,
+      publicKeyNpub,
+      url: `${baseUrl}/api/v1/picture/${pictureIdentifier}`,
     });
   } catch (error) {
     console.error('Profile picture upload error:', error);
     res.status(500).json({ error: 'Profile picture upload failed' });
   }
-});
+};
 
 /**
  * GET /picture/:pubkey
  * Serve a user's profile picture by public key
  */
-router.get('/picture/:pubkey', async (req, res) => {
+const handlePictureFetch = async (req, res) => {
   try {
-    const { pubkey } = req.params;
-
+    const rawPubkey = String(req.params?.pubkey || '').trim();
+    let pubkey = rawPubkey;
+    if (rawPubkey.startsWith('npub1')) {
+      try {
+        const { nip19 } = await import('nostr-tools');
+        const decoded = nip19.decode(rawPubkey);
+        if (decoded.type !== 'npub' || typeof decoded.data !== 'string') {
+          return res.status(400).json({ error: 'Public key must be a valid npub or hex pubkey' });
+        }
+        pubkey = decoded.data;
+      } catch {
+        return res.status(400).json({ error: 'Public key must be a valid npub or hex pubkey' });
+      }
+    }
     const pubkeyCheck = validatePublicKey(pubkey);
     if (!pubkeyCheck.valid) {
       return res.status(400).json({ error: pubkeyCheck.error });
@@ -783,7 +815,7 @@ router.get('/picture/:pubkey', async (req, res) => {
     console.error('Profile picture fetch error:', error);
     res.status(500).json({ error: 'Profile picture fetch failed' });
   }
-});
+};
 
 /**
  * GET /.well-known/nostr.json
@@ -835,9 +867,9 @@ router.get('/.well-known/nostr.json', async (req, res) => {
  * 
  * Returns server status and configuration info.
  */
-router.get('/health', (req, res) => {
+const handleHealth = (req, res) => {
   res.json({ status: 'ok', domain: config.domain });
-});
+};
 
 /**
  * GET /nip46/info
@@ -845,7 +877,7 @@ router.get('/health', (req, res) => {
  * 
  * Returns the public key and supported methods of this remote signer.
  */
-router.get('/nip46/info', (req, res) => {
+const handleNip46Info = (req, res) => {
   res.json({
     pubkey: signerPubkey,
     domain: config.domain,
@@ -861,7 +893,7 @@ router.get('/nip46/info', (req, res) => {
     ],
     version: '1.0.0'
   });
-});
+};
 
 /**
  * GET /nip46/connect/:username
@@ -869,7 +901,7 @@ router.get('/nip46/info', (req, res) => {
  * 
  * Creates a bunker:// URL that clients can use to initiate a connection.
  */
-router.get('/nip46/connect/:username', async (req, res) => {
+const handleNip46Connect = async (req, res) => {
   try {
     const { username } = req.params;
 
@@ -892,7 +924,7 @@ router.get('/nip46/connect/:username', async (req, res) => {
     console.error('NIP-46 connect error:', error);
     res.status(500).json({ error: 'Failed to generate connection token' });
   }
-});
+};
 
 /**
  * POST /nip46/request
@@ -901,7 +933,7 @@ router.get('/nip46/connect/:username', async (req, res) => {
  * Processes encrypted NIP-46 request events and returns encrypted responses.
  * This endpoint simulates relay-based communication via HTTP.
  */
-router.post('/nip46/request', async (req, res) => {
+const handleNip46Request = async (req, res) => {
   try {
     const { event, username } = req.body;
 
@@ -932,7 +964,7 @@ router.post('/nip46/request', async (req, res) => {
     console.error('NIP-46 request error:', error);
     res.status(500).json({ error: 'Request processing failed' });
   }
-});
+};
 
 /**
  * POST /nip46/nostrconnect
@@ -940,7 +972,7 @@ router.post('/nip46/request', async (req, res) => {
  * 
  * Processes client-initiated connections using the nostrconnect protocol.
  */
-router.post('/nip46/nostrconnect', async (req, res) => {
+const handleNip46Nostrconnect = async (req, res) => {
   try {
     const { nostrconnect_url, username } = req.body;
 
@@ -991,7 +1023,7 @@ router.post('/nip46/nostrconnect', async (req, res) => {
       success: true,
       remote_signer_pubkey: signerPubkey,
       secret: secret,
-      message: 'Connection initiated. Use /nip46/request endpoint to send encrypted commands.',
+      message: 'Connection initiated. Use /api/v1/nip46/request endpoint to send encrypted commands.',
       relays: ['wss://relay.nostr.org'] // Default relay
     });
 
@@ -999,4 +1031,34 @@ router.post('/nip46/nostrconnect', async (req, res) => {
     console.error('NIP-46 nostrconnect error:', error);
     res.status(500).json({ error: 'Connection failed' });
   }
-});
+};
+
+router.post('/api/v1/auth/signin', handleSignin);
+router.post('/signin', handleSignin);
+
+router.post('/api/v1/auth/update', handleUpdate);
+router.post('/update', handleUpdate);
+
+router.post('/api/v1/auth/delete', handleDelete);
+router.post('/delete', handleDelete);
+
+router.post('/api/v1/picture', handlePictureUpload);
+router.post('/picture', handlePictureUpload);
+
+router.get('/api/v1/picture/:pubkey', handlePictureFetch);
+router.get('/picture/:pubkey', handlePictureFetch);
+
+router.get('/api/v1/health', handleHealth);
+router.get('/health', handleHealth);
+
+router.get('/api/v1/nip46/info', handleNip46Info);
+router.get('/nip46/info', handleNip46Info);
+
+router.get('/api/v1/nip46/connect/:username', handleNip46Connect);
+router.get('/nip46/connect/:username', handleNip46Connect);
+
+router.post('/api/v1/nip46/request', handleNip46Request);
+router.post('/nip46/request', handleNip46Request);
+
+router.post('/api/v1/nip46/nostrconnect', handleNip46Nostrconnect);
+router.post('/nip46/nostrconnect', handleNip46Nostrconnect);

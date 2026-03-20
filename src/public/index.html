@@ -113,7 +113,7 @@
         <div class="panel" id="accountPanel" hidden>
           <h2>Account Details</h2>
           <div class="field">
-            <span>Public key</span>
+            <span>Public key (npub)</span>
             <code id="publicKey">—</code>
           </div>
           <div class="field">
@@ -191,17 +191,22 @@
         <div class="card">
           <h2>Sign in</h2>
           <p>Authenticate and retrieve your encrypted key.</p>
-          <code>POST /signin</code>
+          <code>POST /api/v1/auth/signin</code>
         </div>
         <div class="card">
           <h2>Update</h2>
           <p>Rotate your password, update relays, or replace encrypted key.</p>
-          <code>POST /update</code>
+          <code>POST /api/v1/auth/update</code>
+        </div>
+        <div class="card">
+          <h2>Delete</h2>
+          <p>Remove your account after confirmation.</p>
+          <code>POST /api/v1/auth/delete</code>
         </div>
         <div class="card">
           <h2>Profile Picture</h2>
           <p>Store and fetch a profile image for your pubkey.</p>
-          <code>POST /picture · GET /picture/:pubkey</code>
+          <code>POST /api/v1/picture · GET /api/v1/picture/:pubkey</code>
         </div>
         <div class="card">
           <h2>NIP-05</h2>
@@ -211,7 +216,12 @@
         <div class="card">
           <h2>Health</h2>
           <p>Check service status.</p>
-          <code>GET /health</code>
+          <code>GET /api/v1/health</code>
+        </div>
+        <div class="card">
+          <h2>NIP-46</h2>
+          <p>Remote signer discovery and request handling.</p>
+          <code>GET /api/v1/nip46/info · GET /api/v1/nip46/connect/:username · POST /api/v1/nip46/request</code>
         </div>
       </section>
 

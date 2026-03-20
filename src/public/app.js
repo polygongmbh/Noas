@@ -187,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function () {
           ? ` Verification link: ${data.verify_url}`
           : '';
         const keyHint = data.key_source === 'generated'
-          ? ` A Nostr keypair was generated automatically (pubkey: ${data.public_key || 'unknown'}).`
+          ? ` A Nostr keypair was generated automatically (pubkey: ${data.public_npub || data.public_key || 'unknown'}).`
           : '';
         setStatus(signupStatus, `${data.message || 'Verification sent.'}${keyHint}${verificationHint}`, 'success');
 
@@ -226,11 +226,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const password = formData.get('password');
 
     try {
-      const data = await request('/signin', { username, password });
+      const data = await request('/api/v1/auth/signin', { username, password });
       state.username = username;
       state.password = password;
 
-      publicKeyEl.textContent = data.publicKey || '—';
+      publicKeyEl.textContent = data.publicKeyNpub || data.publicKey || '—';
       encryptedKeyEl.textContent = data.encryptedPrivateKey || '—';
       relayListEl.textContent = (data.relays || []).join(', ') || '—';
       accountPanel.hidden = false;
@@ -278,7 +278,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     setStatus(updateStatus, 'Updating account...');
     try {
-      await request('/update', {
+      await request('/api/v1/auth/update', {
         username: state.username,
         password: state.password,
         updates,
@@ -311,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     setStatus(deleteStatus, 'Deleting account...');
     try {
-      await request('/delete', {
+      await request('/api/v1/auth/delete', {
         username: state.username,
         password: state.password,
         savedKey: true,

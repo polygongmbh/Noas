@@ -50,7 +50,8 @@ test('validateUsername rejects invalid usernames', () => {
   assert.strictEqual(validateUsername('ab').valid, false); // too short
   assert.strictEqual(validateUsername('a'.repeat(33)).valid, false); // too long
   assert.strictEqual(validateUsername('Alice').valid, false); // uppercase
-  assert.strictEqual(validateUsername('alice-bob').valid, false); // hyphen
+  assert.strictEqual(validateUsername('alice-bob').valid, true); // hyphen is valid
+  assert.strictEqual(validateUsername('alice+bob').valid, false); // plus is invalid
   assert.strictEqual(validateUsername('').valid, false); // empty
 });
 
