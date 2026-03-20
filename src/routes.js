@@ -93,10 +93,15 @@ function buildVerificationLinkWithRedirect(token, redirect) {
   return `${config.noasPublicUrl}${config.noasBasePath}/verify?${params.toString()}`;
 }
 
-function isAllowedOrigin(origin) {
-  if (!origin) return true;
-  if (!config.allowedOrigins.length) return true;
-  return config.allowedOrigins.includes(origin);
+function isValidRedirectUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return true;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 function isValidSha256Hex(value) {
@@ -249,16 +254,8 @@ router.post('/api/v1/auth/register', async (req, res) => {
     if (!isValidSha256Hex(normalizedPasswordHash)) {
       return res.status(400).json({ error: 'password_hash must be a 64-character SHA-256 hex string' });
     }
-    if (normalizedRedirect) {
-      let redirectOrigin = '';
-      try {
-        redirectOrigin = new URL(normalizedRedirect).origin;
-      } catch {
-        return res.status(400).json({ error: 'Redirect must be a valid URL' });
-      }
-      if (!isAllowedOrigin(redirectOrigin)) {
-        return res.status(400).json({ error: 'Redirect is not allowed' });
-      }
+    if (!isValidRedirectUrl(normalizedRedirect)) {
+      return res.status(400).json({ error: 'Redirect must be a valid http(s) URL' });
     }
     let keyMaterial;
     try {
