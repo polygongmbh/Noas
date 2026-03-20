@@ -1,6 +1,6 @@
 {
   "name": "noas",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Nostr Authentication Server with NIP-05 verification",
   "main": "src/index.js",
   "type": "module",
