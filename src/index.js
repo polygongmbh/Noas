@@ -21,38 +21,16 @@ app.use(express.json({ limit: '4mb' }));
 // CORS middleware - allows cross-origin requests with credentials support
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const publicOrigin = (() => {
-    try {
-      return new URL(config.noasPublicUrl).origin;
-    } catch {
-      return null;
-    }
-  })();
-  const nip05Https = config.nip05RootDomain ? `https://${config.nip05RootDomain}` : null;
-  const nip05Http = config.nip05RootDomain && config.nip05RootDomain === 'localhost'
-    ? `http://${config.nip05RootDomain}`
-    : null;
-  const allowedOrigins = [
-    'http://localhost:8080',
-    'http://localhost:8081',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:3001',
-    `http://${config.domain}`,
-    `https://${config.domain}`,
-    publicOrigin,
-    nip05Https,
-    nip05Http,
-    ...config.allowedOrigins,
-  ].filter(Boolean);
-  
-  // Allow specific origins or the configured domain
-  if (origin && allowedOrigins.includes(origin)) {
+
+  // Explicitly allow requests from any browser origin.
+  // With credentials enabled, '*' is not valid, so reflect the request origin.
+  if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
   } else {
-    res.header('Access-Control-Allow-Origin', allowedOrigins[0] || '*');
+    res.header('Access-Control-Allow-Origin', '*');
   }
-  
+
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
