@@ -60,6 +60,7 @@ export async function sendVerificationEmail({
   to,
   username,
   identifier,
+  redirectTarget = null,
   verificationLink,
   expiresAt,
   publicKey = null,
@@ -73,12 +74,15 @@ export async function sendVerificationEmail({
   }
 
   const ttlLabel = expiresAt ? new Date(expiresAt).toISOString() : 'soon';
+  const redirectLabel = String(redirectTarget || '').trim();
   const from = config.smtpFrom || `Noas <no-reply@${config.domain.split(':')[0]}>`;
 
   const text = [
     'Hi,',
     '',
-    `Someone registered the Nostr identity ${identifier}.`,
+    redirectLabel
+      ? `The Nostr identity ${identifier} was registered for use on ${redirectLabel}.`
+      : `Someone registered the Nostr identity ${identifier}.`,
     '',
     publicKey ? `Your public key (npub):\n${publicKey}` : null,
     '',
@@ -92,12 +96,14 @@ export async function sendVerificationEmail({
     'If you did not register this account, ignore this email.',
     'The username will be released automatically after the link expires.',
     '',
-    '— Nodal',
+    '— Noas Team',
   ].join('\n');
 
   const html = [
     '<p>Hi,</p>',
-    `<p>Someone registered the Nostr identity <strong>${escapeHtml(identifier)}</strong>.</p>`,
+    redirectLabel
+      ? `<p>The Nostr identity <strong>${escapeHtml(identifier)}</strong> was registered for use on <strong>${escapeHtml(redirectLabel)}</strong>.</p>`
+      : `<p>Someone registered the Nostr identity <strong>${escapeHtml(identifier)}</strong>.</p>`,
     publicKey
       ? `<p>Your public key (npub):<br /><code>${escapeHtml(publicKey)}</code></p>`
       : '',
@@ -107,7 +113,7 @@ export async function sendVerificationEmail({
     `<p>This link expires at <strong>${escapeHtml(ttlLabel)}</strong>.</p>`,
     '<p>If you did not register this account, ignore this email.</p>',
     '<p>The username will be released automatically after the link expires.</p>',
-    '<p>— Nodal</p>',
+    '<p>— Noas Team</p>',
   ].filter(Boolean).join('');
 
   await transporter.sendMail({
