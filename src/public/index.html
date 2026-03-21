@@ -31,11 +31,7 @@
 
       <section class="panel">
         <h2>Create New Account</h2>
-        <p>Register with username + password. Verification is sent to your NIP-05 email.</p>
-        
-        <div class="warning">
-          <strong>Identity rule:</strong> Email is always derived as <code>username@NIP05_DOMAIN</code>.
-        </div>
+        <p>Register with username + email + password. Verification is sent to your account email.</p>
         <div id="verificationFlash" class="status" role="status"></div>
 
         <form id="signupStartForm" class="form">
@@ -43,6 +39,12 @@
             Username (3-32 chars, lowercase + dash/underscore/dot)
             <input type="text" id="signupUsername" placeholder="your_username" required />
             <small>Choose any available username for your NIP-05 identity</small>
+          </label>
+
+          <label id="signupEmailLabel">
+            Email
+            <input type="email" id="signupEmail" placeholder="your_email@example.com" autocomplete="email" required />
+            <small id="signupEmailHint">Used for account and verification emails.</small>
           </label>
           
           <label>

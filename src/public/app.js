@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', function () {
     username: null,
     password: null,
     signupUsername: null,
+    emailVerificationEnabled: false,
+    nip05Domain: window.location.hostname || '',
   };
 
   const signinForm = document.getElementById('signinForm');
@@ -21,6 +23,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const signupStartForm = document.getElementById('signupStartForm');
   const signupUsername = document.getElementById('signupUsername');
+  const signupEmailLabel = document.getElementById('signupEmailLabel');
+  const signupEmail = document.getElementById('signupEmail');
+  const signupEmailHint = document.getElementById('signupEmailHint');
   const signupPassword = document.getElementById('signupPassword');
   const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
   const signupRedirect = document.getElementById('signupRedirect');
@@ -33,6 +38,33 @@ document.addEventListener('DOMContentLoaded', function () {
   const resendStatus = document.getElementById('resendStatus');
   const noasVersion = document.getElementById('noasVersion');
   const noasVersionFooter = document.getElementById('noasVersionFooter');
+
+  function getDerivedSignupEmail(usernameRaw) {
+    const username = String(usernameRaw || '').trim().toLowerCase();
+    const domain = String(state.nip05Domain || '').trim().toLowerCase();
+    if (!username || !domain) return '';
+    return `${username}@${domain}`;
+  }
+
+  function syncSignupEmailLockState() {
+    if (!signupEmail || !signupEmailLabel || !signupEmailHint) return;
+    const lockEmail = Boolean(state.emailVerificationEnabled);
+    const lockHint = 'Because email verification is enabled, email must be username@NIP05_DOMAIN.';
+    signupEmail.readOnly = lockEmail;
+    signupEmail.dataset.locked = lockEmail ? 'true' : 'false';
+
+    if (lockEmail) {
+      signupEmail.value = getDerivedSignupEmail(signupUsername?.value);
+      signupEmail.title = lockHint;
+      signupEmailHint.textContent = lockHint;
+      signupEmailLabel.classList.add('email-lock-hint');
+      return;
+    }
+
+    signupEmail.removeAttribute('title');
+    signupEmailHint.textContent = 'Used for account and verification emails.';
+    signupEmailLabel.classList.remove('email-lock-hint');
+  }
 
   function normalizeVersionLabel(version) {
     const trimmed = String(version || '').trim().replace(/^v/i, '');
@@ -49,14 +81,32 @@ document.addEventListener('DOMContentLoaded', function () {
       const response = await fetch('/.well-known/nostr.json');
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return;
+      const metadata = data?.noas || {};
       const label = normalizeVersionLabel(data?.noas?.version);
       if (noasVersion) noasVersion.textContent = label;
       if (noasVersionFooter) noasVersionFooter.textContent = label;
+      if (typeof metadata.email_verification_enabled === 'boolean') {
+        state.emailVerificationEnabled = metadata.email_verification_enabled;
+      }
+      if (typeof metadata.nip05_domain === 'string' && metadata.nip05_domain.trim()) {
+        state.nip05Domain = metadata.nip05_domain.trim().toLowerCase();
+      }
+      syncSignupEmailLockState();
     } catch {
       // Non-blocking: keep placeholder when metadata is unavailable.
+      syncSignupEmailLockState();
     }
   }
 
+  if (signupUsername) {
+    signupUsername.addEventListener('input', () => {
+      if (state.emailVerificationEnabled) {
+        syncSignupEmailLockState();
+      }
+    });
+  }
+
+  syncSignupEmailLockState();
   loadNoasVersion();
 
   function setStatus(el, message, type = 'info') {
@@ -97,6 +147,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function validateSignupStartForm() {
     const username = signupUsername?.value.trim().toLowerCase() || '';
+    const email = signupEmail?.value.trim().toLowerCase() || '';
     const password = signupPassword?.value || '';
     const passwordConfirm = signupPasswordConfirm?.value || '';
     const publicKey = signupPublicKey?.value.trim() || '';
@@ -111,6 +162,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!password) {
       setStatus(signupStatus, 'Password is required', 'error');
       signupPassword?.focus();
+      return false;
+    }
+    if (!email) {
+      setStatus(signupStatus, 'Email is required', 'error');
+      signupEmail?.focus();
       return false;
     }
     if (!passwordConfirm) {
@@ -128,6 +184,20 @@ document.addEventListener('DOMContentLoaded', function () {
       setStatus(signupStatus, 'Password must be at least 8 characters long', 'error');
       signupPassword?.focus();
       return false;
+    }
+    if (!signupEmail?.checkValidity()) {
+      setStatus(signupStatus, 'Please enter a valid email address', 'error');
+      signupEmail?.focus();
+      return false;
+    }
+    if (state.emailVerificationEnabled) {
+      const expectedEmail = getDerivedSignupEmail(username);
+      if (email !== expectedEmail) {
+        signupEmail.value = expectedEmail;
+        setStatus(signupStatus, 'Email must follow username@NIP05_DOMAIN when email verification is enabled', 'error');
+        signupEmail?.focus();
+        return false;
+      }
     }
     if (publicKey && !(/^[a-f0-9]{64}$/i.test(publicKey) || publicKey.startsWith('npub1'))) {
       setStatus(signupStatus, 'Public key must be npub1... or 64-char hex', 'error');
@@ -162,6 +232,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!validateSignupStartForm()) return;
 
       const username = signupUsername.value.trim().toLowerCase();
+      const email = signupEmail?.value.trim().toLowerCase() || '';
       const password = signupPassword.value;
       const publicKey = signupPublicKey?.value.trim() || '';
       const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
@@ -173,6 +244,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const passwordHash = await sha256Hex(password);
         const data = await request('/api/v1/auth/register', {
           username,
+          email: email || undefined,
           password_hash: passwordHash,
           public_key: publicKey || undefined,
           private_key_encrypted: privateKeyEncrypted || undefined,

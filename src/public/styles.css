@@ -159,6 +159,26 @@ h1 {
   font-size: 0.95rem;
 }
 
+.form input[readonly][data-locked="true"] {
+  background: rgba(8, 12, 20, 0.55);
+  border-color: rgba(255, 216, 107, 0.5);
+  color: var(--accent-2);
+  cursor: default;
+}
+
+.form label.email-lock-hint small {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 140ms ease, opacity 140ms ease;
+}
+
+.form label.email-lock-hint:hover small,
+.form label.email-lock-hint:focus-within small {
+  max-height: 42px;
+  opacity: 1;
+}
+
 .form textarea {
   resize: vertical;
 }
