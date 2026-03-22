@@ -6,7 +6,7 @@ set -uo pipefail
 
 BASE_URL="http://localhost:3000"
 VERBOSE=false
-EXPECTED_TESTS=14
+EXPECTED_TESTS=17
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -92,6 +92,7 @@ verify_returned_keypair() {
   PRIVATE_KEY_ENCRYPTED="$private_key_encrypted" \
   VERIFY_PASSWORD="$password" \
   node --input-type=module <<'EOF'
+import { createHash } from 'node:crypto';
 import { getPublicKey } from 'nostr-tools';
 import { decrypt } from 'nostr-tools/nip49';
 
@@ -104,7 +105,13 @@ if (!expectedPublicKey || !privateKeyEncrypted || !password) {
   process.exit(1);
 }
 
-const secretKey = decrypt(privateKeyEncrypted, password);
+const passwordHash = createHash('sha256').update(password).digest('hex');
+let secretKey;
+try {
+  secretKey = decrypt(privateKeyEncrypted, password);
+} catch {
+  secretKey = decrypt(privateKeyEncrypted, passwordHash);
+}
 const actualPublicKey = getPublicKey(secretKey).toLowerCase();
 
 if (actualPublicKey !== expectedPublicKey) {
@@ -124,15 +131,23 @@ rotate_key_password() {
   NEW_PASSWORD="$new_password" \
   node --input-type=module <<'EOF'
 import { getPublicKey } from 'nostr-tools';
+import { createHash } from 'node:crypto';
 import { decrypt, encrypt } from 'nostr-tools/nip49';
 
 const privateKeyEncrypted = String(process.env.PRIVATE_KEY_ENCRYPTED || '').trim();
 const oldPassword = String(process.env.OLD_PASSWORD || '');
 const newPassword = String(process.env.NEW_PASSWORD || '');
 
-const secretKey = decrypt(privateKeyEncrypted, oldPassword);
+const oldPasswordHash = createHash('sha256').update(oldPassword).digest('hex');
+const newPasswordHash = createHash('sha256').update(newPassword).digest('hex');
+let secretKey;
+try {
+  secretKey = decrypt(privateKeyEncrypted, oldPassword);
+} catch {
+  secretKey = decrypt(privateKeyEncrypted, oldPasswordHash);
+}
 const publicKey = getPublicKey(secretKey).toLowerCase();
-const rotatedPrivateKeyEncrypted = encrypt(secretKey, newPassword);
+const rotatedPrivateKeyEncrypted = encrypt(secretKey, newPasswordHash);
 
 console.log(publicKey);
 console.log(rotatedPrivateKeyEncrypted);
@@ -304,6 +319,34 @@ if echo "$NIP05_RESPONSE" | grep -q "\"$TEST_USER\""; then
   pass_step "NIP-05 verification works"
 else
   fail_step "NIP-05 failed" "$NIP05_RESPONSE"
+fi
+
+start_test "NIP-46 Info"
+NIP46_INFO_RESPONSE=$(curl -s "$API_URL/nip46/info")
+print_response "$NIP46_INFO_RESPONSE"
+if echo "$NIP46_INFO_RESPONSE" | grep -q '"pubkey"' && echo "$NIP46_INFO_RESPONSE" | grep -q '"connect"'; then
+  pass_step "NIP-46 info endpoint returned signer metadata"
+else
+  fail_step "NIP-46 info failed" "$NIP46_INFO_RESPONSE"
+fi
+
+start_test "NIP-46 Connect Token"
+NIP46_CONNECT_RESPONSE=$(curl -s "$API_URL/nip46/connect/$TEST_USER")
+print_response "$NIP46_CONNECT_RESPONSE"
+NIP46_BUNKER_URL=$(jq -r '.bunker_url // empty' <<<"$NIP46_CONNECT_RESPONSE")
+if [ -n "$NIP46_BUNKER_URL" ] && printf '%s' "$NIP46_BUNKER_URL" | grep -q '^bunker://'; then
+  pass_step "NIP-46 connect returned a bunker URL"
+else
+  fail_step "NIP-46 connect failed" "$NIP46_CONNECT_RESPONSE"
+fi
+
+start_test "NIP-46 Nostrconnect"
+NIP46_NOSTRCONNECT_RESPONSE=$(post_json "/nip46/nostrconnect" "{\"nostrconnect_url\":\"nostrconnect://$(printf 'c%.0s' $(seq 1 64))?relay=wss://relay.example.com&secret=test123&perms=sign_event,get_public_key\",\"username\":\"$TEST_USER\"}")
+print_response "$NIP46_NOSTRCONNECT_RESPONSE"
+if echo "$NIP46_NOSTRCONNECT_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+  pass_step "NIP-46 nostrconnect established a session"
+else
+  fail_step "NIP-46 nostrconnect failed" "$NIP46_NOSTRCONNECT_RESPONSE"
 fi
 
 start_test "Upload Profile Picture"

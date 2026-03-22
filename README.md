@@ -5,9 +5,10 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 ## Features
 
 - Secure two-step onboarding (verify email before private key submission)
-- Secure password hashing (bcrypt)
+- Password-hash-based account auth (`password_hash` is SHA-256 hex)
 - NIP-49 encrypted private key storage
 - NIP-05 verification endpoint
+- NIP-46 remote signer endpoints for active accounts
 - Update password and relays
 - Test coverage
 
@@ -89,11 +90,15 @@ SMTP_PASS=
 SMTP_FROM="Noas <no-reply@example.com>"
 SMTP_REPLY_TO=
 SMTP_REJECT_UNAUTHORIZED=true
+NIP46_SIGNER_PRIVATE_KEY=
+NIP46_RELAYS=
 ```
 
 Primary domain settings:
 - `NIP05_DOMAIN`: base identity domain for NIP-05 handles (`user@polygon.gmbh`)
 - `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API
+- `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
+- `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
 
 Most other domain-related behavior derives from these values.
 
@@ -253,6 +258,19 @@ Update password hash, public key, encrypted private key, or relays (requires aut
 
 Credential rotation requires `new_password_hash`/`new_password`, `public_key`, and `private_key_encrypted` together.
 
+### NIP-46 Endpoints
+
+- `GET /api/v1/nip46/info` -> returns signer metadata and supported methods.
+- `GET /api/v1/nip46/connect/:username` -> returns a `bunker://` URL for an active account.
+- `POST /api/v1/nip46/nostrconnect` -> accepts a `nostrconnect://` URL and creates a signer session for an active account.
+- `POST /api/v1/nip46/request` -> accepts encrypted kind `24133` requests and returns an encrypted response event.
+
+Remote signing detail:
+- `get_public_key` returns the connected account's pubkey.
+- `sign_event` signs with the account key only when the stored NIP-49 ciphertext can be unlocked with the stored `password_hash` value.
+- New browser-managed key material is now encrypted with that SHA-256 password hash so server-side NIP-46 signing can work for newly created or rotated accounts.
+- Older accounts whose NIP-49 key was encrypted with the raw password can still sign in locally, but NIP-46 signing will fail until the key material is rotated.
+
 ### GET /.well-known/nostr.json?name=alice
 
 NIP-05 verification endpoint.
@@ -270,7 +288,7 @@ When called without `name`, returns Noas instance metadata (version, public URL,
 
 ## Security Notes
 
-- Passwords are hashed with bcrypt (never stored plain)
+- Passwords are stored as client-submitted SHA-256 hashes, never plain text
 - Private keys are stored encrypted (NIP-49 format)
 - Private key is only accepted after successful email verification
 - Uses HTTPS in production

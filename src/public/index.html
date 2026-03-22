@@ -272,8 +272,8 @@
         </div>
         <div class="card">
           <h2>NIP-46</h2>
-          <p>Remote signer discovery and request handling.</p>
-          <code>GET /api/v1/nip46/info · GET /api/v1/nip46/connect/:username · POST /api/v1/nip46/request</code>
+          <p>Remote signer discovery, connection bootstrap, and encrypted request handling for active accounts.</p>
+          <code>GET /api/v1/nip46/info · GET /api/v1/nip46/connect/:username · POST /api/v1/nip46/request · POST /api/v1/nip46/nostrconnect</code>
         </div>
       </section>
 
@@ -295,6 +295,7 @@
   "redirect": "https://nodex.polygon.gmbh"
 }
 </code></pre>
+        <p>NIP-46 note: keys intended for remote signing should be NIP-49 encrypted with the same SHA-256 password hash stored by the account.</p>
       </section>
 
       <footer class="footer">
