@@ -1,12 +1,4 @@
-/**
- * Database Setup Script
- *
- * Creates the current database schema for Noas.
- */
-
-import { pool } from './pool.js';
-
-const schema = `
+-- migrate:up
 DO $$
 BEGIN
   CREATE TYPE nostr_user_status AS ENUM ('unverified_email', 'active', 'disabled');
@@ -32,38 +24,6 @@ CREATE INDEX IF NOT EXISTS idx_nostr_users_public_key ON nostr_users(public_key)
 CREATE INDEX IF NOT EXISTS idx_nostr_users_unverified_created_at ON nostr_users(created_at) WHERE status = 'unverified_email';
 CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token) WHERE verification_token IS NOT NULL;
 
-ALTER TABLE nostr_users
-  DROP CONSTRAINT IF EXISTS nostr_username_format;
-
-ALTER TABLE nostr_users
-  ADD CONSTRAINT nostr_username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$');
-
-ALTER TABLE nostr_users
-  ADD COLUMN IF NOT EXISTS relays JSONB DEFAULT '[]'::jsonb;
-
-ALTER TABLE nostr_users
-  RENAME COLUMN password_hash TO password_sha256;
-
-ALTER TABLE nostr_users
-  ALTER COLUMN verification_token TYPE UUID USING verification_token::uuid;
-
-ALTER TABLE nostr_users
-  DROP COLUMN IF EXISTS last_resend_at;
-
-DROP INDEX IF EXISTS idx_nostr_users_public_key;
-DROP INDEX IF EXISTS idx_nostr_users_status_created_at;
-DROP INDEX IF EXISTS idx_nostr_users_public_key_unique;
-
-CREATE INDEX IF NOT EXISTS idx_nostr_users_public_key ON nostr_users(public_key) WHERE public_key IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_nostr_users_unverified_created_at ON nostr_users(created_at) WHERE status = 'unverified_email';
-CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token) WHERE verification_token IS NOT NULL;
-
-DROP TABLE IF EXISTS user_onboarding;
-DROP TABLE IF EXISTS used_verification_tokens;
-
-ALTER TABLE nostr_users
-  DROP COLUMN IF EXISTS verification_expires_at;
-
 CREATE TABLE IF NOT EXISTS profile_pictures (
   account_id INTEGER PRIMARY KEY REFERENCES nostr_users(id) ON DELETE CASCADE,
   content_type VARCHAR(100) NOT NULL,
@@ -72,15 +32,6 @@ CREATE TABLE IF NOT EXISTS profile_pictures (
 );
 
 CREATE INDEX IF NOT EXISTS idx_profile_pictures_updated_at ON profile_pictures(updated_at);
-
-ALTER TABLE nostr_users
-  DROP COLUMN IF EXISTS profile_picture_updated_at;
-
-ALTER TABLE nostr_users
-  DROP COLUMN IF EXISTS profile_picture_type;
-
-ALTER TABLE nostr_users
-  DROP COLUMN IF EXISTS profile_picture;
 
 CREATE TABLE IF NOT EXISTS nip46_sessions (
   id SERIAL PRIMARY KEY,
@@ -118,19 +69,9 @@ CREATE INDEX IF NOT EXISTS idx_nip46_requests_request_id ON nip46_requests(reque
 CREATE INDEX IF NOT EXISTS idx_nip46_requests_session_id ON nip46_requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_nip46_requests_status ON nip46_requests(status);
 
-DROP TABLE IF EXISTS users;
-`;
-
-async function setup() {
-  try {
-    console.log('Setting up database...');
-    await pool.query(schema);
-    console.log('Database setup complete');
-    await pool.end();
-  } catch (error) {
-    console.error('Database setup failed:', error);
-    process.exit(1);
-  }
-}
-
-setup();
+-- migrate:down
+DROP TABLE IF EXISTS nip46_requests;
+DROP TABLE IF EXISTS nip46_sessions;
+DROP TABLE IF EXISTS profile_pictures;
+DROP TABLE IF EXISTS nostr_users;
+DROP TYPE IF EXISTS nostr_user_status;
