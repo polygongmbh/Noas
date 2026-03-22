@@ -31,8 +31,8 @@
         </p>
         <div class="actions">
           <a class="btn" href="/health">API status</a>
-          <a class="btn ghost" href="#portal">Account portal</a>
-          <a class="btn ghost" href="#endpoints">Endpoints</a>
+          <a class="btn subtle" href="#portal">Account portal</a>
+          <a class="btn subtle" href="#endpoints">Endpoints</a>
         </div>
         <div class="warning">
           Important: Save your private key somewhere safe. Noas only stores your
@@ -95,7 +95,7 @@
             Username for resend
             <input type="text" id="resendUsername" placeholder="your_username" />
           </label>
-          <button type="submit" class="btn ghost">Resend Verification Email</button>
+          <button type="submit" class="btn subtle">Resend Verification Email</button>
           <div id="resendStatus" class="status"></div>
         </form>
 
@@ -150,38 +150,46 @@
           </div>
 
           <div class="actions inline">
-            <button id="copyEncrypted" class="btn ghost" type="button">Copy encrypted key</button>
-            <button id="decryptPrivateKey" class="btn ghost" type="button">Decrypt private key</button>
+            <button id="copyEncrypted" class="btn subtle" type="button">Copy encrypted key</button>
+            <button id="decryptPrivateKey" class="btn subtle" type="button">Decrypt private key</button>
           </div>
         </div>
 
         <div class="panel" id="updatePanel" hidden>
           <h2>Update Account</h2>
-          <p>Leave fields blank if you do not want to change them.</p>
-          <form id="updateForm" class="form">
-            <label>
-              New password
-              <input type="password" name="newPassword" autocomplete="new-password" />
-            </label>
-            <label>
-              New encrypted private key (NIP-49)
-              <input type="text" name="private_key_encrypted" placeholder="ncryptsec..." />
-            </label>
+          <p>Each account update is handled separately.</p>
+
+          <form id="credentialsForm" class="form mini-form">
+            <div class="split-fields">
+              <label>
+                New password
+                <input type="password" name="newPassword" autocomplete="new-password" />
+              </label>
+              <label>
+                New encrypted private key (NIP-49)
+                <input type="text" name="private_key_encrypted" placeholder="ncryptsec..." />
+              </label>
+            </div>
+            <button type="submit" class="btn subtle">Update password and key</button>
+            <div id="credentialsStatus" class="status" role="status"></div>
+          </form>
+
+          <form id="relayForm" class="form mini-form">
             <label>
               Relays (one per line)
               <textarea name="relays" rows="4" placeholder="wss://relay.example.com"></textarea>
             </label>
-            <button type="submit" class="btn">Update account</button>
-            <div id="updateStatus" class="status" role="status"></div>
+            <button type="submit" class="btn subtle">Update relays</button>
+            <div id="relayStatus" class="status" role="status"></div>
           </form>
 
-          <form id="pictureForm" class="form">
+          <form id="pictureForm" class="form mini-form">
             <label>
               Profile picture
               <input type="file" id="profilePictureInput" accept="image/*" />
               <small>Upload a JPG, PNG, GIF, or WebP image up to 2MB.</small>
             </label>
-            <button type="submit" class="btn ghost">Upload picture</button>
+            <button type="submit" class="btn subtle">Upload picture</button>
             <div id="pictureStatus" class="status" role="status"></div>
           </form>
         </div>

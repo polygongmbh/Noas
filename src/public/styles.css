@@ -116,6 +116,16 @@ h1 {
   color: var(--text);
 }
 
+.btn.subtle {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text);
+}
+
+.btn.subtle:hover {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
 .btn.danger {
   background: var(--danger);
   color: #0c1118;
@@ -304,6 +314,18 @@ h1 {
   background: rgba(8, 12, 20, 0.85);
 }
 
+.mini-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.split-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .footer {
   margin-top: 32px;
   display: flex;
@@ -325,6 +347,10 @@ h1 {
   }
 
   .profile-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .split-fields {
     grid-template-columns: 1fr;
   }
 }

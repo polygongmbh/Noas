@@ -8,10 +8,12 @@ document.addEventListener('DOMContentLoaded', function () {
   };
 
   const signinForm = document.getElementById('signinForm');
-  const updateForm = document.getElementById('updateForm');
+  const credentialsForm = document.getElementById('credentialsForm');
+  const relayForm = document.getElementById('relayForm');
   const deleteForm = document.getElementById('deleteForm');
   const signinStatus = document.getElementById('signinStatus');
-  const updateStatus = document.getElementById('updateStatus');
+  const credentialsStatus = document.getElementById('credentialsStatus');
+  const relayStatus = document.getElementById('relayStatus');
   const deleteStatus = document.getElementById('deleteStatus');
   const pictureStatus = document.getElementById('pictureStatus');
   const accountPanel = document.getElementById('accountPanel');
@@ -365,7 +367,10 @@ document.addEventListener('DOMContentLoaded', function () {
       updatePanel.hidden = false;
       deletePanel.hidden = false;
       setStatus(signinStatus, 'Signed in successfully.', 'success');
-      updateForm.querySelector('textarea[name="relays"]').value = (data.relays || []).join('\n');
+      const relayTextarea = relayForm?.querySelector('textarea[name="relays"]');
+      if (relayTextarea) {
+        relayTextarea.value = (data.relays || []).join('\n');
+      }
     } catch (error) {
       setStatus(signinStatus, error.message, 'error');
     }
@@ -417,38 +422,71 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  updateForm.addEventListener('submit', async (event) => {
+  credentialsForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!state.username || !state.password) {
-      setStatus(updateStatus, 'Sign in before updating your account.', 'error');
+      setStatus(credentialsStatus, 'Sign in before updating your account.', 'error');
       return;
     }
 
-    const formData = new FormData(updateForm);
-    const updates = {};
-    const newPassword = formData.get('newPassword');
-    const privateKeyEncrypted = formData.get('private_key_encrypted');
-    const relays = parseRelays(formData.get('relays'));
+    const formData = new FormData(credentialsForm);
+    const newPassword = String(formData.get('newPassword') || '');
+    const privateKeyEncrypted = String(formData.get('private_key_encrypted') || '').trim();
 
-    if (newPassword) updates.newPassword = newPassword;
-    if (privateKeyEncrypted) updates.private_key_encrypted = privateKeyEncrypted;
-    if (relays.length) updates.relays = relays;
-
-    if (Object.keys(updates).length === 0) {
-      setStatus(updateStatus, 'Add at least one field to update.', 'error');
+    if (!newPassword && !privateKeyEncrypted) {
+      setStatus(credentialsStatus, 'Enter both a new password and encrypted private key.', 'error');
+      return;
+    }
+    if (!newPassword || !privateKeyEncrypted) {
+      setStatus(credentialsStatus, 'Password and encrypted private key must be updated together.', 'error');
       return;
     }
 
-    setStatus(updateStatus, 'Updating account...');
+    setStatus(credentialsStatus, 'Updating password and key...', 'info');
     try {
       await request('/api/v1/auth/update', {
         username: state.username,
         password: state.password,
-        updates,
+        updates: {
+          newPassword,
+          private_key_encrypted: privateKeyEncrypted,
+        },
       });
-      setStatus(updateStatus, 'Account updated successfully.', 'success');
+      state.password = newPassword;
+      encryptedKeyEl.textContent = privateKeyEncrypted;
+      privateKeyEl.textContent = '—';
+      setStatus(credentialsStatus, 'Password and encrypted key updated.', 'success');
+      credentialsForm.reset();
     } catch (error) {
-      setStatus(updateStatus, error.message, 'error');
+      setStatus(credentialsStatus, error.message, 'error');
+    }
+  });
+
+  relayForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!state.username || !state.password) {
+      setStatus(relayStatus, 'Sign in before updating relays.', 'error');
+      return;
+    }
+
+    const formData = new FormData(relayForm);
+    const relays = parseRelays(formData.get('relays'));
+    if (!relays.length) {
+      setStatus(relayStatus, 'Enter at least one relay URL.', 'error');
+      return;
+    }
+
+    setStatus(relayStatus, 'Updating relays...', 'info');
+    try {
+      await request('/api/v1/auth/update', {
+        username: state.username,
+        password: state.password,
+        updates: { relays },
+      });
+      relayListEl.textContent = relays.join(', ');
+      setStatus(relayStatus, 'Relays updated.', 'success');
+    } catch (error) {
+      setStatus(relayStatus, error.message, 'error');
     }
   });
 
@@ -533,7 +571,8 @@ document.addEventListener('DOMContentLoaded', function () {
       updatePanel.hidden = true;
       deletePanel.hidden = true;
       signinForm.reset();
-      updateForm.reset();
+      credentialsForm?.reset();
+      relayForm?.reset();
       deleteForm.reset();
       state.username = null;
       state.password = null;
