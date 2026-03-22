@@ -108,7 +108,7 @@
       throw new Error('Password is required');
     }
 
-    const [{ decrypt }, { nip19 }] = await Promise.all([
+    const [{ decrypt }, { nip19, getPublicKey }] = await Promise.all([
       loadNip49Module(),
       loadNostrToolsModule(),
     ]);
@@ -117,11 +117,63 @@
     return {
       hex: bytesToHex(secretKey),
       nsec: nip19.nsecEncode(secretKey),
+      publicKey: getPublicKey(secretKey).toLowerCase(),
+    };
+  }
+
+  async function normalizeSecretKey(privateKeyInput) {
+    const normalizedKey = String(privateKeyInput || '').trim();
+    if (!normalizedKey) {
+      throw new Error('Private key is required');
+    }
+
+    const { nip19, getPublicKey } = await loadNostrToolsModule();
+    let secretKey = null;
+
+    if (/^[a-f0-9]{64}$/i.test(normalizedKey)) {
+      secretKey = Uint8Array.from(hexToBytes(normalizedKey));
+    } else if (normalizedKey.startsWith('nsec1')) {
+      const decoded = nip19.decode(normalizedKey);
+      if (decoded.type !== 'nsec' || !(decoded.data instanceof Uint8Array)) {
+        throw new Error('Private key must be valid hex, nsec, or ncryptsec');
+      }
+      secretKey = decoded.data;
+    } else {
+      throw new Error('Private key must be valid hex, nsec, or ncryptsec');
+    }
+
+    return {
+      secretKey,
+      hex: bytesToHex(secretKey),
+      nsec: nip19.nsecEncode(secretKey),
+      publicKey: getPublicKey(secretKey).toLowerCase(),
+    };
+  }
+
+  async function encryptPrivateKey(privateKeyInput, password) {
+    const normalizedPassword = String(password || '');
+    if (!normalizedPassword) {
+      throw new Error('Password is required');
+    }
+
+    const [{ encrypt }, { nip19 }] = await Promise.all([
+      loadNip49Module(),
+      loadNostrToolsModule(),
+    ]);
+    const normalized = await normalizeSecretKey(privateKeyInput);
+
+    return {
+      privateKeyEncrypted: encrypt(normalized.secretKey, normalizedPassword),
+      hex: normalized.hex,
+      nsec: nip19.nsecEncode(normalized.secretKey),
+      publicKey: normalized.publicKey,
     };
   }
 
   globalScope.NoasNostr = {
     decryptPrivateKey,
+    encryptPrivateKey,
+    normalizeSecretKey,
     npubFromHexPublicKey,
   };
 }(window));

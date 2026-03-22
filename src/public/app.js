@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const state = {
     username: null,
     password: null,
+    publicKey: null,
     signupUsername: null,
     emailVerificationEnabled: false,
     nip05Domain: window.location.hostname || '',
@@ -356,6 +357,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const data = await request('/api/v1/auth/signin', { username, password_hash: passwordHash });
       state.username = username;
       state.password = password;
+      state.publicKey = String(data.public_key || '').trim().toLowerCase() || null;
 
       const normalizedPublicKey = data.public_key || '';
       setProfilePicture(normalizedPublicKey);
@@ -431,31 +433,48 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const formData = new FormData(credentialsForm);
     const newPassword = String(formData.get('newPassword') || '');
-    const privateKeyEncrypted = String(formData.get('private_key_encrypted') || '').trim();
+    const privateKeyInput = String(formData.get('private_key_input') || '').trim();
 
-    if (!newPassword && !privateKeyEncrypted) {
-      setStatus(credentialsStatus, 'Enter both a new password and encrypted private key.', 'error');
+    if (!newPassword && !privateKeyInput) {
+      setStatus(credentialsStatus, 'Enter both a new password and private key.', 'error');
       return;
     }
-    if (!newPassword || !privateKeyEncrypted) {
-      setStatus(credentialsStatus, 'Password and encrypted private key must be updated together.', 'error');
+    if (!newPassword || !privateKeyInput) {
+      setStatus(credentialsStatus, 'Password and private key must be updated together.', 'error');
       return;
     }
 
     setStatus(credentialsStatus, 'Updating password and key...', 'info');
     try {
+      let encryptedPrivateKey = '';
+      let resolvedPublicKey = '';
+
+      if (privateKeyInput.startsWith('ncryptsec')) {
+        const decrypted = await window.NoasNostr.decryptPrivateKey(privateKeyInput, newPassword);
+        encryptedPrivateKey = privateKeyInput;
+        resolvedPublicKey = String(decrypted.publicKey || '').trim().toLowerCase();
+      } else {
+        const encrypted = await window.NoasNostr.encryptPrivateKey(privateKeyInput, newPassword);
+        encryptedPrivateKey = encrypted.privateKeyEncrypted;
+        resolvedPublicKey = String(encrypted.publicKey || '').trim().toLowerCase();
+      }
+
+      if (!resolvedPublicKey || resolvedPublicKey !== String(state.publicKey || '').trim().toLowerCase()) {
+        throw new Error('Private key does not match the signed-in account public key.');
+      }
+
       await request('/api/v1/auth/update', {
         username: state.username,
         password: state.password,
         updates: {
           newPassword,
-          private_key_encrypted: privateKeyEncrypted,
+          private_key_encrypted: encryptedPrivateKey,
         },
       });
       state.password = newPassword;
-      encryptedKeyEl.textContent = privateKeyEncrypted;
+      encryptedKeyEl.textContent = encryptedPrivateKey;
       privateKeyEl.textContent = '—';
-      setStatus(credentialsStatus, 'Password and encrypted key updated.', 'success');
+      setStatus(credentialsStatus, 'Password and key updated after local verification.', 'success');
       credentialsForm.reset();
     } catch (error) {
       setStatus(credentialsStatus, error.message, 'error');
@@ -576,6 +595,7 @@ document.addEventListener('DOMContentLoaded', function () {
       deleteForm.reset();
       state.username = null;
       state.password = null;
+      state.publicKey = null;
       clearProfilePicture();
       privateKeyEl.textContent = '—';
     } catch (error) {
