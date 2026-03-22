@@ -1,8 +1,10 @@
 /**
  * User Database Operations
- * 
- * All database operations related to users table.
- * Handles CRUD operations for user accounts.
+ *
+ * The active account store is `nostr_users`.
+ * A small set of legacy helper names is kept as wrappers so older tests can
+ * continue to exercise the same behavior without depending on the removed
+ * `users` table.
  */
 
 import { query } from './pool.js';
@@ -13,19 +15,21 @@ const NOSTR_USER_STATUSES = {
   DISABLED: 'disabled',
 };
 
+function mapLegacyUserRow(row) {
+  if (!row) return undefined;
+  return {
+    ...row,
+    encrypted_private_key: row.private_key_encrypted,
+    password_hash: row.password_sha256,
+    email: null,
+    email_verified_at: row.status === NOSTR_USER_STATUSES.ACTIVE ? row.created_at : null,
+  };
+}
+
 /**
- * Create a new user in the database
- * @param {Object} userData - User data object
- * @param {string} userData.username - Unique username (3-32 chars, lowercase alphanumeric)
- * @param {string} userData.publicKey - Nostr public key (64-char hex)
- * @param {string} userData.encryptedPrivateKey - NIP-49 encrypted private key
- * @param {string} userData.passwordHash - Bcrypt hashed password
- * @param {Array} userData.relays - Optional array of relay URLs
- * @param {string|null} userData.email - Optional email address
- * @param {Date|null} userData.emailVerifiedAt - Optional verification timestamp
- * @param {string|null} userData.emailVerificationToken - Optional email verification token
- * @param {Date|null} userData.emailVerificationExpiresAt - Optional email verification expiry
- * @returns {Promise<Object>} Created user object
+ * Legacy wrapper for creating an active user account.
+ * @param {Object} userData
+ * @returns {Promise<Object>}
  */
 export async function createUser({
   username,
@@ -33,38 +37,17 @@ export async function createUser({
   encryptedPrivateKey,
   passwordHash,
   relays = [],
-  email = null,
-  emailVerifiedAt = null,
-  emailVerificationToken = null,
-  emailVerificationExpiresAt = null,
 }) {
-  const result = await query(
-    `INSERT INTO users (
-      username,
-      public_key,
-      encrypted_private_key,
-      password_hash,
-      relays,
-      email,
-      email_verified_at,
-      email_verification_token,
-      email_verification_expires_at
-    )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id, username, public_key, email, email_verified_at, created_at`,
-    [
-      username,
-      publicKey,
-      encryptedPrivateKey,
-      passwordHash,
-      JSON.stringify(relays),
-      email,
-      emailVerifiedAt,
-      emailVerificationToken,
-      emailVerificationExpiresAt,
-    ]
-  );
-  return result.rows[0];
+  const result = await createNostrUser({
+    username,
+    passwordSha256: passwordHash,
+    publicKey,
+    privateKeyEncrypted: encryptedPrivateKey,
+    relays,
+    status: NOSTR_USER_STATUSES.ACTIVE,
+    verificationToken: null,
+  });
+  return mapLegacyUserRow(result);
 }
 
 /**
@@ -75,10 +58,10 @@ export async function createUser({
  */
 export async function getUserByUsername(username) {
   const result = await query(
-    'SELECT * FROM users WHERE username = $1',
+    'SELECT * FROM nostr_users WHERE username = $1',
     [username]
   );
-  return result.rows[0];
+  return mapLegacyUserRow(result.rows[0]);
 }
 
 /**
@@ -87,11 +70,10 @@ export async function getUserByUsername(username) {
  * @returns {Promise<Object|undefined>}
  */
 export async function getUserByEmail(email) {
-  const result = await query(
-    'SELECT * FROM users WHERE email = $1',
-    [email]
-  );
-  return result.rows[0];
+  const normalized = String(email || '').trim().toLowerCase();
+  const username = normalized.split('@')[0];
+  if (!username) return undefined;
+  return getUserByUsername(username);
 }
 
 /**
@@ -102,8 +84,12 @@ export async function getUserByEmail(email) {
  */
 export async function getUserForNip05(username) {
   const result = await query(
-    'SELECT username, public_key, email_verified_at FROM users WHERE username = $1',
-    [username]
+    `SELECT username,
+            public_key,
+            CASE WHEN status = $2 THEN created_at ELSE NULL END AS email_verified_at
+     FROM nostr_users
+     WHERE username = $1`,
+    [username, NOSTR_USER_STATUSES.ACTIVE]
   );
   return result.rows[0];
 }
@@ -115,11 +101,7 @@ export async function getUserForNip05(username) {
  * @returns {Promise<Object|undefined>} Object with profile_picture and profile_picture_type
  */
 export async function getUserProfilePictureByPublicKey(publicKey) {
-  const result = await query(
-    'SELECT profile_picture, profile_picture_type FROM users WHERE public_key = $1',
-    [publicKey]
-  );
-  return result.rows[0];
+  return getNostrUserProfilePictureByPublicKey(publicKey);
 }
 
 /**
@@ -131,16 +113,14 @@ export async function getUserProfilePictureByPublicKey(publicKey) {
  * @returns {Promise<Object>} Updated user object
  */
 export async function updateUserProfilePicture(username, pictureData, pictureType) {
-  const result = await query(
-    `UPDATE users
-     SET profile_picture = $1,
-         profile_picture_type = $2,
-         profile_picture_updated_at = CURRENT_TIMESTAMP
-     WHERE username = $3
-     RETURNING id, username, public_key`,
-    [pictureData, pictureType, username]
-  );
-  return result.rows[0];
+  const user = await getNostrUserByUsername(username);
+  if (!user) return undefined;
+  await updateNostrUserProfilePicture(user.id, pictureData, pictureType);
+  return {
+    id: user.id,
+    username: user.username,
+    public_key: user.public_key,
+  };
 }
 
 /**
@@ -154,35 +134,13 @@ export async function updateUserProfilePicture(username, pictureData, pictureTyp
  * @returns {Promise<Object>} Updated user object
  */
 export async function updateUser(username, updates) {
-  const fields = [];
-  const values = [];
-  let paramCount = 1;
-
-  if (updates.passwordHash) {
-    fields.push(`password_hash = $${paramCount++}`);
-    values.push(updates.passwordHash);
-  }
-  if (updates.encryptedPrivateKey) {
-    fields.push(`encrypted_private_key = $${paramCount++}`);
-    values.push(updates.encryptedPrivateKey);
-  }
-  if (updates.relays) {
-    fields.push(`relays = $${paramCount++}`);
-    values.push(JSON.stringify(updates.relays));
-  }
-
-  if (fields.length === 0) {
-    throw new Error('No fields to update');
-  }
-
-  values.push(username);
-  
-  const result = await query(
-    `UPDATE users SET ${fields.join(', ')} WHERE username = $${paramCount} RETURNING id, username, public_key`,
-    values
-  );
-  
-  return result.rows[0];
+  const updated = await updateNostrUser(username, {
+    passwordSha256: updates.passwordHash,
+    privateKeyEncrypted: updates.encryptedPrivateKey,
+    publicKey: updates.publicKey,
+    relays: updates.relays,
+  });
+  return mapLegacyUserRow(updated);
 }
 
 /**
@@ -191,11 +149,8 @@ export async function updateUser(username, updates) {
  * @returns {Promise<Object|undefined>} Deleted user summary or undefined if not found
  */
 export async function deleteUser(username) {
-  const result = await query(
-    'DELETE FROM users WHERE username = $1 RETURNING id, username, public_key',
-    [username]
-  );
-  return result.rows[0];
+  const result = await deleteNostrUser(username);
+  return mapLegacyUserRow(result);
 }
 
 /**
@@ -205,21 +160,21 @@ export async function deleteUser(username) {
  * @returns {Promise<Object|undefined>} Updated user summary or undefined if not verified
  */
 export async function verifyUserEmail(username, token) {
+  const user = await getNostrUserByVerificationToken(token);
+  if (!user || user.username !== username) {
+    return undefined;
+  }
   const result = await query(
-    `UPDATE users
-     SET email_verified_at = CURRENT_TIMESTAMP,
-         email_verification_token = NULL,
-         email_verification_expires_at = NULL
-     WHERE username = $1
-       AND email_verification_token = $2
-       AND (email_verification_expires_at IS NULL OR email_verification_expires_at > CURRENT_TIMESTAMP)
-     RETURNING id, username, public_key, email, email_verified_at`,
-    [username, token]
+    `UPDATE nostr_users
+     SET status = $1,
+         verification_token = NULL
+     WHERE username = $2
+     RETURNING *`,
+    [NOSTR_USER_STATUSES.ACTIVE, username]
   );
-  return result.rows[0];
+  return mapLegacyUserRow(result.rows[0]);
 }
 
-/**
 /**
  * Delete expired pending nostr users and return number of deleted rows.
  * Expiry is derived from created_at + expiry window.

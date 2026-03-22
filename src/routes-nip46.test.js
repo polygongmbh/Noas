@@ -70,7 +70,7 @@ describe('NIP-46 API Routes', () => {
     // Clean up test data
     await pool.query('DELETE FROM nip46_requests WHERE session_id LIKE $1', ['%test%']);
     await pool.query('DELETE FROM nip46_sessions WHERE session_id LIKE $1', ['%test%']);
-    await pool.query('DELETE FROM users WHERE username = $1', [testUser.username]);
+    await pool.query('DELETE FROM nostr_users WHERE username = $1', [testUser.username]);
     
     // Close server
     if (server) {
@@ -232,7 +232,7 @@ describe('NIP-46 API Routes', () => {
 
   describe('Error Handling', () => {
     it('handles malformed JSON gracefully', async () => {
-      const response = await fetch(`http://localhost:${process.env.PORT || 3000}/nip46/request`, {
+      const response = await fetch(`http://localhost:${(process.env.PORT ? Number(process.env.PORT) : 3000) + 1}/nip46/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: 'invalid json'

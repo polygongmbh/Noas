@@ -47,43 +47,8 @@ async function request(method, path, body) {
 before(async () => {
   // Clean up test data first
   try {
-    await query(`
-      CREATE TABLE IF NOT EXISTS profile_pictures (
-        account_id INTEGER PRIMARY KEY,
-        content_type VARCHAR(100) NOT NULL,
-        data BYTEA NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    await query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
-    `);
-    await query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
-    `);
-    await query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
-    `);
-    await query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS email VARCHAR(320);
-    `);
-    await query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP;
-    `);
-    await query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(128);
-    `);
-    await query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
-    `);
-    await query('DELETE FROM users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
+    await query('DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username IN ($1, $2, $3, $4))', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
+    await query('DELETE FROM nostr_users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
   } catch (e) {
     // Ignore if table doesn't exist yet
   }
@@ -104,7 +69,8 @@ before(async () => {
 after(async () => {
   // Clean up test data
   try {
-    await query('DELETE FROM users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
+    await query('DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username IN ($1, $2, $3, $4))', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
+    await query('DELETE FROM nostr_users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
   } catch (e) {
     // Ignore cleanup errors
   }

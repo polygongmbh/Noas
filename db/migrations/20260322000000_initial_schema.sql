@@ -1,25 +1,12 @@
--- migrate:up
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  username VARCHAR(32) UNIQUE NOT NULL,
-  public_key VARCHAR(64) NOT NULL,
-  encrypted_private_key TEXT NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  email VARCHAR(320),
-  email_verified_at TIMESTAMP,
-  email_verification_token VARCHAR(128),
-  email_verification_expires_at TIMESTAMP,
-  relays JSONB DEFAULT '[]'::jsonb,
-  profile_picture BYTEA,
-  profile_picture_type VARCHAR(100),
-  profile_picture_updated_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$')
-);
+/**
+ * Database Setup Script
+ *
+ * Creates the current database schema for Noas.
+ */
 
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_public_key ON users(public_key);
+import { pool } from './pool.js';
 
+const schema = `
 DO $$
 BEGIN
   CREATE TYPE nostr_user_status AS ENUM ('unverified_email', 'active', 'disabled');
@@ -45,33 +32,6 @@ CREATE INDEX IF NOT EXISTS idx_nostr_users_public_key ON nostr_users(public_key)
 CREATE INDEX IF NOT EXISTS idx_nostr_users_unverified_created_at ON nostr_users(created_at) WHERE status = 'unverified_email';
 CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token) WHERE verification_token IS NOT NULL;
 
-ALTER TABLE users
-  DROP CONSTRAINT IF EXISTS username_format;
-
-ALTER TABLE users
-  ADD CONSTRAINT username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$');
-
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
-
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
-
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
-
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS email VARCHAR(320);
-
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP;
-
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(128);
-
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
-
 ALTER TABLE nostr_users
   DROP CONSTRAINT IF EXISTS nostr_username_format;
 
@@ -81,25 +41,8 @@ ALTER TABLE nostr_users
 ALTER TABLE nostr_users
   ADD COLUMN IF NOT EXISTS relays JSONB DEFAULT '[]'::jsonb;
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = current_schema()
-      AND table_name = 'nostr_users'
-      AND column_name = 'password_hash'
-  ) AND NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = current_schema()
-      AND table_name = 'nostr_users'
-      AND column_name = 'password_sha256'
-  ) THEN
-    ALTER TABLE nostr_users
-      RENAME COLUMN password_hash TO password_sha256;
-  END IF;
-END $$;
+ALTER TABLE nostr_users
+  RENAME COLUMN password_hash TO password_sha256;
 
 ALTER TABLE nostr_users
   ALTER COLUMN verification_token TYPE UUID USING verification_token::uuid;
@@ -142,7 +85,7 @@ ALTER TABLE nostr_users
 CREATE TABLE IF NOT EXISTS nip46_sessions (
   id SERIAL PRIMARY KEY,
   session_id VARCHAR(64) UNIQUE NOT NULL,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES nostr_users(id) ON DELETE CASCADE,
   client_pubkey VARCHAR(64) NOT NULL,
   remote_signer_pubkey VARCHAR(64) NOT NULL,
   secret VARCHAR(64),
@@ -175,4 +118,19 @@ CREATE INDEX IF NOT EXISTS idx_nip46_requests_request_id ON nip46_requests(reque
 CREATE INDEX IF NOT EXISTS idx_nip46_requests_session_id ON nip46_requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_nip46_requests_status ON nip46_requests(status);
 
--- migrate:down
+DROP TABLE IF EXISTS users;
+`;
+
+async function setup() {
+  try {
+    console.log('Setting up database...');
+    await pool.query(schema);
+    console.log('Database setup complete');
+    await pool.end();
+  } catch (error) {
+    console.error('Database setup failed:', error);
+    process.exit(1);
+  }
+}
+
+setup();

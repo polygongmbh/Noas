@@ -40,7 +40,7 @@ describe('NIP-46 Integration Demo', () => {
   after(async () => {
     await pool.query('DELETE FROM nip46_requests WHERE session_id LIKE $1', ['%demo%']);
     await pool.query('DELETE FROM nip46_sessions WHERE session_id LIKE $1', ['%demo%']);
-    await pool.query('DELETE FROM users WHERE username = $1', [testUser.username]);
+    await pool.query('DELETE FROM nostr_users WHERE username = $1', [testUser.username]);
   });
 
   it('demonstrates basic NIP-46 workflow', async () => {

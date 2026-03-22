@@ -1,13 +1,13 @@
 /**
  * User Database Operations Tests
  * 
- * Tests all CRUD operations for the users table.
+ * Tests database operations against the active `nostr_users` account store.
  * Uses a test user and cleans up data before and after tests.
  */
 
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert';
-import { pool, query, closePool } from './pool.js';
+import { query, closePool } from './pool.js';
 import { 
   createUser, 
   getUserByUsername, 
@@ -38,43 +38,14 @@ describe('User Database Operations', { skip: !dbAvailable }, () => {
 
 // Setup: Clean up any existing test data before running tests
 before(async () => {
-  await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
-  `);
-  await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
-  `);
-  await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP;
-  `);
-  await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS email VARCHAR(320);
-  `);
-  await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP;
-  `);
-  await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(128);
-  `);
-  await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
-  `);
-
-  // Clean up any existing test data
-  await query('DELETE FROM users WHERE username = $1', [testUser.username]);
+  await query('DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username = $1)', [testUser.username]);
+  await query('DELETE FROM nostr_users WHERE username = $1', [testUser.username]);
 });
 
 // Teardown: Clean up test data and close database connection
 after(async () => {
-  // Clean up test data
-  await query('DELETE FROM users WHERE username = $1', [testUser.username]);
+  await query('DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username = $1)', [testUser.username]);
+  await query('DELETE FROM nostr_users WHERE username = $1', [testUser.username]);
   await closePool();
 });
 
@@ -147,13 +118,10 @@ test('updateUserProfilePicture stores profile picture', async () => {
   const pictureType = 'image/png';
   const updateResult = await updateUserProfilePicture(testUser.username, pictureData, pictureType);
   
-  // Verify the update operation succeeded
   assert.ok(updateResult);
-
-  // Retrieve the user by username to verify the profile picture was stored
-  const updatedUser = await getUserByUsername(testUser.username);
-  assert.ok(updatedUser);
-  assert.strictEqual(updatedUser.profile_picture_type, pictureType);
-  assert.deepStrictEqual(updatedUser.profile_picture, pictureData);
+  const updatedPicture = await getUserProfilePictureByPublicKey(testUser.publicKey);
+  assert.ok(updatedPicture);
+  assert.strictEqual(updatedPicture.profile_picture_type, pictureType);
+  assert.deepStrictEqual(updatedPicture.profile_picture, pictureData);
 });
 });

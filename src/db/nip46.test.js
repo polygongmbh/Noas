@@ -69,7 +69,7 @@ describe('NIP-46 Database Operations', { skip: !dbAvailable }, () => {
     // Clean up test data
     await pool.query('DELETE FROM nip46_requests WHERE session_id LIKE $1', ['test-%']);
     await pool.query('DELETE FROM nip46_sessions WHERE session_id LIKE $1', ['test-%']);
-    await pool.query('DELETE FROM users WHERE username = $1', [testUser.username]);
+    await pool.query('DELETE FROM nostr_users WHERE username = $1', [testUser.username]);
   });
 
   describe('Session Management', () => {
