@@ -270,36 +270,33 @@ export async function getNostrUserByVerificationToken(token) {
  */
 export async function createNostrUser({
   username,
-  passwordHash,
+  passwordSha256,
   publicKey = null,
   privateKeyEncrypted = null,
   relays = [],
   status = NOSTR_USER_STATUSES.UNVERIFIED_EMAIL,
   verificationToken = null,
-  lastResendAt = null,
 }) {
   const result = await query(
     `INSERT INTO nostr_users (
       username,
-      password_hash,
+      password_sha256,
       public_key,
       private_key_encrypted,
       relays,
       status,
-      verification_token,
-      last_resend_at
+      verification_token
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *`,
     [
       username,
-      passwordHash,
+      passwordSha256,
       publicKey,
       privateKeyEncrypted,
       JSON.stringify(relays),
       status,
       verificationToken,
-      lastResendAt,
     ]
   );
   return result.rows[0];
@@ -330,8 +327,7 @@ export async function activateNostrUserByUsername(username) {
 export async function updateNostrUserResendToken(username, verificationToken) {
   const result = await query(
     `UPDATE nostr_users
-     SET verification_token = $1,
-         last_resend_at = NOW()
+     SET verification_token = $1
      WHERE username = $2
      RETURNING *`,
     [verificationToken, username]
@@ -382,9 +378,9 @@ export async function updateNostrUser(username, updates) {
   const values = [];
   let param = 1;
 
-  if (updates.passwordHash) {
-    fields.push(`password_hash = $${param++}`);
-    values.push(updates.passwordHash);
+  if (updates.passwordSha256) {
+    fields.push(`password_sha256 = $${param++}`);
+    values.push(updates.passwordSha256);
   }
   if (updates.publicKey) {
     fields.push(`public_key = $${param++}`);

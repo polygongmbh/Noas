@@ -208,12 +208,6 @@ function getUpdatePublicKey(updates) {
   ).trim().toLowerCase();
 }
 
-function minutesBetween(nowMs, thenValue) {
-  const thenMs = new Date(thenValue).getTime();
-  if (Number.isNaN(thenMs)) return Number.POSITIVE_INFINITY;
-  return (nowMs - thenMs) / 1000 / 60;
-}
-
 function normalizeBase64Payload(data, contentType) {
   if (!data || typeof data !== 'string') {
     return { error: 'Image data is required' };
@@ -321,7 +315,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     if (!config.emailVerificationEnabled) {
       await createNostrUser({
         username: normalizedUsername,
-        passwordHash: normalizedPasswordHash,
+        passwordSha256: normalizedPasswordHash,
         publicKey: keyMaterial.publicKey,
         privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
         status: 'active',
@@ -340,7 +334,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     const verificationToken = buildVerificationToken();
     await createNostrUser({
       username: normalizedUsername,
-      passwordHash: normalizedPasswordHash,
+      passwordSha256: normalizedPasswordHash,
       publicKey: keyMaterial.publicKey,
       privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
       status: 'unverified_email',
@@ -461,7 +455,7 @@ router.post('/api/v1/auth/verify', async (req, res) => {
       return res.status(410).json({ error: 'Link expired. Register again.' });
     }
 
-    if (user.password_hash !== normalizedPasswordHash) {
+    if (user.password_sha256 !== normalizedPasswordHash) {
       return res.status(401).json({
         error: 'Incorrect password. Someone may have tried to register your email.',
       });
@@ -499,12 +493,6 @@ router.post('/api/v1/auth/resend', async (req, res) => {
     if (isNostrUserVerificationExpired(user, config.verificationExpiryMinutes)) {
       await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
       return res.status(410).json({ error: 'Link expired. Register again.' });
-    }
-
-    const cooldownMinutes = Math.max(1, Number(config.resendCooldownMinutes) || 1);
-    const minutesSinceLastSend = minutesBetween(Date.now(), user.last_resend_at);
-    if (Number.isFinite(minutesSinceLastSend) && minutesSinceLastSend < cooldownMinutes) {
-      return res.status(429).json({ error: 'Resend available after one minute' });
     }
 
     const verificationToken = buildVerificationToken();
@@ -615,7 +603,7 @@ const handleSignin = async (req, res) => {
     if (user.status !== 'active') {
       return res.status(403).json({ error: 'Email verification required before sign in' });
     }
-    if (user.password_hash !== normalizedPasswordHash) {
+    if (user.password_sha256 !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -654,7 +642,7 @@ const handleUpdate = async (req, res) => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    if (user.password_hash !== normalizedPasswordHash) {
+    if (user.password_sha256 !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -671,7 +659,7 @@ const handleUpdate = async (req, res) => {
       if (!isValidSha256Hex(nextPasswordHash)) {
         return res.status(400).json({ error: 'newPasswordHash must be a 64-character SHA-256 hex string' });
       }
-      updateData.passwordHash = nextPasswordHash;
+      updateData.passwordSha256 = nextPasswordHash;
     }
 
     if (nextPrivateKeyEncrypted) {
@@ -743,7 +731,7 @@ const handleDelete = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (user.password_hash !== normalizedPasswordHash) {
+    if (user.password_sha256 !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -784,7 +772,7 @@ const handlePictureUpload = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (user.password_hash !== normalizedPasswordHash) {
+    if (user.password_sha256 !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -890,6 +878,7 @@ router.get('/.well-known/nostr.json', async (req, res) => {
           base_path: config.noasBasePath || '/',
           api_base: `${config.noasPublicUrl}${config.noasBasePath}/api/v1`,
           email_verification_enabled: config.emailVerificationEnabled,
+          resend_cooldown_minutes: config.resendCooldownMinutes,
           trusted_redirect_origins: config.allowedOrigins,
         },
       });

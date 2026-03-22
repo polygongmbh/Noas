@@ -39,21 +39,20 @@ END $$;
 CREATE TABLE IF NOT EXISTS nostr_users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(32) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
+  password_sha256 TEXT NOT NULL,
   public_key TEXT,
   private_key_encrypted TEXT,
   relays JSONB DEFAULT '[]'::jsonb,
   status nostr_user_status NOT NULL DEFAULT 'unverified_email',
-  verification_token TEXT UNIQUE,
-  last_resend_at TIMESTAMPTZ,
+  verification_token UUID UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT nostr_username_format CHECK (username ~ '^[a-z0-9._-]{3,32}$')
 );
 
 CREATE INDEX IF NOT EXISTS idx_nostr_users_username ON nostr_users(username);
-CREATE INDEX IF NOT EXISTS idx_nostr_users_public_key ON nostr_users(public_key);
-CREATE INDEX IF NOT EXISTS idx_nostr_users_status_created_at ON nostr_users(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nostr_users_public_key_unique ON nostr_users(public_key) WHERE public_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_nostr_users_unverified_created_at ON nostr_users(created_at) WHERE status = 'unverified_email';
+CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token) WHERE verification_token IS NOT NULL;
 
 ALTER TABLE users
   DROP CONSTRAINT IF EXISTS username_format;
@@ -90,6 +89,22 @@ ALTER TABLE nostr_users
 
 ALTER TABLE nostr_users
   ADD COLUMN IF NOT EXISTS relays JSONB DEFAULT '[]'::jsonb;
+
+ALTER TABLE nostr_users
+  RENAME COLUMN password_hash TO password_sha256;
+
+ALTER TABLE nostr_users
+  ALTER COLUMN verification_token TYPE UUID USING verification_token::uuid;
+
+ALTER TABLE nostr_users
+  DROP COLUMN IF EXISTS last_resend_at;
+
+DROP INDEX IF EXISTS idx_nostr_users_public_key;
+DROP INDEX IF EXISTS idx_nostr_users_status_created_at;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nostr_users_public_key_unique ON nostr_users(public_key) WHERE public_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_nostr_users_unverified_created_at ON nostr_users(created_at) WHERE status = 'unverified_email';
+CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token) WHERE verification_token IS NOT NULL;
 
 DROP TABLE IF EXISTS user_onboarding;
 DROP TABLE IF EXISTS used_verification_tokens;

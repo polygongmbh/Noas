@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
     publicKey: null,
     signupUsername: null,
     emailVerificationEnabled: false,
+    resendCooldownMinutes: 1,
     nip05Domain: window.location.hostname || '',
   };
 
@@ -88,6 +89,36 @@ document.addEventListener('DOMContentLoaded', function () {
     return `v${trimmed}`;
   }
 
+  function resendCooldownStorageKey(usernameRaw) {
+    const username = String(usernameRaw || '').trim().toLowerCase();
+    if (!username) return '';
+    return `noas-resend:${String(state.nip05Domain || '').trim().toLowerCase()}:${username}`;
+  }
+
+  function rememberResendAttempt(usernameRaw) {
+    const key = resendCooldownStorageKey(usernameRaw);
+    if (!key) return;
+    try {
+      window.localStorage.setItem(key, String(Date.now()));
+    } catch {
+      // Non-blocking.
+    }
+  }
+
+  function resendCooldownRemainingMs(usernameRaw) {
+    const key = resendCooldownStorageKey(usernameRaw);
+    if (!key) return 0;
+    try {
+      const raw = window.localStorage.getItem(key);
+      const lastSentAt = Number(raw || '0');
+      if (!Number.isFinite(lastSentAt) || lastSentAt <= 0) return 0;
+      const cooldownMs = Math.max(1, Number(state.resendCooldownMinutes) || 1) * 60 * 1000;
+      return Math.max(0, lastSentAt + cooldownMs - Date.now());
+    } catch {
+      return 0;
+    }
+  }
+
   async function loadNoasVersion() {
     try {
       const response = await fetch('/.well-known/nostr.json');
@@ -99,6 +130,9 @@ document.addEventListener('DOMContentLoaded', function () {
       if (noasVersionFooter) noasVersionFooter.textContent = label;
       if (typeof metadata.email_verification_enabled === 'boolean') {
         state.emailVerificationEnabled = metadata.email_verification_enabled;
+      }
+      if (Number.isFinite(Number(metadata.resend_cooldown_minutes))) {
+        state.resendCooldownMinutes = Math.max(1, Number(metadata.resend_cooldown_minutes) || 1);
       }
       if (typeof metadata.nip05_domain === 'string' && metadata.nip05_domain.trim()) {
         state.nip05Domain = metadata.nip05_domain.trim().toLowerCase();
@@ -332,9 +366,16 @@ document.addEventListener('DOMContentLoaded', function () {
         setStatus(resendStatus, 'Username is required.', 'error');
         return;
       }
+      const remainingMs = resendCooldownRemainingMs(username);
+      if (remainingMs > 0) {
+        const secondsLeft = Math.max(1, Math.ceil(remainingMs / 1000));
+        setStatus(resendStatus, `Wait ${secondsLeft}s before requesting another resend.`, 'error');
+        return;
+      }
       setStatus(resendStatus, 'Resending verification email...', 'info');
       try {
         const data = await request('/api/v1/auth/resend', { username });
+        rememberResendAttempt(username);
         const message = data.verify_url
           ? `${data.message} Verification link: ${data.verify_url}`
           : (data.message || 'Verification email resent.');

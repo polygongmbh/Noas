@@ -170,7 +170,7 @@ Primary auth endpoints (v1.3):
 - `POST /api/v1/auth/register` -> creates unverified account and sends verification email.
 - `GET /api/v1/auth/verify?token=...` -> previews verification link state.
 - `POST /api/v1/auth/verify` -> verifies token + password hash and activates account.
-- `POST /api/v1/auth/resend` -> resends verification email with cooldown.
+- `POST /api/v1/auth/resend` -> resends verification email; clients should apply cooldown locally.
 
 ### POST /api/v1/auth/verify
 
@@ -186,7 +186,7 @@ Activate account by confirming token + password hash.
 
 ### POST /api/v1/auth/resend
 
-Resend verification email for a pending account.
+Resend verification email for a pending account. UI clients should respect the advertised resend cooldown locally.
 
 ```json
 {
