@@ -29,7 +29,7 @@ services:
       PORT: 3000
       # Keep container runtime env owned by docker-compose.
       NOAS_LOAD_DOTENV: "false"
-      DATABASE_URL: postgresql://noas:noas@noas-db:5432/noas
+      DATABASE_URL: postgresql://noas:noas@noas-db:5432/noas?sslmode=disable
       DOMAIN: ${DOMAIN:-}
       REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-false}
       EMAIL_VERIFICATION_ENABLED: ${EMAIL_VERIFICATION_ENABLED:-false}

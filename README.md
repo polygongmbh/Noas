@@ -19,6 +19,8 @@ Runtime config model:
 - Database migrations are managed with `dbmate` from `db/migrations/`.
 - Local `npm run dev`: `.env` is used (`NOAS_LOAD_DOTENV=true`).
 
+For local Postgres, include `?sslmode=disable` in `DATABASE_URL`. Managed Postgres providers may require `sslmode=require` instead.
+
 ### Task runner (`justfile`)
 
 This project includes a [`justfile`](./justfile) with common development commands
@@ -64,7 +66,7 @@ cp .env.example .env
 Edit `.env` with your PostgreSQL connection string:
 
 ```
-DATABASE_URL=postgresql://user:password@localhost:5432/noas
+DATABASE_URL=postgresql://user:password@localhost:5432/noas?sslmode=disable
 DOMAIN=yourdomain.com
 PORT=3000
 REQUIRE_EMAIL_VERIFICATION=true
