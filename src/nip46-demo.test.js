@@ -18,7 +18,8 @@ import {
 import { createUser } from './db/users.js';
 import { pool } from './db/pool.js';
 
-const demoPasswordHash = createHash('sha256').update('testpass123').digest('hex');
+const demoRawPassword = 'testpass123';
+const demoPasswordHash = createHash('sha256').update(demoRawPassword).digest('hex');
 const demoSecretKey = Uint8Array.from(Buffer.from('2'.repeat(64), 'hex'));
 
 describe('NIP-46 Integration Demo', () => {
@@ -27,7 +28,7 @@ describe('NIP-46 Integration Demo', () => {
     username: 'nip46demo',
     password: 'testpass123',
     publicKey: getPublicKey(demoSecretKey).toLowerCase(),
-    encryptedPrivateKey: encrypt(demoSecretKey, demoPasswordHash)
+    encryptedPrivateKey: encrypt(demoSecretKey, demoRawPassword)
   };
 
   before(async () => {
@@ -36,6 +37,7 @@ describe('NIP-46 Integration Demo', () => {
       publicKey: testUser.publicKey,
       encryptedPrivateKey: testUser.encryptedPrivateKey,
       passwordHash: demoPasswordHash,
+      rawPassword: demoRawPassword,
       relays: []
     });
     testUserId = user.id;

@@ -22,7 +22,8 @@ import {
 import { createUser } from './db/users.js';
 import { pool } from './db/pool.js';
 
-const testPasswordHash = createHash('sha256').update('testpass123').digest('hex');
+const testRawPassword = 'testpass123';
+const testPasswordHash = createHash('sha256').update(testRawPassword).digest('hex');
 const testSecretKey = Uint8Array.from(Buffer.from('1'.repeat(64), 'hex'));
 
 // Test data
@@ -30,7 +31,7 @@ const testUser = {
   username: 'testnip46signer',
   password: 'testpass123',
   publicKey: getPublicKey(testSecretKey).toLowerCase(),
-  encryptedPrivateKey: encrypt(testSecretKey, testPasswordHash)
+  encryptedPrivateKey: encrypt(testSecretKey, testRawPassword)
 };
 
 // Valid secp256k1 public key for testing
@@ -53,6 +54,7 @@ describe('NIP-46 Service', { skip: !dbAvailable }, () => {
       publicKey: testUser.publicKey,
       encryptedPrivateKey: testUser.encryptedPrivateKey,
       passwordHash: testPasswordHash,
+      rawPassword: testRawPassword,
       relays: []
     });
     testUserId = user.id;

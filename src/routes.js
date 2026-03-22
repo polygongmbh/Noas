@@ -123,7 +123,7 @@ async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedR
   const hasPrivate = Boolean(String(privateKeyEncryptedRaw || '').trim());
 
   if (!hasPublic && !hasPrivate) {
-    const normalizedPassword = String(password || '');
+    const normalizedPassword = String(nip49Password || '');
     if (!normalizedPassword) {
       throw new Error('password is required when auto-generating a keypair');
     }
@@ -321,6 +321,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         passwordSha256: normalizedPasswordHash,
         publicKey: keyMaterial.publicKey,
         privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
+        rawPassword: normalizedPassword || null,
         status: 'active',
         verificationToken: null,
       });
@@ -340,6 +341,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       passwordSha256: normalizedPasswordHash,
       publicKey: keyMaterial.publicKey,
       privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
+      rawPassword: normalizedPassword || null,
       status: 'unverified_email',
       verificationToken,
     });

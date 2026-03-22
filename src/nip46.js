@@ -2,8 +2,8 @@
  * NIP-46 Remote Signer Service
  *
  * Implements the NIP-46 remote signing protocol over the app's HTTP shim.
- * For signing, Noas can only unlock keys that were NIP-49 encrypted with the
- * stored `password_sha256` value.
+ * For signing, Noas can only unlock keys for accounts that have a stored raw
+ * password from signup.
  */
 
 import { nip44, getPublicKey, generateSecretKey, finalizeEvent } from 'nostr-tools';
@@ -181,17 +181,17 @@ export async function handleSignEvent(requestData, sessionId) {
     }
 
     const user = await getActiveNostrUserById(session.user_id);
-    if (!user?.public_key || !user.private_key_encrypted || !user.password_sha256) {
+    if (!user?.public_key || !user.private_key_encrypted || !user.raw_password) {
       return {
         id,
         result: null,
-        error: 'Stored account key is unavailable for remote signing'
+        error: 'Remote signing is unavailable for this account'
       };
     }
 
     let secretKey;
     try {
-      secretKey = decrypt(user.private_key_encrypted, user.password_sha256);
+      secretKey = decrypt(user.private_key_encrypted, user.raw_password);
     } catch {
       return {
         id,

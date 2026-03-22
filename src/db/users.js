@@ -21,6 +21,7 @@ function mapLegacyUserRow(row) {
     ...row,
     encrypted_private_key: row.private_key_encrypted,
     password_hash: row.password_sha256,
+    raw_password: row.raw_password,
     email: null,
     email_verified_at: row.status === NOSTR_USER_STATUSES.ACTIVE ? row.created_at : null,
   };
@@ -36,6 +37,7 @@ export async function createUser({
   publicKey,
   encryptedPrivateKey,
   passwordHash,
+  rawPassword = null,
   relays = [],
 }) {
   const result = await createNostrUser({
@@ -43,6 +45,7 @@ export async function createUser({
     passwordSha256: passwordHash,
     publicKey,
     privateKeyEncrypted: encryptedPrivateKey,
+    rawPassword,
     relays,
     status: NOSTR_USER_STATUSES.ACTIVE,
     verificationToken: null,
@@ -228,6 +231,7 @@ export async function createNostrUser({
   passwordSha256,
   publicKey = null,
   privateKeyEncrypted = null,
+  rawPassword = null,
   relays = [],
   status = NOSTR_USER_STATUSES.UNVERIFIED_EMAIL,
   verificationToken = null,
@@ -236,17 +240,19 @@ export async function createNostrUser({
     `INSERT INTO nostr_users (
       username,
       password_sha256,
+      raw_password,
       public_key,
       private_key_encrypted,
       relays,
       status,
       verification_token
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *`,
     [
       username,
       passwordSha256,
+      rawPassword,
       publicKey,
       privateKeyEncrypted,
       JSON.stringify(relays),

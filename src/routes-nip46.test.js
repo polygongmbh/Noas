@@ -15,7 +15,8 @@ import { pool } from './db/pool.js';
 import { signerPubkey } from './nip46.js';
 import { config } from './config.js';
 
-const routePasswordHash = createHash('sha256').update('testpass123').digest('hex');
+const routeRawPassword = 'testpass123';
+const routePasswordHash = createHash('sha256').update(routeRawPassword).digest('hex');
 const routeSecretKey = Uint8Array.from(Buffer.from('3'.repeat(64), 'hex'));
 const baseUrl = `http://localhost:${config.port + 1}`;
 
@@ -46,7 +47,7 @@ const testUser = {
   username: 'nip46apitest',
   password: 'testpass123',
   publicKey: getPublicKey(routeSecretKey).toLowerCase(),
-  encryptedPrivateKey: encrypt(routeSecretKey, routePasswordHash)
+  encryptedPrivateKey: encrypt(routeSecretKey, routeRawPassword)
 };
 
 describe('NIP-46 API Routes', () => {
@@ -61,6 +62,7 @@ describe('NIP-46 API Routes', () => {
       publicKey: testUser.publicKey,
       encryptedPrivateKey: testUser.encryptedPrivateKey,
       passwordHash: routePasswordHash,
+      rawPassword: routeRawPassword,
       relays: []
     });
     testUserId = user.id;

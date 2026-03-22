@@ -92,7 +92,6 @@ verify_returned_keypair() {
   PRIVATE_KEY_ENCRYPTED="$private_key_encrypted" \
   VERIFY_PASSWORD="$password" \
   node --input-type=module <<'EOF'
-import { createHash } from 'node:crypto';
 import { getPublicKey } from 'nostr-tools';
 import { decrypt } from 'nostr-tools/nip49';
 
@@ -105,13 +104,7 @@ if (!expectedPublicKey || !privateKeyEncrypted || !password) {
   process.exit(1);
 }
 
-const passwordHash = createHash('sha256').update(password).digest('hex');
-let secretKey;
-try {
-  secretKey = decrypt(privateKeyEncrypted, password);
-} catch {
-  secretKey = decrypt(privateKeyEncrypted, passwordHash);
-}
+const secretKey = decrypt(privateKeyEncrypted, password);
 const actualPublicKey = getPublicKey(secretKey).toLowerCase();
 
 if (actualPublicKey !== expectedPublicKey) {
@@ -131,23 +124,15 @@ rotate_key_password() {
   NEW_PASSWORD="$new_password" \
   node --input-type=module <<'EOF'
 import { getPublicKey } from 'nostr-tools';
-import { createHash } from 'node:crypto';
 import { decrypt, encrypt } from 'nostr-tools/nip49';
 
 const privateKeyEncrypted = String(process.env.PRIVATE_KEY_ENCRYPTED || '').trim();
 const oldPassword = String(process.env.OLD_PASSWORD || '');
 const newPassword = String(process.env.NEW_PASSWORD || '');
 
-const oldPasswordHash = createHash('sha256').update(oldPassword).digest('hex');
-const newPasswordHash = createHash('sha256').update(newPassword).digest('hex');
-let secretKey;
-try {
-  secretKey = decrypt(privateKeyEncrypted, oldPassword);
-} catch {
-  secretKey = decrypt(privateKeyEncrypted, oldPasswordHash);
-}
+const secretKey = decrypt(privateKeyEncrypted, oldPassword);
 const publicKey = getPublicKey(secretKey).toLowerCase();
-const rotatedPrivateKeyEncrypted = encrypt(secretKey, newPasswordHash);
+const rotatedPrivateKeyEncrypted = encrypt(secretKey, newPassword);
 
 console.log(publicKey);
 console.log(rotatedPrivateKeyEncrypted);

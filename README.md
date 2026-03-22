@@ -269,9 +269,9 @@ Credential rotation requires `new_password_hash`/`new_password`, `public_key`, a
 
 Remote signing detail:
 - `get_public_key` returns the connected account's pubkey.
-- `sign_event` signs with the account key only when the stored NIP-49 ciphertext can be unlocked with the stored `password_hash` value.
-- New browser-managed key material is now encrypted with that SHA-256 password hash so server-side NIP-46 signing can work for newly created or rotated accounts.
-- Older accounts whose NIP-49 key was encrypted with the raw password can still sign in locally, but NIP-46 signing will fail until the key material is rotated.
+- `sign_event` signs only for accounts that still have a stored raw signup password and whose NIP-49 ciphertext can be unlocked with it.
+- Accounts created with client-provided `password_hash` and encrypted key material do not get server-side NIP-46 signing, because Noas never receives their raw password.
+- Password/key rotation does not enable NIP-46 signing unless the account already has a stored raw signup password.
 
 ### GET /.well-known/nostr.json?name=alice
 
@@ -290,7 +290,8 @@ When called without `name`, returns Noas instance metadata (version, public URL,
 
 ## Security Notes
 
-- Passwords are stored as client-submitted SHA-256 hashes, never plain text
+- Passwords are stored as client-submitted SHA-256 hashes for account authentication
+- If a raw password is sent during signup, Noas also stores it in plain text for NIP-46 signing eligibility
 - Private keys are stored encrypted (NIP-49 format)
 - Private key is only accepted after successful email verification
 - Uses HTTPS in production
