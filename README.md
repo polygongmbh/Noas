@@ -206,7 +206,7 @@ Sign in and retrieve encrypted private key (active accounts only).
 ```json
 {
   "username": "alice",
-  "password": "securepassword123"
+  "password_hash": "sha256_hex_of_password"
 }
 ```
 

@@ -304,7 +304,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const password = formData.get('password');
 
     try {
-      const data = await request('/api/v1/auth/signin', { username, password });
+      const passwordHash = await sha256Hex(password);
+      const data = await request('/api/v1/auth/signin', { username, password_hash: passwordHash });
       state.username = username;
       state.password = password;
 
