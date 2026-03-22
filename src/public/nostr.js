@@ -98,6 +98,13 @@
     return nostrToolsModulePromise;
   }
 
+  async function sha256Hex(text) {
+    const normalized = String(text || '');
+    const encoded = new TextEncoder().encode(normalized);
+    const digest = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+  }
+
   async function decryptPrivateKey(ncryptsec, password) {
     const normalizedKey = String(ncryptsec || '').trim();
     const normalizedPassword = String(password || '');
@@ -112,7 +119,12 @@
       loadNip49Module(),
       loadNostrToolsModule(),
     ]);
-    const secretKey = decrypt(normalizedKey, normalizedPassword);
+    let secretKey;
+    try {
+      secretKey = decrypt(normalizedKey, normalizedPassword);
+    } catch {
+      secretKey = decrypt(normalizedKey, await sha256Hex(normalizedPassword));
+    }
 
     return {
       hex: bytesToHex(secretKey),
@@ -161,9 +173,10 @@
       loadNostrToolsModule(),
     ]);
     const normalized = await normalizeSecretKey(privateKeyInput);
+    const passwordHash = await sha256Hex(normalizedPassword);
 
     return {
-      privateKeyEncrypted: encrypt(normalized.secretKey, normalizedPassword),
+      privateKeyEncrypted: encrypt(normalized.secretKey, passwordHash),
       hex: normalized.hex,
       nsec: nip19.nsecEncode(normalized.secretKey),
       publicKey: normalized.publicKey,

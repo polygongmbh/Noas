@@ -1,25 +1,33 @@
 /**
  * NIP-46 Remote Signer Service
- * 
- * Implements the NIP-46 remote signing protocol.
- * Handles connection management, method dispatch, and encryption.
+ *
+ * Implements the NIP-46 remote signing protocol over the app's HTTP shim.
+ * For signing, Noas can only unlock keys that were NIP-49 encrypted with the
+ * stored `password_sha256` value.
  */
 
-import { nip44, nip19, getPublicKey, generateSecretKey, finalizeEvent } from 'nostr-tools';
-import { getActiveNostrUserByUsername } from './db/users.js';
+import { nip44, getPublicKey, generateSecretKey, finalizeEvent } from 'nostr-tools';
+import { decrypt } from 'nostr-tools/nip49';
+import { getActiveNostrUserById, getActiveNostrUserByUsername } from './db/users.js';
+import { config } from './config.js';
 import {
   createNip46Session,
   getNip46Session,
   updateNip46SessionStatus,
   createNip46Request,
-  getNip46Request,
   completeNip46Request,
   isMethodAllowed,
   getSessionByClientPubkey
 } from './db/nip46.js';
 
-// Generate a static keypair for this signer instance
-const signerSecretKey = generateSecretKey();
+function resolveSignerSecretKey() {
+  if (config.nip46SignerPrivateKey) {
+    return Uint8Array.from(Buffer.from(config.nip46SignerPrivateKey, 'hex'));
+  }
+  return generateSecretKey();
+}
+
+const signerSecretKey = resolveSignerSecretKey();
 const signerPubkey = getPublicKey(signerSecretKey);
 
 export { signerPubkey };
@@ -62,7 +70,12 @@ function decryptContent(encryptedContent, receiverSecretKey, senderPubkey) {
  * @returns {string} Connection token (bunker://) URL
  */
 export function createConnectionToken(domain) {
-  return `bunker://${signerPubkey}?relay=wss://relay.nostr.org&secret=${generateRandomId()}`;
+  const relays = config.nip46Relays.length ? config.nip46Relays : ['wss://relay.nostr.org'];
+  const query = new URLSearchParams({ secret: generateRandomId() });
+  for (const relay of relays) {
+    query.append('relay', relay);
+  }
+  return `bunker://${signerPubkey}?${query.toString()}`;
 }
 
 /**
@@ -158,7 +171,6 @@ export async function handleSignEvent(requestData, sessionId) {
 
     const event = JSON.parse(eventJson);
     
-    // Get session to get user info
     const session = await getNip46Session(sessionId);
     if (!session || session.status !== 'connected') {
       return {
@@ -168,14 +180,39 @@ export async function handleSignEvent(requestData, sessionId) {
       };
     }
 
-    // For now, we'll return a placeholder response
-    // In a real implementation, you'd decrypt the user's private key and sign
-    const signedEvent = {
+    const user = await getActiveNostrUserById(session.user_id);
+    if (!user?.public_key || !user.private_key_encrypted || !user.password_sha256) {
+      return {
+        id,
+        result: null,
+        error: 'Stored account key is unavailable for remote signing'
+      };
+    }
+
+    let secretKey;
+    try {
+      secretKey = decrypt(user.private_key_encrypted, user.password_sha256);
+    } catch {
+      return {
+        id,
+        result: null,
+        error: 'Stored account key cannot be unlocked for remote signing'
+      };
+    }
+
+    const derivedPubkey = getPublicKey(secretKey).toLowerCase();
+    if (derivedPubkey !== String(user.public_key).trim().toLowerCase()) {
+      return {
+        id,
+        result: null,
+        error: 'Stored account key does not match the active public key'
+      };
+    }
+
+    const signedEvent = finalizeEvent({
       ...event,
-      pubkey: signerPubkey, // This should be the user's actual pubkey
-      id: generateRandomId(), // This should be the actual event ID
-      sig: generateRandomId() // This should be the actual signature
-    };
+      pubkey: derivedPubkey,
+    }, secretKey);
 
     return {
       id,
@@ -220,10 +257,18 @@ export async function handleGetPublicKey(requestData, sessionId) {
       };
     }
 
-    // Return the signer's public key (in real implementation, return user's pubkey)
+    const user = await getActiveNostrUserById(session.user_id);
+    if (!user?.public_key) {
+      return {
+        id,
+        result: null,
+        error: 'User not found'
+      };
+    }
+
     return {
       id,
-      result: signerPubkey,
+      result: user.public_key,
       error: null
     };
 
@@ -259,20 +304,28 @@ export function handlePing(requestData) {
  */
 export async function processNip46Request(event, username) {
   try {
+    if (!event || event.kind !== 24133 || !Array.isArray(event.tags)) {
+      return null;
+    }
+    const targetTag = event.tags.find((tag) => Array.isArray(tag) && tag[0] === 'p');
+    if (!targetTag || targetTag[1] !== signerPubkey) {
+      return null;
+    }
+
     // Decrypt the request content
     const decryptedContent = decryptContent(event.content, signerSecretKey, event.pubkey);
     const requestData = JSON.parse(decryptedContent);
 
     const { method, id } = requestData;
     let response;
-
-    // Find existing session for this client
     let session = await getSessionByClientPubkey(event.pubkey);
-    const sessionId = session?.session_id;
+    let sessionId = session?.session_id;
 
     switch (method) {
       case 'connect':
         response = await handleConnect(requestData, event.pubkey, username);
+        session = await getSessionByClientPubkey(event.pubkey);
+        sessionId = session?.session_id;
         break;
       
       case 'ping':

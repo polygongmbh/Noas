@@ -44,7 +44,8 @@ import {
   createConnectionToken,
   processNip46Request,
   createResponseEvent,
-  signerPubkey 
+  signerPubkey,
+  handleConnect,
 } from './nip46.js';
 import { sendVerificationEmail } from './email.js';
 import { config } from './config.js';
@@ -117,7 +118,7 @@ function isNostrUserVerificationExpired(user, expiryMinutes) {
   return Number.isNaN(expiresAtMs) || Date.now() > expiresAtMs;
 }
 
-async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedRaw, password) {
+async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedRaw, nip49Password) {
   const hasPublic = Boolean(String(publicKeyRaw || '').trim());
   const hasPrivate = Boolean(String(privateKeyEncryptedRaw || '').trim());
 
@@ -294,7 +295,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     }
     let keyMaterial;
     try {
-      keyMaterial = await resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncrypted, normalizedPassword);
+      keyMaterial = await resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncrypted, normalizedPasswordHash);
     } catch (error) {
       return res.status(400).json({ error: error.message || 'Invalid key material' });
     }
@@ -943,7 +944,7 @@ const handleNip46Info = (req, res) => {
       'nip44_encrypt', 
       'nip44_decrypt'
     ],
-    version: '1.0.0'
+    version: config.apiVersion
   });
 };
 
@@ -1036,11 +1037,10 @@ const handleNip46Nostrconnect = async (req, res) => {
       return res.status(400).json({ error: 'Username is required' });
     }
 
-    // Parse the nostrconnect URL
     const url = new URL(nostrconnect_url);
-    const clientPubkey = url.pathname.replace('//', '');
+    const clientPubkey = String(url.host || url.pathname || '').replace(/^\/+/, '').toLowerCase();
     const secret = url.searchParams.get('secret');
-    const relays = url.searchParams.getAll('relay');
+    const relays = url.searchParams.getAll('relay').filter((relay) => relay.startsWith('wss://'));
     const perms = url.searchParams.get('perms');
 
     // Validate client pubkey
@@ -1048,7 +1048,6 @@ const handleNip46Nostrconnect = async (req, res) => {
       return res.status(400).json({ error: 'Invalid client pubkey' });
     }
 
-    // Create a mock connect request to process
     const connectRequest = {
       id: Array.from(crypto.getRandomValues(new Uint8Array(16)))
         .map(b => b.toString(16).padStart(2, '0'))
@@ -1056,27 +1055,20 @@ const handleNip46Nostrconnect = async (req, res) => {
       method: 'connect',
       params: [signerPubkey, secret, perms]
     };
-
-    // Create a mock event
-    const mockEvent = {
-      kind: 24133,
-      pubkey: clientPubkey,
-      content: 'encrypted_content', // Would be properly encrypted in real implementation
-      tags: [['p', signerPubkey]]
-    };
-
-    // For demo purposes, we'll simulate the connection
-    const user = await getActiveNostrUserByUsername(String(username || '').trim().toLowerCase());
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    const response = await handleConnect(connectRequest, clientPubkey, username);
+    if (response.error === 'User not found') {
+      return res.status(404).json({ error: response.error });
+    }
+    if (response.error) {
+      return res.status(400).json({ error: response.error });
     }
 
     res.json({
       success: true,
       remote_signer_pubkey: signerPubkey,
       secret: secret,
-      message: 'Connection initiated. Use /api/v1/nip46/request endpoint to send encrypted commands.',
-      relays: ['wss://relay.nostr.org'] // Default relay
+      message: 'Connection established. Use /api/v1/nip46/request to exchange encrypted NIP-46 commands.',
+      relays: relays.length ? relays : ['wss://relay.nostr.org']
     });
 
   } catch (error) {

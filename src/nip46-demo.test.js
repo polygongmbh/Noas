@@ -6,6 +6,9 @@
 
 import { describe, it, before, after } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { createHash } from 'node:crypto';
+import { encrypt } from 'nostr-tools/nip49';
+import { getPublicKey } from 'nostr-tools';
 import { 
   createConnectionToken,
   handleConnect,
@@ -13,25 +16,26 @@ import {
   signerPubkey
 } from './nip46.js';
 import { createUser } from './db/users.js';
-import { hashPassword } from './auth.js';
 import { pool } from './db/pool.js';
+
+const demoPasswordHash = createHash('sha256').update('testpass123').digest('hex');
+const demoSecretKey = Uint8Array.from(Buffer.from('2'.repeat(64), 'hex'));
 
 describe('NIP-46 Integration Demo', () => {
   let testUserId;
   const testUser = {
     username: 'nip46demo',
     password: 'testpass123',
-    publicKey: 'a'.repeat(64),
-    encryptedPrivateKey: 'ncsec1q7l7ejcz3h9qztwtrgrkgcvq0h2f7nwu7qd8l8n4y8g9w3hql9nszpqyy2'
+    publicKey: getPublicKey(demoSecretKey).toLowerCase(),
+    encryptedPrivateKey: encrypt(demoSecretKey, demoPasswordHash)
   };
 
   before(async () => {
-    const passwordHash = await hashPassword(testUser.password);
     const user = await createUser({
       username: testUser.username,
       publicKey: testUser.publicKey,
       encryptedPrivateKey: testUser.encryptedPrivateKey,
-      passwordHash,
+      passwordHash: demoPasswordHash,
       relays: []
     });
     testUserId = user.id;

@@ -6,6 +6,9 @@
 
 import { describe, it, before, after } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { createHash } from 'node:crypto';
+import { encrypt } from 'nostr-tools/nip49';
+import { getPublicKey } from 'nostr-tools';
 import {
   createConnectionToken,
   processNip46Request,
@@ -17,15 +20,17 @@ import {
   handlePing
 } from './nip46.js';
 import { createUser } from './db/users.js';
-import { hashPassword } from './auth.js';
 import { pool } from './db/pool.js';
+
+const testPasswordHash = createHash('sha256').update('testpass123').digest('hex');
+const testSecretKey = Uint8Array.from(Buffer.from('1'.repeat(64), 'hex'));
 
 // Test data
 const testUser = {
   username: 'testnip46signer',
   password: 'testpass123',
-  publicKey: 'a'.repeat(64),
-  encryptedPrivateKey: 'ncsec1q7l7ejcz3h9qztwtrgrkgcvq0h2f7nwu7qd8l8n4y8g9w3hql9nszpqyy2'
+  publicKey: getPublicKey(testSecretKey).toLowerCase(),
+  encryptedPrivateKey: encrypt(testSecretKey, testPasswordHash)
 };
 
 // Valid secp256k1 public key for testing
@@ -43,13 +48,11 @@ describe('NIP-46 Service', { skip: !dbAvailable }, () => {
   let testUserId;
 
   before(async () => {
-    // Create test user with properly hashed password
-    const passwordHash = await hashPassword(testUser.password);
     const user = await createUser({
       username: testUser.username,
       publicKey: testUser.publicKey,
       encryptedPrivateKey: testUser.encryptedPrivateKey,
-      passwordHash,
+      passwordHash: testPasswordHash,
       relays: []
     });
     testUserId = user.id;
@@ -131,7 +134,7 @@ describe('NIP-46 Service', { skip: !dbAvailable }, () => {
       assert.equal(response.error, null);
     });
 
-    it('handleGetPublicKey returns signer pubkey', async () => {
+    it('handleGetPublicKey returns connected user pubkey', async () => {
       // First establish a session
       const connectRequest = {
         id: 'test-connect',
@@ -161,7 +164,7 @@ describe('NIP-46 Service', { skip: !dbAvailable }, () => {
       const response = await handleGetPublicKey(requestData, sessionId);
 
       assert.equal(response.id, requestData.id);
-      assert.equal(response.result, signerPubkey);
+      assert.equal(response.result, testUser.publicKey);
       assert.equal(response.error, null);
     });
 
@@ -200,8 +203,9 @@ describe('NIP-46 Service', { skip: !dbAvailable }, () => {
       const signedEvent = JSON.parse(response.result);
       assert.equal(signedEvent.kind, eventToSign.kind);
       assert.equal(signedEvent.content, eventToSign.content);
-      assert(signedEvent.id); // Should have an ID
-      assert(signedEvent.sig); // Should have a signature
+      assert.equal(signedEvent.pubkey, testUser.publicKey);
+      assert(signedEvent.id);
+      assert(signedEvent.sig);
     });
   });
 

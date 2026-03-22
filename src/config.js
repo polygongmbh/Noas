@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { nip19 } from 'nostr-tools';
 
 // Get the current directory for ES modules
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,21 @@ function parseRelayList(value) {
     .split(',')
     .map((relay) => relay.trim())
     .filter((relay) => relay.startsWith('wss://'));
+}
+
+function normalizePrivateKey(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^[a-f0-9]{64}$/i.test(raw)) {
+    return raw.toLowerCase();
+  }
+  if (raw.startsWith('nsec1')) {
+    const decoded = nip19.decode(raw);
+    if (decoded.type === 'nsec' && decoded.data instanceof Uint8Array) {
+      return Array.from(decoded.data, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    }
+  }
+  throw new Error('NIP46_SIGNER_PRIVATE_KEY must be a hex private key or nsec');
 }
 
 function parseDomainRelayMap(value) {
@@ -160,6 +176,8 @@ export const config = {
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,
+  nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
+  nip46Relays: parseRelayList(process.env.NIP46_RELAYS) || [],
 };
 
 if (!config.nip05Domain) {

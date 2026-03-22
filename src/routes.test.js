@@ -262,14 +262,15 @@ test('POST /update rotates password hash and encrypted key together', async () =
   assert.ok(initialSignin.data.private_key_encrypted);
   assert.ok(initialSignin.data.public_key);
 
-  const secretKey = decrypt(initialSignin.data.private_key_encrypted, 'rotatepassword123');
-  const rotatedPrivateKeyEncrypted = encrypt(secretKey, 'rotatepassword456');
-  const rotatedPublicKey = getPublicKey(secretKey).toLowerCase();
+  const initialPasswordHash = createHash('sha256').update('rotatepassword123').digest('hex');
   const rotatedPasswordHash = createHash('sha256').update('rotatepassword456').digest('hex');
+  const secretKey = decrypt(initialSignin.data.private_key_encrypted, initialPasswordHash);
+  const rotatedPrivateKeyEncrypted = encrypt(secretKey, rotatedPasswordHash);
+  const rotatedPublicKey = getPublicKey(secretKey).toLowerCase();
 
   const update = await request('POST', '/api/v1/auth/update', {
     username: 'rotatinguser',
-    password_hash: createHash('sha256').update('rotatepassword123').digest('hex'),
+    password_hash: initialPasswordHash,
     updates: {
       new_password_hash: rotatedPasswordHash,
       public_key: rotatedPublicKey,

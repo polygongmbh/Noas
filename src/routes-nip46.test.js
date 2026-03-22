@@ -6,15 +6,22 @@
 
 import { describe, it, before, after } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { createHash } from 'node:crypto';
+import { encrypt } from 'nostr-tools/nip49';
+import { getPublicKey } from 'nostr-tools';
 import { app } from './index.js';
 import { createUser } from './db/users.js';
-import { hashPassword } from './auth.js';
 import { pool } from './db/pool.js';
 import { signerPubkey } from './nip46.js';
+import { config } from './config.js';
+
+const routePasswordHash = createHash('sha256').update('testpass123').digest('hex');
+const routeSecretKey = Uint8Array.from(Buffer.from('3'.repeat(64), 'hex'));
+const baseUrl = `http://localhost:${config.port + 1}`;
 
 // Test helper function to make requests
 async function request(method, path, body = null) {
-  const response = await fetch(`http://localhost:${process.env.PORT || 3000}${path}`, {
+  const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : null
@@ -38,8 +45,8 @@ async function request(method, path, body = null) {
 const testUser = {
   username: 'nip46apitest',
   password: 'testpass123',
-  publicKey: 'a'.repeat(64),
-  encryptedPrivateKey: 'ncsec1q7l7ejcz3h9qztwtrgrkgcvq0h2f7nwu7qd8l8n4y8g9w3hql9nszpqyy2'
+  publicKey: getPublicKey(routeSecretKey).toLowerCase(),
+  encryptedPrivateKey: encrypt(routeSecretKey, routePasswordHash)
 };
 
 describe('NIP-46 API Routes', () => {
@@ -47,17 +54,13 @@ describe('NIP-46 API Routes', () => {
   let testUserId;
 
   before(async () => {
-    // Start test server
-    const { config } = await import('./config.js');
     server = app.listen(config.port + 1); // Use different port for testing
     
-    // Create test user with properly hashed password
-    const passwordHash = await hashPassword(testUser.password);
     const user = await createUser({
       username: testUser.username,
       publicKey: testUser.publicKey,
       encryptedPrivateKey: testUser.encryptedPrivateKey,
-      passwordHash,
+      passwordHash: routePasswordHash,
       relays: []
     });
     testUserId = user.id;
@@ -87,7 +90,7 @@ describe('NIP-46 API Routes', () => {
       assert(Array.isArray(response.body.methods));
       assert(response.body.methods.includes('connect'));
       assert(response.body.methods.includes('sign_event'));
-      assert.equal(response.body.version, '1.0.0');
+      assert.equal(response.body.version, config.apiVersion);
     });
   });
 
@@ -232,7 +235,7 @@ describe('NIP-46 API Routes', () => {
 
   describe('Error Handling', () => {
     it('handles malformed JSON gracefully', async () => {
-      const response = await fetch(`http://localhost:${(process.env.PORT ? Number(process.env.PORT) : 3000) + 1}/nip46/request`, {
+      const response = await fetch(`${baseUrl}/nip46/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: 'invalid json'

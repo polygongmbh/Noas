@@ -323,6 +323,22 @@ export async function getActiveNostrUserByUsername(username) {
 }
 
 /**
+ * Retrieve active nostr user by id.
+ * @param {number} id
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getActiveNostrUserById(id) {
+  const result = await query(
+    `SELECT *
+     FROM nostr_users
+     WHERE id = $1
+       AND status = $2`,
+    [id, NOSTR_USER_STATUSES.ACTIVE]
+  );
+  return result.rows[0];
+}
+
+/**
  * Update nostr user fields.
  * @param {string} username
  * @param {Object} updates
