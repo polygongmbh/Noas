@@ -125,6 +125,13 @@
 
         <div class="panel" id="accountPanel" hidden>
           <h2>Account Details</h2>
+          <div class="profile-summary" id="profileSummary" hidden>
+            <img id="profilePicturePreview" class="profile-picture" alt="Profile picture preview" hidden />
+            <div class="field">
+              <span>Profile picture</span>
+              <code id="profilePictureStatus">No profile picture uploaded</code>
+            </div>
+          </div>
           <div class="field">
             <span>Public key</span>
             <code id="publicKey">—</code>
@@ -166,6 +173,16 @@
             </label>
             <button type="submit" class="btn">Update account</button>
             <div id="updateStatus" class="status" role="status"></div>
+          </form>
+
+          <form id="pictureForm" class="form">
+            <label>
+              Profile picture
+              <input type="file" id="profilePictureInput" accept="image/*" />
+              <small>Upload a JPG, PNG, GIF, or WebP image up to 2MB.</small>
+            </label>
+            <button type="submit" class="btn ghost">Upload picture</button>
+            <div id="pictureStatus" class="status" role="status"></div>
           </form>
         </div>
 

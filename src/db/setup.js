@@ -104,15 +104,6 @@ CREATE TABLE IF NOT EXISTS profile_pictures (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO profile_pictures (account_id, content_type, data, updated_at)
-SELECT id, profile_picture_type, profile_picture, COALESCE(profile_picture_updated_at, NOW())
-FROM nostr_users
-WHERE profile_picture IS NOT NULL
-ON CONFLICT (account_id) DO UPDATE
-SET content_type = EXCLUDED.content_type,
-    data = EXCLUDED.data,
-    updated_at = EXCLUDED.updated_at;
-
 CREATE INDEX IF NOT EXISTS idx_profile_pictures_updated_at ON profile_pictures(updated_at);
 
 ALTER TABLE nostr_users

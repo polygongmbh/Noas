@@ -13,15 +13,21 @@ document.addEventListener('DOMContentLoaded', function () {
   const signinStatus = document.getElementById('signinStatus');
   const updateStatus = document.getElementById('updateStatus');
   const deleteStatus = document.getElementById('deleteStatus');
+  const pictureStatus = document.getElementById('pictureStatus');
   const accountPanel = document.getElementById('accountPanel');
   const updatePanel = document.getElementById('updatePanel');
   const deletePanel = document.getElementById('deletePanel');
+  const profileSummary = document.getElementById('profileSummary');
+  const profilePicturePreview = document.getElementById('profilePicturePreview');
+  const profilePictureStatus = document.getElementById('profilePictureStatus');
   const publicKeyEl = document.getElementById('publicKey');
   const encryptedKeyEl = document.getElementById('encryptedKey');
   const privateKeyEl = document.getElementById('privateKey');
   const relayListEl = document.getElementById('relayList');
   const copyEncrypted = document.getElementById('copyEncrypted');
   const decryptPrivateKeyButton = document.getElementById('decryptPrivateKey');
+  const pictureForm = document.getElementById('pictureForm');
+  const profilePictureInput = document.getElementById('profilePictureInput');
 
   const signupStartForm = document.getElementById('signupStartForm');
   const signupUsername = document.getElementById('signupUsername');
@@ -145,6 +151,45 @@ document.addEventListener('DOMContentLoaded', function () {
     return Array.from(new Uint8Array(digest))
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join('');
+  }
+
+  function setProfilePicture(publicKey) {
+    const normalized = String(publicKey || '').trim();
+    if (!profileSummary || !profilePicturePreview || !profilePictureStatus) return;
+    if (!normalized) {
+      profileSummary.hidden = true;
+      profilePicturePreview.hidden = true;
+      profilePicturePreview.removeAttribute('src');
+      profilePictureStatus.textContent = 'No profile picture available';
+      return;
+    }
+
+    const pictureUrl = `/api/v1/picture/${normalized}`;
+    profileSummary.hidden = false;
+    profilePicturePreview.hidden = false;
+    profilePicturePreview.src = pictureUrl;
+    profilePictureStatus.textContent = pictureUrl;
+  }
+
+  function clearProfilePicture() {
+    if (!profileSummary || !profilePicturePreview || !profilePictureStatus) return;
+    profileSummary.hidden = true;
+    profilePicturePreview.hidden = true;
+    profilePicturePreview.removeAttribute('src');
+    profilePictureStatus.textContent = 'No profile picture uploaded';
+  }
+
+  async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const base64Payload = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64Payload);
+      };
+      reader.onerror = () => reject(new Error('Unable to read selected file.'));
+      reader.readAsDataURL(file);
+    });
   }
 
   function validateSignupStartForm() {
@@ -309,6 +354,8 @@ document.addEventListener('DOMContentLoaded', function () {
       state.username = username;
       state.password = password;
 
+      const normalizedPublicKey = data.public_key || '';
+      setProfilePicture(normalizedPublicKey);
       publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || '—';
       encryptedKeyEl.textContent = data.private_key_encrypted || '—';
       privateKeyEl.textContent = '—';
@@ -356,6 +403,19 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  if (profilePicturePreview) {
+    profilePicturePreview.addEventListener('error', () => {
+      profilePicturePreview.hidden = true;
+      profilePicturePreview.removeAttribute('src');
+      if (profileSummary) profileSummary.hidden = false;
+      if (profilePictureStatus) profilePictureStatus.textContent = 'No profile picture uploaded';
+    });
+
+    profilePicturePreview.addEventListener('load', () => {
+      profilePicturePreview.hidden = false;
+    });
+  }
+
   updateForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!state.username || !state.password) {
@@ -388,6 +448,47 @@ document.addEventListener('DOMContentLoaded', function () {
       setStatus(updateStatus, 'Account updated successfully.', 'success');
     } catch (error) {
       setStatus(updateStatus, error.message, 'error');
+    }
+  });
+
+  pictureForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!state.username || !state.password) {
+      setStatus(pictureStatus, 'Sign in before uploading a profile picture.', 'error');
+      return;
+    }
+
+    const file = profilePictureInput?.files?.[0];
+    if (!file) {
+      setStatus(pictureStatus, 'Choose an image file to upload.', 'error');
+      return;
+    }
+
+    setStatus(pictureStatus, 'Uploading profile picture...', 'info');
+
+    try {
+      const payloadBase64 = await fileToBase64(file);
+      const passwordHash = await sha256Hex(state.password);
+      const data = await request('/api/v1/picture', {
+        username: state.username,
+        password_hash: passwordHash,
+        data: payloadBase64,
+        contentType: file.type || 'application/octet-stream',
+      });
+
+      const pictureUrl = `${data.url}?t=${Date.now()}`;
+      if (profileSummary) profileSummary.hidden = false;
+      if (profilePicturePreview) {
+        profilePicturePreview.src = pictureUrl;
+        profilePicturePreview.hidden = false;
+      }
+      if (profilePictureStatus) {
+        profilePictureStatus.textContent = data.url || 'Profile picture uploaded';
+      }
+      setStatus(pictureStatus, 'Profile picture uploaded.', 'success');
+      pictureForm.reset();
+    } catch (error) {
+      setStatus(pictureStatus, error.message, 'error');
     }
   });
 
@@ -426,6 +527,7 @@ document.addEventListener('DOMContentLoaded', function () {
       deleteForm.reset();
       state.username = null;
       state.password = null;
+      clearProfilePicture();
       privateKeyEl.textContent = '—';
     } catch (error) {
       setStatus(deleteStatus, error.message, 'error');
