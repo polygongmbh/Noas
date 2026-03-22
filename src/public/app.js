@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const decryptPrivateKeyButton = document.getElementById('decryptPrivateKey');
   const pictureForm = document.getElementById('pictureForm');
   const profilePictureInput = document.getElementById('profilePictureInput');
+  const deleteConfirmUsernameInput = deleteForm?.querySelector('input[name="confirm_username"]');
 
   const signupStartForm = document.getElementById('signupStartForm');
   const signupUsername = document.getElementById('signupUsername');
@@ -492,6 +493,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  deleteConfirmUsernameInput?.addEventListener('paste', (event) => {
+    event.preventDefault();
+    setStatus(deleteStatus, 'Paste is disabled. Type your username manually.', 'error');
+  });
+
+  deleteConfirmUsernameInput?.addEventListener('drop', (event) => {
+    event.preventDefault();
+  });
+
   deleteForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!state.username || !state.password) {
@@ -501,14 +511,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const formData = new FormData(deleteForm);
     const savedKey = formData.get('saved_key');
-    const confirm = formData.get('confirm');
+    const confirmUsername = String(formData.get('confirm_username') || '').trim().toLowerCase();
 
     if (!savedKey) {
       setStatus(deleteStatus, 'Please confirm you saved your private key.', 'error');
       return;
     }
-    if (confirm !== 'DELETE') {
-      setStatus(deleteStatus, 'Type DELETE to confirm account deletion.', 'error');
+    if (confirmUsername !== String(state.username || '').trim().toLowerCase()) {
+      setStatus(deleteStatus, 'Type your exact username to confirm account deletion.', 'error');
       return;
     }
 

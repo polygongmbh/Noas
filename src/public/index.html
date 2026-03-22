@@ -198,8 +198,17 @@
               I have saved my private key and understand deletion is permanent.
             </label>
             <label>
-              Type DELETE to confirm
-              <input type="text" name="confirm" placeholder="DELETE" required />
+              Type your username to confirm
+              <input
+                type="text"
+                name="confirm_username"
+                placeholder="your_username"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                required
+              />
             </label>
             <button type="submit" class="btn danger">Delete account</button>
             <div id="deleteStatus" class="status" role="status"></div>
