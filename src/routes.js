@@ -112,17 +112,6 @@ function buildNip05Identifier(username) {
   return `${username}@${config.nip05RootDomain}`;
 }
 
-async function toNpub(publicKey) {
-  const candidate = String(publicKey || '').trim().toLowerCase();
-  if (!candidate || !isValidSha256Hex(candidate)) return null;
-  try {
-    const { nip19 } = await import('nostr-tools');
-    return nip19.npubEncode(candidate);
-  } catch {
-    return null;
-  }
-}
-
 function isNostrUserVerificationExpired(user, expiryMinutes) {
   const createdAtMs = new Date(user.created_at).getTime();
   if (Number.isNaN(createdAtMs)) return true;
@@ -293,7 +282,6 @@ router.post('/api/v1/auth/register', async (req, res) => {
         status: 'active',
         nip05,
         public_key: keyMaterial.publicKey,
-        public_npub: await toNpub(keyMaterial.publicKey),
         key_source: keyMaterial.keySource,
         message: 'Account is active. You can now sign in.',
       });
@@ -321,7 +309,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         redirectTarget: normalizedRedirect,
         verificationLink,
         expiresAt,
-        publicKey: (await toNpub(keyMaterial.publicKey)) || keyMaterial.publicKey,
+        publicKey: keyMaterial.publicKey,
       });
     } catch (error) {
       emailDelivery = { sent: false, reason: 'smtp_send_failed' };
@@ -339,7 +327,6 @@ router.post('/api/v1/auth/register', async (req, res) => {
       status: 'unverified_email',
       nip05,
       public_key: keyMaterial.publicKey,
-      public_npub: await toNpub(keyMaterial.publicKey),
       key_source: keyMaterial.keySource,
       message: `Check ${email} to verify your account.`,
     };
@@ -389,7 +376,6 @@ router.get('/api/v1/auth/verify', async (req, res) => {
       username: user.username,
       nip05: buildNip05Identifier(user.username),
       public_key: user.public_key || null,
-      public_npub: await toNpub(user.public_key),
       expires_at: expiresAt.toISOString(),
     });
   } catch (error) {
@@ -496,7 +482,7 @@ router.post('/api/v1/auth/resend', async (req, res) => {
         redirectTarget: null,
         verificationLink,
         expiresAt,
-        publicKey: (await toNpub(updated.public_key)) || updated.public_key || null,
+        publicKey: updated.public_key || null,
       });
     } catch (error) {
       emailDelivery = { sent: false, reason: 'smtp_send_failed' };
@@ -595,7 +581,6 @@ const handleSignin = async (req, res) => {
       success: true,
       encryptedPrivateKey: user.private_key_encrypted || null,
       publicKey: user.public_key || null,
-      publicKeyNpub: await toNpub(user.public_key),
       relays: getDomainScopedRelays(derivedEmail, user.relays || []),
       status: user.status,
     });
@@ -667,7 +652,6 @@ const handleUpdate = async (req, res) => {
       user: {
         username: updated.username,
         publicKey: updated.public_key || null,
-        publicKeyNpub: await toNpub(updated.public_key),
       },
     });
   } catch (error) {
@@ -712,7 +696,6 @@ const handleDelete = async (req, res) => {
       deleted: {
         username: user.username,
         publicKey: user.public_key || null,
-        publicKeyNpub: await toNpub(user.public_key),
       },
     });
   } catch (error) {
@@ -763,13 +746,10 @@ const handlePictureUpload = async (req, res) => {
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const publicKeyNpub = await toNpub(updated.public_key);
-    const pictureIdentifier = publicKeyNpub || updated.public_key;
     res.json({
       success: true,
       publicKey: updated.public_key,
-      publicKeyNpub,
-      url: `${baseUrl}/api/v1/picture/${pictureIdentifier}`,
+      url: `${baseUrl}/api/v1/picture/${updated.public_key}`,
     });
   } catch (error) {
     console.error('Profile picture upload error:', error);

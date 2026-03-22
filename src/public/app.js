@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
     if (publicKey && !(/^[a-f0-9]{64}$/i.test(publicKey) || publicKey.startsWith('npub1'))) {
-      setStatus(signupStatus, 'Public key must be npub1... or 64-char hex', 'error');
+      setStatus(signupStatus, 'Public key must be a valid npub1... or 64-char hex value', 'error');
       signupPublicKey?.focus();
       return false;
     }
@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', function () {
           ? ` Verification link: ${data.verify_url}`
           : '';
         const keyHint = data.key_source === 'generated'
-          ? ` A Nostr keypair was generated automatically (pubkey: ${data.public_npub || data.public_key || 'unknown'}).`
+          ? ` A Nostr keypair was generated automatically (pubkey: ${data.public_key || 'unknown'}).`
           : '';
         setStatus(signupStatus, `${data.message || 'Verification sent.'}${keyHint}${verificationHint}`, 'success');
 
@@ -302,7 +302,7 @@ document.addEventListener('DOMContentLoaded', function () {
       state.username = username;
       state.password = password;
 
-      publicKeyEl.textContent = data.publicKeyNpub || data.publicKey || '—';
+      publicKeyEl.textContent = data.publicKey || '—';
       encryptedKeyEl.textContent = data.encryptedPrivateKey || '—';
       relayListEl.textContent = (data.relays || []).join(', ') || '—';
       accountPanel.hidden = false;

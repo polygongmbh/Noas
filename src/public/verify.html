@@ -139,7 +139,7 @@
         verifyMessage.textContent = 'Enter your password to activate this account.';
         verifiedNip05 = String(data.nip05 || '').trim();
         verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
-        const displayPubkey = String(data.public_npub || data.public_key || '').trim();
+        const displayPubkey = String(data.public_key || '').trim();
         verifyPublicKey.textContent = displayPubkey ? `Public key: ${displayPubkey}` : '';
         if (data.expires_at) {
           const minutesLeft = Math.max(

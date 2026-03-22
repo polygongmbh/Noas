@@ -136,7 +136,7 @@ Create account and send verification email.
 {
   "username": "alice",
   "password_hash": "sha256_hex_of_password",
-  "public_key": "npub1...",
+  "public_key": "64-char hex pubkey",
   "private_key_encrypted": "ncryptsec1...",
   "redirect": "https://nodex.polygon.gmbh"
 }

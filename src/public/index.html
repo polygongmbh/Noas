@@ -65,7 +65,7 @@
 
           <label>
             Public Key (optional)
-            <input type="text" id="signupPublicKey" placeholder="npub1... or 64-char hex pubkey" />
+            <input type="text" id="signupPublicKey" placeholder="64-char hex pubkey or npub1..." />
             <small>Leave blank to auto-generate a Nostr keypair.</small>
           </label>
 
@@ -115,7 +115,7 @@
         <div class="panel" id="accountPanel" hidden>
           <h2>Account Details</h2>
           <div class="field">
-            <span>Public key (npub)</span>
+            <span>Public key</span>
             <code id="publicKey">—</code>
           </div>
           <div class="field">
@@ -233,7 +233,7 @@
         <pre><code>{
   "username": "alice",
   "password_hash": "sha256_hex_of_password",
-  "public_key": "npub1...",
+  "public_key": "64-char hex pubkey",
   "private_key_encrypted": "ncryptsec1...",
   "redirect": "https://nodex.polygon.gmbh"
 }
