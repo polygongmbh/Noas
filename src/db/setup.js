@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS nostr_users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_nostr_users_username ON nostr_users(username);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_nostr_users_public_key_unique ON nostr_users(public_key) WHERE public_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_nostr_users_unverified_created_at ON nostr_users(created_at) WHERE status = 'unverified_email';
 CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token) WHERE verification_token IS NOT NULL;
 
@@ -101,10 +100,29 @@ ALTER TABLE nostr_users
 
 DROP INDEX IF EXISTS idx_nostr_users_public_key;
 DROP INDEX IF EXISTS idx_nostr_users_status_created_at;
+DROP INDEX IF EXISTS idx_nostr_users_public_key_unique;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_nostr_users_public_key_unique ON nostr_users(public_key) WHERE public_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_nostr_users_unverified_created_at ON nostr_users(created_at) WHERE status = 'unverified_email';
 CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token) WHERE verification_token IS NOT NULL;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM nostr_users
+    WHERE public_key IS NOT NULL
+    GROUP BY public_key
+    HAVING COUNT(*) > 1
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_nostr_users_public_key
+      ON nostr_users(public_key)
+      WHERE public_key IS NOT NULL;
+  ELSE
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_nostr_users_public_key_unique
+      ON nostr_users(public_key)
+      WHERE public_key IS NOT NULL;
+  END IF;
+END $$;
 
 DROP TABLE IF EXISTS user_onboarding;
 DROP TABLE IF EXISTS used_verification_tokens;
