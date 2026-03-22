@@ -20,15 +20,29 @@ TEST_USER_WITH_KEY="${TEST_USER}_key"
 TEST_PASS="testpass123"
 
 sha256_hex() {
-  if command -v shasum >/dev/null 2>&1; then
-    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
-    return
-  fi
-  if command -v sha256sum >/dev/null 2>&1; then
-    printf '%s' "$1" | sha256sum | awk '{print $1}'
-    return
-  fi
+  if command -v shasum >/dev/null 2>&1; then printf '%s' "$1" | shasum -a 256 | awk '{print $1}'; return; fi
+  if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | awk '{print $1}'; return; fi
   printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print $1}'
+}
+
+post_json() {
+  local path="$1"
+  local payload="$2"
+  curl -s -X POST "$API_URL$path" -H "Content-Type: application/json" -d "$payload"
+}
+
+assert_active_registration() {
+  local response="$1"
+  local label="$2"
+
+  print_response "$response"
+  echo "$response" | grep -q "success" && echo "  PASS: $label" || { echo "  FAIL: $label"; echo "$response"; exit 1; }
+  if printf '%s' "$response" | grep -qi "unverified_email"; then
+    echo "  FAIL: Registration returned unverified_email"
+    echo "  Disable email verification for this test run to allow direct sign-in."
+    echo "$response"
+    exit 1
+  fi
 }
 
 verify_returned_keypair() {
@@ -82,32 +96,19 @@ echo "✓ Obtaining api base"
 API_URL=$(curl -s "$BASE_URL/.well-known/nostr.json" | jq -r '.noas.api_base // empty' || true)
 API_URL=${API_URL:-"$BASE_URL/api/v1"}
 TEST_PASS_HASH=$(sha256_hex "$TEST_PASS")
+WRONG_PASS_HASH=$(sha256_hex "wrongpass")
 
 echo "✓ Test 2: Register User Without Key"
-REGISTER_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
-
-print_response "$REGISTER_RESPONSE"
-echo "$REGISTER_RESPONSE" | grep -q "success" && echo "  PASS: User registered" || { echo "  FAIL: Registration failed"; echo "$REGISTER_RESPONSE"; exit 1; }
-if printf '%s' "$REGISTER_RESPONSE" | grep -qi "unverified_email"; then
-  echo "  FAIL: Registration returned unverified_email"
-  echo "  Disable email verification for this test run to allow direct sign-in."
-  echo "$REGISTER_RESPONSE"
-  exit 1
-fi
+REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
+assert_active_registration "$REGISTER_RESPONSE" "User registered"
 echo ""
 
 echo "✓ Test 3: Sign In With Password Hash"
-SIGNIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
-
+SIGNIN_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 print_response "$SIGNIN_RESPONSE"
-echo "$SIGNIN_RESPONSE" | grep -q "private_key_encrypted" && echo "  PASS: Sign in successful" || { echo "  FAIL: Sign in failed"; echo "$SIGNIN_RESPONSE"; exit 1; }
-RETURNED_PUBLIC_KEY=$(printf '%s' "$SIGNIN_RESPONSE" | jq -r '.public_key // empty')
-RETURNED_PRIVATE_KEY_ENCRYPTED=$(printf '%s' "$SIGNIN_RESPONSE" | jq -r '.private_key_encrypted // empty')
-[ -n "$RETURNED_PUBLIC_KEY" ] && [ -n "$RETURNED_PRIVATE_KEY_ENCRYPTED" ] && echo "  PASS: Sign in returned key material" || { echo "  FAIL: Missing returned key material"; echo "$SIGNIN_RESPONSE"; exit 1; }
+RETURNED_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$SIGNIN_RESPONSE")
+RETURNED_PRIVATE_KEY_ENCRYPTED=$(jq -r '.private_key_encrypted // empty' <<<"$SIGNIN_RESPONSE")
+[ -n "$RETURNED_PUBLIC_KEY" ] && [ -n "$RETURNED_PRIVATE_KEY_ENCRYPTED" ] && echo "  PASS: Sign in returned key material" || { echo "  FAIL: Sign in failed"; echo "$SIGNIN_RESPONSE"; exit 1; }
 echo ""
 
 echo "✓ Test 4: Validate Returned Key"
@@ -115,37 +116,22 @@ verify_returned_keypair "$RETURNED_PUBLIC_KEY" "$RETURNED_PRIVATE_KEY_ENCRYPTED"
 echo ""
 
 echo "✓ Test 5: Register User With Returned Key"
-REGISTER_WITH_KEY_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"public_key\":\"$RETURNED_PUBLIC_KEY\",\"private_key_encrypted\":\"$RETURNED_PRIVATE_KEY_ENCRYPTED\"}")
-
-print_response "$REGISTER_WITH_KEY_RESPONSE"
-echo "$REGISTER_WITH_KEY_RESPONSE" | grep -q "success" && echo "  PASS: User registered with provided key" || { echo "  FAIL: Registration with provided key failed"; echo "$REGISTER_WITH_KEY_RESPONSE"; exit 1; }
-if printf '%s' "$REGISTER_WITH_KEY_RESPONSE" | grep -qi "unverified_email"; then
-  echo "  FAIL: Registration with provided key returned unverified_email"
-  echo "  Disable email verification for this test run to allow direct sign-in."
-  echo "$REGISTER_WITH_KEY_RESPONSE"
-  exit 1
-fi
+REGISTER_WITH_KEY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"public_key\":\"$RETURNED_PUBLIC_KEY\",\"private_key_encrypted\":\"$RETURNED_PRIVATE_KEY_ENCRYPTED\"}")
+assert_active_registration "$REGISTER_WITH_KEY_RESPONSE" "User registered with provided key"
 echo ""
 
 echo "✓ Test 6: Sign In With Password Hash For Provided Key"
-SIGNIN_WITH_KEY_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\"}")
+SIGNIN_WITH_KEY_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 
 print_response "$SIGNIN_WITH_KEY_RESPONSE"
-SIGNIN_WITH_KEY_PUBLIC_KEY=$(printf '%s' "$SIGNIN_WITH_KEY_RESPONSE" | jq -r '.public_key // empty')
-SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED=$(printf '%s' "$SIGNIN_WITH_KEY_RESPONSE" | jq -r '.private_key_encrypted // empty')
+SIGNIN_WITH_KEY_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$SIGNIN_WITH_KEY_RESPONSE")
+SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED=$(jq -r '.private_key_encrypted // empty' <<<"$SIGNIN_WITH_KEY_RESPONSE")
 [ "$SIGNIN_WITH_KEY_PUBLIC_KEY" = "$RETURNED_PUBLIC_KEY" ] && [ "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" = "$RETURNED_PRIVATE_KEY_ENCRYPTED" ] && echo "  PASS: Sign in returned the provided key material" || { echo "  FAIL: Sign in did not return the provided key material"; echo "$SIGNIN_WITH_KEY_RESPONSE"; exit 1; }
 verify_returned_keypair "$SIGNIN_WITH_KEY_PUBLIC_KEY" "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" && echo "  PASS: Provided key remains valid after sign in" || { echo "  FAIL: Provided key is invalid after sign in"; exit 1; }
 echo ""
 
 echo "✓ Test 7: Invalid Password Hash"
-WRONG_PASS_HASH=$(sha256_hex "wrongpass")
-INVALID_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$WRONG_PASS_HASH\"}")
+INVALID_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$WRONG_PASS_HASH\"}")
 
 print_response "$INVALID_RESPONSE"
 echo "$INVALID_RESPONSE" | grep -q "Invalid credentials" && echo "  PASS: Invalid password rejected" || { echo "  FAIL: Should reject invalid password"; echo "$INVALID_RESPONSE"; exit 1; }
@@ -159,18 +145,14 @@ echo "$NIP05_RESPONSE" | grep -q "\"$TEST_USER\"" && echo "  PASS: NIP-05 verifi
 echo ""
 
 echo "✓ Test 9: Duplicate Username"
-DUPLICATE_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
+DUPLICATE_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$DUPLICATE_RESPONSE"
 echo "$DUPLICATE_RESPONSE" | grep -Eq "already active|pending verification" && echo "  PASS: Duplicate username rejected" || { echo "  FAIL: Should reject duplicate"; echo "$DUPLICATE_RESPONSE"; exit 1; }
 echo ""
 
 echo "✓ Test 10: Invalid Username Format"
-INVALID_USER_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"Invalid-User\",\"password\":\"$TEST_PASS\"}")
+INVALID_USER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"Invalid-User\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$INVALID_USER_RESPONSE"
 echo "$INVALID_USER_RESPONSE" | grep -q "lowercase" && echo "  PASS: Invalid username format rejected" || { echo "  FAIL: Should reject invalid format"; echo "$INVALID_USER_RESPONSE"; exit 1; }

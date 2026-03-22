@@ -15,11 +15,6 @@ import {
   updateUser,
   updateUserProfilePicture,
   getUserProfilePictureByPublicKey,
-  upsertUserOnboarding,
-  getUserOnboardingByUsername,
-  markUserOnboardingEmailVerified,
-  incrementUserOnboardingPinAttempt,
-  deleteUserOnboarding,
 } from './users.js';
 
 // Test user data used across all tests
@@ -43,32 +38,6 @@ describe('User Database Operations', { skip: !dbAvailable }, () => {
 
 // Setup: Clean up any existing test data before running tests
 before(async () => {
-  await query(`
-    CREATE TABLE IF NOT EXISTS user_onboarding (
-      id SERIAL PRIMARY KEY,
-      username VARCHAR(32) UNIQUE NOT NULL,
-      email VARCHAR(320) UNIQUE NOT NULL,
-      password_hash VARCHAR(255) NOT NULL,
-      relays JSONB DEFAULT '[]'::jsonb,
-      email_verification_token VARCHAR(128) NOT NULL,
-      email_verification_pin_hash VARCHAR(255) NOT NULL,
-      email_verification_expires_at TIMESTAMP NOT NULL,
-      email_verified_at TIMESTAMP,
-      pin_attempt_count INTEGER NOT NULL DEFAULT 0,
-      verification_origin TEXT,
-      public_key VARCHAR(64),
-      encrypted_private_key TEXT,
-      last_email_sent_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-  await query(`
-    CREATE TABLE IF NOT EXISTS used_verification_tokens (
-      token VARCHAR(128) PRIMARY KEY,
-      used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
   await query(`
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
@@ -100,14 +69,12 @@ before(async () => {
 
   // Clean up any existing test data
   await query('DELETE FROM users WHERE username = $1', [testUser.username]);
-  await query('DELETE FROM user_onboarding WHERE username = $1', [testUser.username]);
 });
 
 // Teardown: Clean up test data and close database connection
 after(async () => {
   // Clean up test data
   await query('DELETE FROM users WHERE username = $1', [testUser.username]);
-  await query('DELETE FROM user_onboarding WHERE username = $1', [testUser.username]);
   await closePool();
 });
 
@@ -188,35 +155,5 @@ test('updateUserProfilePicture stores profile picture', async () => {
   assert.ok(updatedUser);
   assert.strictEqual(updatedUser.profile_picture_type, pictureType);
   assert.deepStrictEqual(updatedUser.profile_picture, pictureData);
-});
-
-test('onboarding CRUD helpers work', async () => {
-  const onboarding = await upsertUserOnboarding({
-    username: testUser.username,
-    email: 'testuser@polygon.gmbh',
-    passwordHash: testUser.passwordHash,
-    relays: testUser.relays,
-    emailVerificationToken: 'tokentest',
-    emailVerificationPinHash: '$2b$10$abcdefghijklmnopqrstuv',
-    emailVerificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
-  });
-
-  assert.ok(onboarding);
-  assert.strictEqual(onboarding.username, testUser.username);
-
-  const fetched = await getUserOnboardingByUsername(testUser.username);
-  assert.ok(fetched);
-  assert.strictEqual(fetched.email, 'testuser@polygon.gmbh');
-
-  await incrementUserOnboardingPinAttempt(testUser.username);
-  const afterPinAttempt = await getUserOnboardingByUsername(testUser.username);
-  assert.strictEqual(afterPinAttempt.pin_attempt_count, 1);
-
-  const verified = await markUserOnboardingEmailVerified(testUser.username);
-  assert.ok(verified.email_verified_at);
-
-  await deleteUserOnboarding(testUser.username);
-  const deleted = await getUserOnboardingByUsername(testUser.username);
-  assert.strictEqual(deleted, undefined);
 });
 });

@@ -22,8 +22,6 @@
 
 import express from 'express';
 import { 
-  recordUsedVerificationToken,
-  isVerificationTokenUsed,
   createNostrUser,
   getNostrUserByUsername,
   getNostrUserByVerificationToken,
@@ -115,8 +113,8 @@ function buildNip05Identifier(username) {
 function isNostrUserVerificationExpired(user, expiryMinutes) {
   const createdAtMs = new Date(user.created_at).getTime();
   if (Number.isNaN(createdAtMs)) return true;
-  const ttlMs = Math.max(1, Number(expiryMinutes) || 1) * 60 * 1000;
-  return Date.now() > createdAtMs + ttlMs;
+  const expiresAtMs = createdAtMs + Math.max(1, Number(expiryMinutes) || 1) * 60 * 1000;
+  return Number.isNaN(expiresAtMs) || Date.now() > expiresAtMs;
 }
 
 async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedRaw, password) {
@@ -399,27 +397,24 @@ router.get('/api/v1/auth/verify', async (req, res) => {
     }
     const user = await getNostrUserByVerificationToken(token);
     if (!user) {
-      if (await isVerificationTokenUsed(token)) {
-        return res.status(410).json({ error: 'Link already used.' });
-      }
       return res.status(404).json({ error: 'Invalid link.' });
+    }
+    if (user.status === 'active') {
+      return res.status(409).json({ error: 'Account already active. Sign in.' });
     }
     if (isNostrUserVerificationExpired(user, config.verificationExpiryMinutes)) {
       await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
       return res.status(410).json({ error: 'Link expired. Register again.' });
     }
-    if (user.status === 'active') {
-      return res.status(409).json({ error: 'Account already active. Sign in.' });
-    }
-    const expiresAt = new Date(
-      new Date(user.created_at).getTime() + Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
-    );
     res.json({
       success: true,
       username: user.username,
       nip05: buildNip05Identifier(user.username),
       public_key: user.public_key || null,
-      expires_at: expiresAt.toISOString(),
+      expires_at: new Date(
+        new Date(user.created_at).getTime() +
+        Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
+      ).toISOString(),
     });
   } catch (error) {
     console.error('V1 verify preview error:', error);
@@ -443,10 +438,6 @@ router.post('/api/v1/auth/verify', async (req, res) => {
       return res.status(400).json({ error: 'password_hash must be a 64-character SHA-256 hex string' });
     }
 
-    if (await isVerificationTokenUsed(normalizedToken)) {
-      return res.status(410).json({ error: 'Link already used.' });
-    }
-
     const user = await getNostrUserByVerificationToken(normalizedToken);
     if (!user) {
       return res.status(404).json({ error: 'Invalid link.' });
@@ -468,7 +459,6 @@ router.post('/api/v1/auth/verify', async (req, res) => {
     }
 
     await activateNostrUserByUsername(user.username);
-    await recordUsedVerificationToken(normalizedToken);
 
     res.json({
       success: true,
@@ -512,7 +502,8 @@ router.post('/api/v1/auth/resend', async (req, res) => {
     const updated = await updateNostrUserResendToken(normalizedUsername, verificationToken);
     const verificationLink = buildVerificationLinkWithRedirect(verificationToken, null);
     const expiresAt = new Date(
-      new Date(updated.created_at).getTime() + Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
+      new Date(updated.created_at).getTime() +
+      Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
     );
     const email = normalizeEmail(buildNip05Identifier(normalizedUsername));
 

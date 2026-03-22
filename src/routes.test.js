@@ -45,32 +45,6 @@ before(async () => {
   // Clean up test data first
   try {
     await query(`
-      CREATE TABLE IF NOT EXISTS user_onboarding (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(32) UNIQUE NOT NULL,
-        email VARCHAR(320) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        relays JSONB DEFAULT '[]'::jsonb,
-        email_verification_token VARCHAR(128) NOT NULL,
-        email_verification_pin_hash VARCHAR(255) NOT NULL,
-        email_verification_expires_at TIMESTAMP NOT NULL,
-        email_verified_at TIMESTAMP,
-        pin_attempt_count INTEGER NOT NULL DEFAULT 0,
-        verification_origin TEXT,
-        public_key VARCHAR(64),
-        encrypted_private_key TEXT,
-        last_email_sent_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    await query(`
-      CREATE TABLE IF NOT EXISTS used_verification_tokens (
-        token VARCHAR(128) PRIMARY KEY,
-        used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    await query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
     `);
@@ -99,7 +73,6 @@ before(async () => {
         ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
     `);
     await query('DELETE FROM users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
-    await query('DELETE FROM user_onboarding WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
   } catch (e) {
     // Ignore if table doesn't exist yet
   }
@@ -121,7 +94,6 @@ after(async () => {
   // Clean up test data
   try {
     await query('DELETE FROM users WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
-    await query('DELETE FROM user_onboarding WHERE username IN ($1, $2, $3, $4)', ['apitestuser', 'updateuser', 'stageduser', 'pendinguser']);
   } catch (e) {
     // Ignore cleanup errors
   }
