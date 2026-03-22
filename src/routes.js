@@ -192,20 +192,22 @@ function resolveRegistrationPasswordHash({ password, passwordHash, hasKeyMateria
 
 function getUpdatePrivateKeyEncrypted(updates) {
   if (!updates || typeof updates !== 'object') return '';
-  return String(
-    updates.private_key_encrypted ??
-    updates.encryptedPrivateKey ??
-    ''
-  ).trim();
+  return String(updates.private_key_encrypted ?? '').trim();
 }
 
 function getUpdatePublicKey(updates) {
   if (!updates || typeof updates !== 'object') return '';
-  return String(
-    updates.public_key ??
-    updates.publicKey ??
-    ''
-  ).trim().toLowerCase();
+  return String(updates.public_key ?? '').trim().toLowerCase();
+}
+
+function getUpdatePasswordHash(updates) {
+  if (!updates || typeof updates !== 'object') return '';
+  return String(updates.new_password_hash ?? '').trim().toLowerCase();
+}
+
+function getUpdatePassword(updates) {
+  if (!updates || typeof updates !== 'object') return '';
+  return String(updates.new_password ?? '');
 }
 
 function normalizeBase64Payload(data, contentType) {
@@ -647,17 +649,19 @@ const handleUpdate = async (req, res) => {
     }
 
     const updateData = {};
-    const requestedPasswordChange = Boolean(updates?.newPasswordHash || updates?.newPassword);
+    const nextPasswordHashInput = getUpdatePasswordHash(updates);
+    const nextPasswordInput = getUpdatePassword(updates);
+    const requestedPasswordChange = Boolean(nextPasswordHashInput || nextPasswordInput);
     const nextPrivateKeyEncrypted = getUpdatePrivateKeyEncrypted(updates);
     const nextPublicKey = getUpdatePublicKey(updates);
     const requestedCredentialChange = requestedPasswordChange || Boolean(nextPrivateKeyEncrypted) || Boolean(nextPublicKey);
 
     if (requestedPasswordChange) {
       const nextPasswordHash = String(
-        updates.newPasswordHash || normalizePasswordHashFromSignin('', updates.newPassword)
+        nextPasswordHashInput || normalizePasswordHashFromSignin('', nextPasswordInput)
       ).trim().toLowerCase();
       if (!isValidSha256Hex(nextPasswordHash)) {
-        return res.status(400).json({ error: 'newPasswordHash must be a 64-character SHA-256 hex string' });
+        return res.status(400).json({ error: 'new_password_hash must be a 64-character SHA-256 hex string' });
       }
       updateData.passwordSha256 = nextPasswordHash;
     }
@@ -678,9 +682,9 @@ const handleUpdate = async (req, res) => {
       updateData.publicKey = nextPublicKey;
     }
 
-    if (requestedCredentialChange && (!updateData.passwordHash || !updateData.privateKeyEncrypted || !updateData.publicKey)) {
+    if (requestedCredentialChange && (!updateData.passwordSha256 || !updateData.privateKeyEncrypted || !updateData.publicKey)) {
       return res.status(400).json({
-        error: 'Credential updates require newPasswordHash/newPassword, private_key_encrypted, and public_key together',
+        error: 'Credential updates require new_password_hash/new_password, private_key_encrypted, and public_key together',
       });
     }
 
@@ -759,7 +763,13 @@ const handleDelete = async (req, res) => {
  */
 const handlePictureUpload = async (req, res) => {
   try {
-    const { username, password, password_hash: passwordHashInput, data, contentType } = req.body;
+    const {
+      username,
+      password,
+      password_hash: passwordHashInput,
+      data,
+      content_type: contentTypeRaw,
+    } = req.body;
     const normalizedUsername = String(username || '').trim().toLowerCase();
     const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
 
@@ -776,7 +786,7 @@ const handlePictureUpload = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const imageResult = normalizeBase64Payload(data, contentType);
+    const imageResult = normalizeBase64Payload(data, contentTypeRaw);
     if (imageResult.error) {
       return res.status(400).json({ error: imageResult.error });
     }

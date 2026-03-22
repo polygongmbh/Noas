@@ -263,10 +263,10 @@ fi
 start_test "Rotate Password And Key Together"
 ROTATED_TEST_PASS="testpass456"
 ROTATED_TEST_PASS_HASH=$(sha256_hex "$ROTATED_TEST_PASS")
-readarray -t ROTATED_KEY_DATA < <(rotate_key_password "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" "$ROTATED_TEST_PASS")
-ROTATED_PUBLIC_KEY="${ROTATED_KEY_DATA[0]}"
-ROTATED_PRIVATE_KEY_ENCRYPTED="${ROTATED_KEY_DATA[1]}"
-UPDATE_CREDENTIALS_RESPONSE=$(post_json "/auth/update" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"updates\":{\"newPasswordHash\":\"$ROTATED_TEST_PASS_HASH\",\"public_key\":\"$ROTATED_PUBLIC_KEY\",\"private_key_encrypted\":\"$ROTATED_PRIVATE_KEY_ENCRYPTED\"}}")
+ROTATED_KEY_OUTPUT=$(rotate_key_password "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" "$ROTATED_TEST_PASS")
+ROTATED_PUBLIC_KEY=$(printf '%s\n' "$ROTATED_KEY_OUTPUT" | sed -n '1p')
+ROTATED_PRIVATE_KEY_ENCRYPTED=$(printf '%s\n' "$ROTATED_KEY_OUTPUT" | sed -n '2p')
+UPDATE_CREDENTIALS_RESPONSE=$(post_json "/auth/update" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"updates\":{\"new_password_hash\":\"$ROTATED_TEST_PASS_HASH\",\"public_key\":\"$ROTATED_PUBLIC_KEY\",\"private_key_encrypted\":\"$ROTATED_PRIVATE_KEY_ENCRYPTED\"}}")
 print_response "$UPDATE_CREDENTIALS_RESPONSE"
 if echo "$UPDATE_CREDENTIALS_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
   pass_step "Password, pubkey, and encrypted key rotated together"
@@ -307,7 +307,7 @@ else
 fi
 
 start_test "Upload Profile Picture"
-PICTURE_UPLOAD_RESPONSE=$(post_json "/picture" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"data\":\"$TEST_PICTURE_BASE64\",\"contentType\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
+PICTURE_UPLOAD_RESPONSE=$(post_json "/picture" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"data\":\"$TEST_PICTURE_BASE64\",\"content_type\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
 print_response "$PICTURE_UPLOAD_RESPONSE"
 PICTURE_URL=$(jq -r '.url // empty' <<<"$PICTURE_UPLOAD_RESPONSE")
 PICTURE_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$PICTURE_UPLOAD_RESPONSE")

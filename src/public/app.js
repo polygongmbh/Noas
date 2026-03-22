@@ -449,7 +449,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const formData = new FormData(credentialsForm);
-    const newPassword = String(formData.get('newPassword') || '');
+    const newPassword = String(formData.get('new_password') || '');
     const privateKeyInput = String(formData.get('private_key_input') || '').trim();
 
     if (!newPassword && !privateKeyInput) {
@@ -484,7 +484,7 @@ document.addEventListener('DOMContentLoaded', function () {
         username: state.username,
         password: state.password,
         updates: {
-          newPassword,
+          new_password: newPassword,
           public_key: resolvedPublicKey,
           private_key_encrypted: encryptedPrivateKey,
         },
@@ -552,7 +552,7 @@ document.addEventListener('DOMContentLoaded', function () {
         username: state.username,
         password_hash: passwordHash,
         data: payloadBase64,
-        contentType: file.type || 'application/octet-stream',
+        content_type: file.type || 'application/octet-stream',
       });
 
       const pictureUrl = `${data.url}?t=${Date.now()}`;

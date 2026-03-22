@@ -22,6 +22,9 @@ Primary entrypoints:
   edits you did not make unless explicitly asked.
 - Prefer small, consistent changes that keep docs, UI copy, and tests aligned
   with actual runtime behavior.
+- Public API request and response field names must use `snake_case`.
+  Do not introduce or accept `camelCase` or `PascalCase` fields in route
+  contracts, browser UI API payloads, examples, or API tests.
 
 ## Route And Behavior Changes
 

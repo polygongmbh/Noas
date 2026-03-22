@@ -8,6 +8,9 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert';
+import { createHash } from 'node:crypto';
+import { getPublicKey } from 'nostr-tools';
+import { decrypt, encrypt } from 'nostr-tools/nip49';
 import { app } from './index.js';
 import { query, closePool } from './db/pool.js';
 
@@ -258,7 +261,7 @@ test('POST /update changes password', async () => {
     username: 'updateuser',
     password: 'oldpassword123',
     updates: {
-      newPassword: 'newpassword123',
+      new_password: 'newpassword123',
     },
   });
 
@@ -272,6 +275,53 @@ test('POST /update changes password', async () => {
   });
 
   assert.strictEqual(signin.status, 200);
+});
+
+// Test: POST /update changes password and key material together
+test('POST /update rotates password hash and encrypted key together', async () => {
+  const register = await request('POST', '/api/v1/auth/register', {
+    username: 'rotatinguser',
+    password: 'rotatepassword123',
+  });
+
+  assert.strictEqual(register.status, 200);
+  assert.ok(register.data.public_key);
+
+  const initialSignin = await request('POST', '/api/v1/auth/signin', {
+    username: 'rotatinguser',
+    password_hash: createHash('sha256').update('rotatepassword123').digest('hex'),
+  });
+
+  assert.strictEqual(initialSignin.status, 200);
+  assert.ok(initialSignin.data.private_key_encrypted);
+  assert.ok(initialSignin.data.public_key);
+
+  const secretKey = decrypt(initialSignin.data.private_key_encrypted, 'rotatepassword123');
+  const rotatedPrivateKeyEncrypted = encrypt(secretKey, 'rotatepassword456');
+  const rotatedPublicKey = getPublicKey(secretKey).toLowerCase();
+  const rotatedPasswordHash = createHash('sha256').update('rotatepassword456').digest('hex');
+
+  const update = await request('POST', '/api/v1/auth/update', {
+    username: 'rotatinguser',
+    password_hash: createHash('sha256').update('rotatepassword123').digest('hex'),
+    updates: {
+      new_password_hash: rotatedPasswordHash,
+      public_key: rotatedPublicKey,
+      private_key_encrypted: rotatedPrivateKeyEncrypted,
+    },
+  });
+
+  assert.strictEqual(update.status, 200);
+  assert.strictEqual(update.data.success, true);
+
+  const rotatedSignin = await request('POST', '/api/v1/auth/signin', {
+    username: 'rotatinguser',
+    password_hash: rotatedPasswordHash,
+  });
+
+  assert.strictEqual(rotatedSignin.status, 200);
+  assert.strictEqual(rotatedSignin.data.public_key, rotatedPublicKey);
+  assert.strictEqual(rotatedSignin.data.private_key_encrypted, rotatedPrivateKeyEncrypted);
 });
 
 // Test: GET /.well-known/nostr.json returns public key for NIP-05 verification
@@ -309,7 +359,7 @@ test('POST /picture uploads and GET /picture/:pubkey serves image', async () => 
   const upload = await request('POST', '/picture', {
     username: 'apitestuser',
     password: 'testpassword123',
-    contentType: 'image/png',
+    content_type: 'image/png',
     data: imageBase64,
   });
 

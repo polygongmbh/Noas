@@ -242,7 +242,7 @@ Update password hash, public key, encrypted private key, or relays (requires aut
   "username": "alice",
   "password": "currentpassword",
   "updates": {
-    "newPasswordHash": "sha256_hex_of_new_password",
+    "new_password_hash": "sha256_hex_of_new_password",
     "public_key": "64-char hex pubkey",
     "private_key_encrypted": "ncryptsec1...",
     "relays": ["wss://new-relay.com"]
@@ -250,7 +250,7 @@ Update password hash, public key, encrypted private key, or relays (requires aut
 }
 ```
 
-Credential rotation requires `newPasswordHash`/`newPassword`, `public_key`, and `private_key_encrypted` together.
+Credential rotation requires `new_password_hash`/`new_password`, `public_key`, and `private_key_encrypted` together.
 
 ### GET /.well-known/nostr.json?name=alice
 
