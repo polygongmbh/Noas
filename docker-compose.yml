@@ -23,6 +23,8 @@ services:
       noas-db:
         condition: service_healthy
     command: ["sh", "-lc", "npm run db:setup && npm start"]
+    ports:
+      - 3000:3000
     environment:
       PORT: 3000
       # Keep container runtime env owned by docker-compose.
