@@ -194,6 +194,18 @@ Resend verification email for a pending account.
 }
 ```
 
+### POST /api/v1/picture
+
+Upload or replace the authenticated account's profile picture.
+
+### GET /api/v1/picture/:pubkey
+
+Fetch the current profile picture for the account currently using that pubkey.
+
+Cache behavior:
+- Returns `Last-Modified` based on the stored picture update time.
+- Honors `If-Modified-Since` and returns `304 Not Modified` when appropriate.
+
 ### POST /register
 
 Deprecated legacy endpoint. Returns `410 Gone`. Use `POST /api/v1/auth/register`.

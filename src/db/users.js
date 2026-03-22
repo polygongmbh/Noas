@@ -424,35 +424,39 @@ export async function deleteNostrUser(username) {
 }
 
 /**
- * Store profile picture in nostr_users.
- * @param {string} username
+ * Store or replace profile picture for a nostr account.
+ * @param {number} accountId
  * @param {Buffer} pictureData
  * @param {string} pictureType
  * @returns {Promise<Object|undefined>}
  */
-export async function updateNostrUserProfilePicture(username, pictureData, pictureType) {
+export async function updateNostrUserProfilePicture(accountId, pictureData, pictureType) {
   const result = await query(
-    `UPDATE nostr_users
-     SET profile_picture = $1,
-         profile_picture_type = $2,
-         profile_picture_updated_at = NOW()
-     WHERE username = $3
-     RETURNING username, public_key`,
-    [pictureData, pictureType, username]
+    `INSERT INTO profile_pictures (account_id, content_type, data, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (account_id) DO UPDATE
+     SET content_type = EXCLUDED.content_type,
+         data = EXCLUDED.data,
+         updated_at = EXCLUDED.updated_at
+     RETURNING account_id`,
+    [accountId, pictureType, pictureData]
   );
   return result.rows[0];
 }
 
 /**
- * Get profile picture from nostr_users by public key.
+ * Get profile picture for a nostr account by current public key.
  * @param {string} publicKey
  * @returns {Promise<Object|undefined>}
  */
 export async function getNostrUserProfilePictureByPublicKey(publicKey) {
   const result = await query(
-    `SELECT profile_picture, profile_picture_type
-     FROM nostr_users
-     WHERE public_key = $1`,
+    `SELECT p.data AS profile_picture,
+            p.content_type AS profile_picture_type,
+            p.updated_at AS profile_picture_updated_at
+     FROM nostr_users u
+     JOIN profile_pictures p ON p.account_id = u.id
+     WHERE u.public_key = $1`,
     [publicKey]
   );
   return result.rows[0];

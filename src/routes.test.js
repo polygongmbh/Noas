@@ -45,6 +45,14 @@ before(async () => {
   // Clean up test data first
   try {
     await query(`
+      CREATE TABLE IF NOT EXISTS profile_pictures (
+        account_id INTEGER PRIMARY KEY,
+        content_type VARCHAR(100) NOT NULL,
+        data BYTEA NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
     `);

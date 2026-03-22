@@ -2,10 +2,36 @@
 # Integration Test Script for Noas API
 # Tests all endpoints with actual HTTP requests
 
-set -e
+set -uo pipefail
 
 BASE_URL="http://localhost:3000"
 VERBOSE=false
+EXPECTED_TESTS=12
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
+CURRENT_TEST=""
+SUMMARY_PRINTED=false
+
+if [ -t 1 ]; then
+  COLOR_RESET=$'\033[0m'
+  COLOR_BOLD=$'\033[1m'
+  COLOR_DIM=$'\033[2m'
+  COLOR_RED=$'\033[31m'
+  COLOR_GREEN=$'\033[32m'
+  COLOR_YELLOW=$'\033[33m'
+  COLOR_BLUE=$'\033[34m'
+  COLOR_CYAN=$'\033[36m'
+else
+  COLOR_RESET=""
+  COLOR_BOLD=""
+  COLOR_DIM=""
+  COLOR_RED=""
+  COLOR_GREEN=""
+  COLOR_YELLOW=""
+  COLOR_BLUE=""
+  COLOR_CYAN=""
+fi
 
 for arg in "$@"; do
   case "$arg" in
@@ -18,11 +44,22 @@ done
 TEST_USER="test_$(date +%s)"
 TEST_USER_WITH_KEY="${TEST_USER}_key"
 TEST_PASS="testpass123"
+TEST_PICTURE_BASE64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+XG1cAAAAASUVORK5CYII="
+TEST_PICTURE_CONTENT_TYPE="image/png"
 
 sha256_hex() {
   if command -v shasum >/dev/null 2>&1; then printf '%s' "$1" | shasum -a 256 | awk '{print $1}'; return; fi
   if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | awk '{print $1}'; return; fi
   printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print $1}'
+}
+
+base64_file() {
+  local file_path="$1"
+  if command -v base64 >/dev/null 2>&1; then
+    base64 < "$file_path" | tr -d '\n'
+    return
+  fi
+  openssl base64 -A -in "$file_path"
 }
 
 post_json() {
@@ -36,12 +73,13 @@ assert_active_registration() {
   local label="$2"
 
   print_response "$response"
-  echo "$response" | grep -q "success" && echo "  PASS: $label" || { echo "  FAIL: $label"; echo "$response"; exit 1; }
   if printf '%s' "$response" | grep -qi "unverified_email"; then
-    echo "  FAIL: Registration returned unverified_email"
-    echo "  Disable email verification for this test run to allow direct sign-in."
-    echo "$response"
-    exit 1
+    fail_step "Registration returned unverified_email" "Disable email verification for this test run to allow direct sign-in."
+  fi
+  if echo "$response" | grep -q "success"; then
+    pass_step "$label"
+  else
+    fail_step "$label" "$response"
   fi
 }
 
@@ -78,86 +116,196 @@ EOF
 
 print_response() {
   if [ "$VERBOSE" = true ]; then
-    echo "  RESPONSE: $1"
+    printf "   ${COLOR_DIM}↳ response:${COLOR_RESET} %s\n" "$1"
   fi
 }
 
-echo "🧪 Noas API Integration Tests"
-echo "================================"
-echo ""
+print_banner() {
+  printf "%s🧪 Noas API Integration Tests%s\n" "$COLOR_BOLD$COLOR_CYAN" "$COLOR_RESET"
+  printf "%s================================%s\n\n" "$COLOR_DIM" "$COLOR_RESET"
+}
 
-echo "✓ Test 1: Health Check"
+start_test() {
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  CURRENT_TEST="$1"
+  printf "%s[%02d/%02d]%s %s🔎 %s%s\n" \
+    "$COLOR_BOLD$COLOR_BLUE" \
+    "$TOTAL_TESTS" \
+    "$EXPECTED_TESTS" \
+    "$COLOR_RESET" \
+    "$COLOR_BOLD" \
+    "$CURRENT_TEST" \
+    "$COLOR_RESET"
+}
+
+pass_step() {
+  PASSED_TESTS=$((PASSED_TESTS + 1))
+  printf "   %s✅ PASS:%s %s\n\n" "$COLOR_GREEN" "$COLOR_RESET" "$1"
+}
+
+fail_step() {
+  FAILED_TESTS=$((FAILED_TESTS + 1))
+  printf "   %s❌ FAIL:%s %s\n" "$COLOR_RED" "$COLOR_RESET" "$1"
+  if [ -n "${2:-}" ]; then
+    printf "   %s↳ details:%s %s\n" "$COLOR_YELLOW" "$COLOR_RESET" "$2"
+  fi
+  echo ""
+  exit 1
+}
+
+print_summary() {
+  [ "$SUMMARY_PRINTED" = true ] && return
+  SUMMARY_PRINTED=true
+
+  printf "%s================================%s\n" "$COLOR_DIM" "$COLOR_RESET"
+  printf "%s📊 Test Summary%s\n" "$COLOR_BOLD$COLOR_CYAN" "$COLOR_RESET"
+  printf "   %sPassed:%s %d\n" "$COLOR_GREEN" "$COLOR_RESET" "$PASSED_TESTS"
+  printf "   %sFailed:%s %d\n" "$COLOR_RED" "$COLOR_RESET" "$FAILED_TESTS"
+  printf "   %sTotal:%s  %d\n" "$COLOR_BOLD" "$COLOR_RESET" "$TOTAL_TESTS"
+  if [ "$FAILED_TESTS" -eq 0 ]; then
+    printf "   %sResult:%s all integration tests passed\n" "$COLOR_GREEN" "$COLOR_RESET"
+    printf "   %sTested user:%s %s\n" "$COLOR_DIM" "$COLOR_RESET" "$TEST_USER"
+  else
+    printf "   %sResult:%s stopped on failure" "$COLOR_RED" "$COLOR_RESET"
+    if [ -n "$CURRENT_TEST" ]; then
+      printf " (%s)" "$CURRENT_TEST"
+    fi
+    printf "\n"
+  fi
+}
+
+trap print_summary EXIT
+
+print_banner
+
+start_test "Health Check"
 HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
 print_response "$HEALTH_RESPONSE"
-echo "$HEALTH_RESPONSE" | grep -q "ok" && echo "  PASS: Server is healthy" || { echo "  FAIL: Health check failed"; echo "$HEALTH_RESPONSE"; exit 1; }
-echo ""
+if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
+  pass_step "Server is healthy"
+else
+  fail_step "Health check failed" "$HEALTH_RESPONSE"
+fi
 
-echo "✓ Obtaining api base"
+printf "%s🌐 Resolving API base%s\n" "$COLOR_BOLD$COLOR_CYAN" "$COLOR_RESET"
 API_URL=$(curl -s "$BASE_URL/.well-known/nostr.json" | jq -r '.noas.api_base // empty' || true)
 API_URL=${API_URL:-"$BASE_URL/api/v1"}
 TEST_PASS_HASH=$(sha256_hex "$TEST_PASS")
 WRONG_PASS_HASH=$(sha256_hex "wrongpass")
+printf "   %s↳ API URL:%s %s\n\n" "$COLOR_DIM" "$COLOR_RESET" "$API_URL"
 
-echo "✓ Test 2: Register User Without Key"
+start_test "Register User Without Key"
 REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
 assert_active_registration "$REGISTER_RESPONSE" "User registered"
 echo ""
 
-echo "✓ Test 3: Sign In With Password Hash"
+start_test "Sign In With Password Hash"
 SIGNIN_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 print_response "$SIGNIN_RESPONSE"
 RETURNED_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$SIGNIN_RESPONSE")
 RETURNED_PRIVATE_KEY_ENCRYPTED=$(jq -r '.private_key_encrypted // empty' <<<"$SIGNIN_RESPONSE")
-[ -n "$RETURNED_PUBLIC_KEY" ] && [ -n "$RETURNED_PRIVATE_KEY_ENCRYPTED" ] && echo "  PASS: Sign in returned key material" || { echo "  FAIL: Sign in failed"; echo "$SIGNIN_RESPONSE"; exit 1; }
-echo ""
+if [ -n "$RETURNED_PUBLIC_KEY" ] && [ -n "$RETURNED_PRIVATE_KEY_ENCRYPTED" ]; then
+  pass_step "Sign in returned key material"
+else
+  fail_step "Sign in failed" "$SIGNIN_RESPONSE"
+fi
 
-echo "✓ Test 4: Validate Returned Key"
-verify_returned_keypair "$RETURNED_PUBLIC_KEY" "$RETURNED_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" && echo "  PASS: Returned encrypted key matches returned public key" || { echo "  FAIL: Returned encrypted key is invalid"; exit 1; }
-echo ""
+start_test "Validate Returned Key"
+if verify_returned_keypair "$RETURNED_PUBLIC_KEY" "$RETURNED_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS"; then
+  pass_step "Returned encrypted key matches returned public key"
+else
+  fail_step "Returned encrypted key is invalid"
+fi
 
-echo "✓ Test 5: Register User With Returned Key"
+start_test "Register User With Returned Key"
 REGISTER_WITH_KEY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"public_key\":\"$RETURNED_PUBLIC_KEY\",\"private_key_encrypted\":\"$RETURNED_PRIVATE_KEY_ENCRYPTED\"}")
 assert_active_registration "$REGISTER_WITH_KEY_RESPONSE" "User registered with provided key"
 echo ""
 
-echo "✓ Test 6: Sign In With Password Hash For Provided Key"
+start_test "Sign In With Password Hash For Provided Key"
 SIGNIN_WITH_KEY_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 
 print_response "$SIGNIN_WITH_KEY_RESPONSE"
 SIGNIN_WITH_KEY_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$SIGNIN_WITH_KEY_RESPONSE")
 SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED=$(jq -r '.private_key_encrypted // empty' <<<"$SIGNIN_WITH_KEY_RESPONSE")
-[ "$SIGNIN_WITH_KEY_PUBLIC_KEY" = "$RETURNED_PUBLIC_KEY" ] && [ "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" = "$RETURNED_PRIVATE_KEY_ENCRYPTED" ] && echo "  PASS: Sign in returned the provided key material" || { echo "  FAIL: Sign in did not return the provided key material"; echo "$SIGNIN_WITH_KEY_RESPONSE"; exit 1; }
-verify_returned_keypair "$SIGNIN_WITH_KEY_PUBLIC_KEY" "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" && echo "  PASS: Provided key remains valid after sign in" || { echo "  FAIL: Provided key is invalid after sign in"; exit 1; }
-echo ""
+if [ "$SIGNIN_WITH_KEY_PUBLIC_KEY" = "$RETURNED_PUBLIC_KEY" ] && [ "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" = "$RETURNED_PRIVATE_KEY_ENCRYPTED" ]; then
+  verify_returned_keypair "$SIGNIN_WITH_KEY_PUBLIC_KEY" "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" || fail_step "Provided key is invalid after sign in"
+  pass_step "Sign in returned the provided key material and it remained valid"
+else
+  fail_step "Sign in did not return the provided key material" "$SIGNIN_WITH_KEY_RESPONSE"
+fi
 
-echo "✓ Test 7: Invalid Password Hash"
+start_test "Invalid Password Hash"
 INVALID_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$WRONG_PASS_HASH\"}")
 
 print_response "$INVALID_RESPONSE"
-echo "$INVALID_RESPONSE" | grep -q "Invalid credentials" && echo "  PASS: Invalid password rejected" || { echo "  FAIL: Should reject invalid password"; echo "$INVALID_RESPONSE"; exit 1; }
-echo ""
+if echo "$INVALID_RESPONSE" | grep -q "Invalid credentials"; then
+  pass_step "Invalid password rejected"
+else
+  fail_step "Should reject invalid password" "$INVALID_RESPONSE"
+fi
 
-echo "✓ Test 8: NIP-05 Verification"
+start_test "NIP-05 Verification"
 NIP05_RESPONSE=$(curl -s "$BASE_URL/.well-known/nostr.json?name=$TEST_USER")
 
 print_response "$NIP05_RESPONSE"
-echo "$NIP05_RESPONSE" | grep -q "\"$TEST_USER\"" && echo "  PASS: NIP-05 verification works" || { echo "  FAIL: NIP-05 failed"; echo "$NIP05_RESPONSE"; exit 1; }
-echo ""
+if echo "$NIP05_RESPONSE" | grep -q "\"$TEST_USER\""; then
+  pass_step "NIP-05 verification works"
+else
+  fail_step "NIP-05 failed" "$NIP05_RESPONSE"
+fi
 
-echo "✓ Test 9: Duplicate Username"
+start_test "Upload Profile Picture"
+PICTURE_UPLOAD_RESPONSE=$(post_json "/picture" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"data\":\"$TEST_PICTURE_BASE64\",\"contentType\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
+print_response "$PICTURE_UPLOAD_RESPONSE"
+PICTURE_URL=$(jq -r '.url // empty' <<<"$PICTURE_UPLOAD_RESPONSE")
+PICTURE_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$PICTURE_UPLOAD_RESPONSE")
+if echo "$PICTURE_UPLOAD_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true' && [ -n "$PICTURE_URL" ] && [ "$PICTURE_PUBLIC_KEY" = "$RETURNED_PUBLIC_KEY" ]; then
+  pass_step "Profile picture uploaded and public URL returned"
+else
+  fail_step "Profile picture upload failed" "$PICTURE_UPLOAD_RESPONSE"
+fi
+
+start_test "Fetch Profile Picture"
+PICTURE_HEADERS_FILE=$(mktemp)
+PICTURE_BODY_FILE=$(mktemp)
+PICTURE_304_HEADERS_FILE=$(mktemp)
+PICTURE_304_BODY_FILE=$(mktemp)
+trap 'rm -f "$PICTURE_HEADERS_FILE" "$PICTURE_BODY_FILE" "$PICTURE_304_HEADERS_FILE" "$PICTURE_304_BODY_FILE"; print_summary' EXIT
+PICTURE_STATUS=$(curl -s -D "$PICTURE_HEADERS_FILE" -o "$PICTURE_BODY_FILE" -w "%{http_code}" "$API_URL/picture/$RETURNED_PUBLIC_KEY")
+PICTURE_RESPONSE_CONTENT_TYPE=$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub(/\r/, "", $2); print $2; exit}' "$PICTURE_HEADERS_FILE")
+PICTURE_LAST_MODIFIED=$(awk 'BEGIN{IGNORECASE=1} /^Last-Modified:/ {$1=""; sub(/^ /, ""); gsub(/\r/, ""); print; exit}' "$PICTURE_HEADERS_FILE")
+PICTURE_RESPONSE_BASE64=$(base64_file "$PICTURE_BODY_FILE")
+if [ "$PICTURE_STATUS" = "200" ] && [ "$PICTURE_RESPONSE_CONTENT_TYPE" = "$TEST_PICTURE_CONTENT_TYPE" ] && [ "$PICTURE_RESPONSE_BASE64" = "$TEST_PICTURE_BASE64" ] && [ -n "$PICTURE_LAST_MODIFIED" ]; then
+  pass_step "Profile picture fetch returned the stored image with Last-Modified"
+else
+  fail_step "Profile picture fetch failed" "status=$PICTURE_STATUS content_type=$PICTURE_RESPONSE_CONTENT_TYPE"
+fi
+
+start_test "Fetch Profile Picture Not Modified"
+PICTURE_304_STATUS=$(curl -s -D "$PICTURE_304_HEADERS_FILE" -o "$PICTURE_304_BODY_FILE" -w "%{http_code}" -H "If-Modified-Since: $PICTURE_LAST_MODIFIED" "$API_URL/picture/$RETURNED_PUBLIC_KEY")
+if [ "$PICTURE_304_STATUS" = "304" ]; then
+  pass_step "Profile picture returned 304 for If-Modified-Since"
+else
+  fail_step "Profile picture conditional fetch failed" "status=$PICTURE_304_STATUS"
+fi
+
+start_test "Duplicate Username"
 DUPLICATE_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$DUPLICATE_RESPONSE"
-echo "$DUPLICATE_RESPONSE" | grep -Eq "already active|pending verification" && echo "  PASS: Duplicate username rejected" || { echo "  FAIL: Should reject duplicate"; echo "$DUPLICATE_RESPONSE"; exit 1; }
-echo ""
+if echo "$DUPLICATE_RESPONSE" | grep -Eq "already active|pending verification"; then
+  pass_step "Duplicate username rejected"
+else
+  fail_step "Should reject duplicate" "$DUPLICATE_RESPONSE"
+fi
 
-echo "✓ Test 10: Invalid Username Format"
+start_test "Invalid Username Format"
 INVALID_USER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"Invalid-User\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$INVALID_USER_RESPONSE"
-echo "$INVALID_USER_RESPONSE" | grep -q "lowercase" && echo "  PASS: Invalid username format rejected" || { echo "  FAIL: Should reject invalid format"; echo "$INVALID_USER_RESPONSE"; exit 1; }
-echo ""
-
-echo "================================"
-echo "✅ All integration tests passed!"
-echo "Tested user: $TEST_USER"
+if echo "$INVALID_USER_RESPONSE" | grep -q "lowercase"; then
+  pass_step "Invalid username format rejected"
+else
+  fail_step "Should reject invalid format" "$INVALID_USER_RESPONSE"
+fi

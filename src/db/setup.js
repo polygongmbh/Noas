@@ -43,9 +43,6 @@ CREATE TABLE IF NOT EXISTS nostr_users (
   public_key TEXT,
   private_key_encrypted TEXT,
   relays JSONB DEFAULT '[]'::jsonb,
-  profile_picture BYTEA,
-  profile_picture_type VARCHAR(100),
-  profile_picture_updated_at TIMESTAMPTZ,
   status nostr_user_status NOT NULL DEFAULT 'unverified_email',
   verification_token TEXT UNIQUE,
   last_resend_at TIMESTAMPTZ,
@@ -54,6 +51,7 @@ CREATE TABLE IF NOT EXISTS nostr_users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_nostr_users_username ON nostr_users(username);
+CREATE INDEX IF NOT EXISTS idx_nostr_users_public_key ON nostr_users(public_key);
 CREATE INDEX IF NOT EXISTS idx_nostr_users_status_created_at ON nostr_users(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_nostr_users_verification_token ON nostr_users(verification_token);
 
@@ -93,20 +91,38 @@ ALTER TABLE nostr_users
 ALTER TABLE nostr_users
   ADD COLUMN IF NOT EXISTS relays JSONB DEFAULT '[]'::jsonb;
 
-ALTER TABLE nostr_users
-  ADD COLUMN IF NOT EXISTS profile_picture BYTEA;
-
-ALTER TABLE nostr_users
-  ADD COLUMN IF NOT EXISTS profile_picture_type VARCHAR(100);
-
-ALTER TABLE nostr_users
-  ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMPTZ;
-
 DROP TABLE IF EXISTS user_onboarding;
 DROP TABLE IF EXISTS used_verification_tokens;
 
 ALTER TABLE nostr_users
   DROP COLUMN IF EXISTS verification_expires_at;
+
+CREATE TABLE IF NOT EXISTS profile_pictures (
+  account_id INTEGER PRIMARY KEY REFERENCES nostr_users(id) ON DELETE CASCADE,
+  content_type VARCHAR(100) NOT NULL,
+  data BYTEA NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO profile_pictures (account_id, content_type, data, updated_at)
+SELECT id, profile_picture_type, profile_picture, COALESCE(profile_picture_updated_at, NOW())
+FROM nostr_users
+WHERE profile_picture IS NOT NULL
+ON CONFLICT (account_id) DO UPDATE
+SET content_type = EXCLUDED.content_type,
+    data = EXCLUDED.data,
+    updated_at = EXCLUDED.updated_at;
+
+CREATE INDEX IF NOT EXISTS idx_profile_pictures_updated_at ON profile_pictures(updated_at);
+
+ALTER TABLE nostr_users
+  DROP COLUMN IF EXISTS profile_picture_updated_at;
+
+ALTER TABLE nostr_users
+  DROP COLUMN IF EXISTS profile_picture_type;
+
+ALTER TABLE nostr_users
+  DROP COLUMN IF EXISTS profile_picture;
 
 -- NIP-46 Remote Signer tables
 CREATE TABLE IF NOT EXISTS nip46_sessions (

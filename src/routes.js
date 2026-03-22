@@ -768,7 +768,7 @@ const handlePictureUpload = async (req, res) => {
     }
 
     const updated = await updateNostrUserProfilePicture(
-      normalizedUsername,
+      user.id,
       imageResult.buffer,
       imageResult.contentType
     );
@@ -780,8 +780,8 @@ const handlePictureUpload = async (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({
       success: true,
-      public_key: updated.public_key,
-      url: `${baseUrl}/api/v1/picture/${updated.public_key}`,
+      public_key: user.public_key,
+      url: `${baseUrl}/api/v1/picture/${user.public_key}`,
     });
   } catch (error) {
     console.error('Profile picture upload error:', error);
@@ -819,8 +819,23 @@ const handlePictureFetch = async (req, res) => {
       return res.status(404).json({ error: 'Profile picture not found' });
     }
 
+    const updatedAt = picture.profile_picture_updated_at
+      ? new Date(picture.profile_picture_updated_at)
+      : null;
+    const ifModifiedSinceHeader = String(req.get('if-modified-since') || '').trim();
+    if (updatedAt && ifModifiedSinceHeader) {
+      const ifModifiedSince = new Date(ifModifiedSinceHeader);
+      if (!Number.isNaN(ifModifiedSince.getTime()) && updatedAt.getTime() <= ifModifiedSince.getTime()) {
+        res.status(304).end();
+        return;
+      }
+    }
+
     res.set('Content-Type', picture.profile_picture_type || 'application/octet-stream');
     res.set('Cache-Control', 'public, max-age=3600');
+    if (updatedAt && !Number.isNaN(updatedAt.getTime())) {
+      res.set('Last-Modified', updatedAt.toUTCString());
+    }
     res.send(picture.profile_picture);
   } catch (error) {
     console.error('Profile picture fetch error:', error);
