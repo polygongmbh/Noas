@@ -10,6 +10,7 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+COPY db ./db
 COPY src ./src
 
 ENV NODE_ENV=production

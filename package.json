@@ -12,7 +12,8 @@
     "test:unit": "NODE_ENV=test node --test src/auth.test.js src/db/users.test.js src/db/nip46.test.js src/nip46.test.js",
     "test:stable": "NODE_ENV=test node --test src/auth.test.js src/db/nip46.test.js src/nip46-demo.test.js",
     "test:integration": "./test-api.sh",
-    "db:setup": "node src/db/setup.js"
+    "db:migrate": "dbmate --migrations-dir ./db/migrations --no-dump-schema up",
+    "db:new": "dbmate --migrations-dir ./db/migrations new"
   },
   "keywords": [
     "nostr",
@@ -22,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "dbmate": "^2.31.0",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "nodemailer": "^6.10.1",

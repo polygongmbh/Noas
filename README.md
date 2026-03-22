@@ -15,6 +15,7 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 
 Runtime config model:
 - Docker: `docker-compose.yml` is the runtime source of truth (`NOAS_LOAD_DOTENV=false`).
+- Database migrations are managed with `dbmate` from `db/migrations/`.
 - Local `npm run dev`: `.env` is used (`NOAS_LOAD_DOTENV=true`).
 
 ### Task runner (`justfile`)
@@ -99,7 +100,7 @@ Most other domain-related behavior derives from these values.
 ### 3. Set up database
 
 ```bash
-npm run db:setup
+npm run db:migrate
 ```
 
 ### 4. Run tests

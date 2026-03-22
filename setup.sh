@@ -23,7 +23,7 @@ echo "Make sure PostgreSQL is running and your DATABASE_URL in .env is correct"
 echo ""
 read -p "Press enter to continue with database setup..."
 
-npm run db:setup
+npm run db:migrate
 
 echo ""
 echo "🧪 Running tests..."

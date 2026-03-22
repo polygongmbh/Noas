@@ -1,13 +1,4 @@
-/**
- * Database Setup Script
- * 
- * Creates the database schema (tables, indexes, constraints).
- * Run this once after creating the database: npm run db:setup
- */
-
-import { pool } from './pool.js';
-
-const schema = `
+-- migrate:up
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(32) UNIQUE NOT NULL,
@@ -90,8 +81,25 @@ ALTER TABLE nostr_users
 ALTER TABLE nostr_users
   ADD COLUMN IF NOT EXISTS relays JSONB DEFAULT '[]'::jsonb;
 
-ALTER TABLE nostr_users
-  RENAME COLUMN password_hash TO password_sha256;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'nostr_users'
+      AND column_name = 'password_hash'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'nostr_users'
+      AND column_name = 'password_sha256'
+  ) THEN
+    ALTER TABLE nostr_users
+      RENAME COLUMN password_hash TO password_sha256;
+  END IF;
+END $$;
 
 ALTER TABLE nostr_users
   ALTER COLUMN verification_token TYPE UUID USING verification_token::uuid;
@@ -131,7 +139,6 @@ ALTER TABLE nostr_users
 ALTER TABLE nostr_users
   DROP COLUMN IF EXISTS profile_picture;
 
--- NIP-46 Remote Signer tables
 CREATE TABLE IF NOT EXISTS nip46_sessions (
   id SERIAL PRIMARY KEY,
   session_id VARCHAR(64) UNIQUE NOT NULL,
@@ -139,7 +146,7 @@ CREATE TABLE IF NOT EXISTS nip46_sessions (
   client_pubkey VARCHAR(64) NOT NULL,
   remote_signer_pubkey VARCHAR(64) NOT NULL,
   secret VARCHAR(64),
-  permissions TEXT[], -- array of allowed methods/permissions
+  permissions TEXT[],
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'connected', 'disconnected')),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -167,22 +174,5 @@ CREATE INDEX IF NOT EXISTS idx_nip46_sessions_status ON nip46_sessions(status);
 CREATE INDEX IF NOT EXISTS idx_nip46_requests_request_id ON nip46_requests(request_id);
 CREATE INDEX IF NOT EXISTS idx_nip46_requests_session_id ON nip46_requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_nip46_requests_status ON nip46_requests(status);
-`;
 
-/**
- * Set up the database schema
- * Creates tables and indexes if they don't exist
- */
-async function setup() {
-  try {
-    console.log('Setting up database...');
-    await pool.query(schema);
-    console.log('✓ Database setup complete');
-    await pool.end();
-  } catch (error) {
-    console.error('Database setup failed:', error);
-    process.exit(1);
-  }
-}
-
-setup();
+-- migrate:down

@@ -22,7 +22,7 @@ services:
     depends_on:
       noas-db:
         condition: service_healthy
-    command: ["sh", "-lc", "npm run db:setup && npm start"]
+    command: ["sh", "-lc", "npm run db:migrate && npm start"]
     ports:
       - 3000:3000
     environment:

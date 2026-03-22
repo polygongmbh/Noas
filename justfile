@@ -35,7 +35,7 @@ db-restart:
 
 # Setup database schema
 db-setup: db-start
-    npm run db:setup
+    npm run db:migrate
 
 # Connect to database shell
 db-shell:
@@ -148,7 +148,7 @@ demo: demo-register demo-signin demo-nip05 (demo-nip46 "demo_user" "securepass12
 # Demo: Upload profile picture
 demo-picture username="demo_user" password="securepass123":
     @echo "Uploading profile picture for: {{username}}"
-    @bash -lc 'curl -s -X POST "{{noas_base_url}}/picture" -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","contentType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2S+0sAAAAASUVORK5CYII="}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s -X POST "{{noas_base_url}}/picture" -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","content_type":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2S+0sAAAAASUVORK5CYII="}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
     @echo ""
     @echo "Fetch image:"
     @curl -s -o /tmp/noas_demo_pic.bin "{{noas_base_url}}/picture/abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234"
