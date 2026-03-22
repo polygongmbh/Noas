@@ -119,16 +119,21 @@ function isNostrUserVerificationExpired(user, expiryMinutes) {
   return Date.now() > createdAtMs + ttlMs;
 }
 
-async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedRaw) {
+async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedRaw, password) {
   const hasPublic = Boolean(String(publicKeyRaw || '').trim());
   const hasPrivate = Boolean(String(privateKeyEncryptedRaw || '').trim());
 
   if (!hasPublic && !hasPrivate) {
-    const { generateSecretKey, getPublicKey, nip19 } = await import('nostr-tools');
+    const normalizedPassword = String(password || '');
+    if (!normalizedPassword) {
+      throw new Error('password is required when auto-generating a keypair');
+    }
+    const { generateSecretKey, getPublicKey } = await import('nostr-tools');
+    const { encrypt } = await import('nostr-tools/nip49');
     const secretKey = generateSecretKey();
     return {
       publicKey: getPublicKey(secretKey).toLowerCase(),
-      privateKeyEncrypted: nip19.nsecEncode(secretKey),
+      privateKeyEncrypted: encrypt(secretKey, normalizedPassword),
       keySource: 'generated',
     };
   }
@@ -165,6 +170,26 @@ async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedR
     privateKeyEncrypted: normalizedPrivateKeyEncrypted,
     keySource: 'provided',
   };
+}
+
+function resolveRegistrationPasswordHash({ password, passwordHash, hasKeyMaterial }) {
+  const normalizedPassword = String(password || '');
+  const normalizedPasswordHash = String(passwordHash || '').trim().toLowerCase();
+
+  if (!hasKeyMaterial) {
+    if (!normalizedPassword) {
+      throw new Error('password is required when auto-generating a keypair');
+    }
+    return createHash('sha256').update(normalizedPassword).digest('hex');
+  }
+
+  if (normalizedPassword) {
+    throw new Error('password must not be sent when providing encrypted key material');
+  }
+  if (!isValidSha256Hex(normalizedPasswordHash)) {
+    throw new Error('password_hash must be a 64-character SHA-256 hex string when providing encrypted key material');
+  }
+  return normalizedPasswordHash;
 }
 
 function getUpdatePrivateKeyEncrypted(updates) {
@@ -238,26 +263,35 @@ router.post('/api/v1/auth/register', async (req, res) => {
   try {
     const {
       username,
+      password,
       password_hash: passwordHash,
       public_key: publicKeyRaw,
       private_key_encrypted: privateKeyEncrypted,
       redirect,
     } = req.body || {};
     const normalizedUsername = String(username || '').trim().toLowerCase();
-    const normalizedPasswordHash = String(passwordHash || '').trim().toLowerCase();
+    const normalizedPassword = String(password || '');
     const normalizedRedirect = String(redirect || '').trim() || null;
+    const hasKeyMaterial = Boolean(String(publicKeyRaw || '').trim()) || Boolean(String(privateKeyEncrypted || '').trim());
 
     const usernameCheck = validateUsername(normalizedUsername);
     if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
-    if (!isValidSha256Hex(normalizedPasswordHash)) {
-      return res.status(400).json({ error: 'password_hash must be a 64-character SHA-256 hex string' });
+    let normalizedPasswordHash = '';
+    try {
+      normalizedPasswordHash = resolveRegistrationPasswordHash({
+        password: normalizedPassword,
+        passwordHash,
+        hasKeyMaterial,
+      });
+    } catch (error) {
+      return res.status(400).json({ error: error.message || 'Invalid password input' });
     }
     if (!isValidRedirectUrl(normalizedRedirect)) {
       return res.status(400).json({ error: 'Redirect must be a valid http(s) URL' });
     }
     let keyMaterial;
     try {
-      keyMaterial = await resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncrypted);
+      keyMaterial = await resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncrypted, normalizedPassword);
     } catch (error) {
       return res.status(400).json({ error: error.message || 'Invalid key material' });
     }

@@ -131,7 +131,16 @@ npm start
 
 Create account and send verification email.
 
-**Request:**
+**Request (auto-generate keypair):**
+```json
+{
+  "username": "alice",
+  "password": "securepassword123",
+  "redirect": "https://nodex.polygon.gmbh"
+}
+```
+
+**Request (client-provided keypair):**
 ```json
 {
   "username": "alice",
