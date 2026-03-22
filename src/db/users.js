@@ -386,6 +386,10 @@ export async function updateNostrUser(username, updates) {
     fields.push(`password_hash = $${param++}`);
     values.push(updates.passwordHash);
   }
+  if (updates.publicKey) {
+    fields.push(`public_key = $${param++}`);
+    values.push(updates.publicKey);
+  }
   if (updates.privateKeyEncrypted) {
     fields.push(`private_key_encrypted = $${param++}`);
     values.push(updates.privateKeyEncrypted);

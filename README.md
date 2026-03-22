@@ -234,7 +234,7 @@ Sign in and retrieve encrypted private key (active accounts only).
 
 ### POST /update
 
-Update password hash, encrypted private key, or relays (requires authentication).
+Update password hash, public key, encrypted private key, or relays (requires authentication).
 
 **Request:**
 ```json
@@ -243,11 +243,14 @@ Update password hash, encrypted private key, or relays (requires authentication)
   "password": "currentpassword",
   "updates": {
     "newPasswordHash": "sha256_hex_of_new_password",
+    "public_key": "64-char hex pubkey",
     "private_key_encrypted": "ncryptsec1...",
     "relays": ["wss://new-relay.com"]
   }
 }
 ```
+
+Credential rotation requires `newPasswordHash`/`newPassword`, `public_key`, and `private_key_encrypted` together.
 
 ### GET /.well-known/nostr.json?name=alice
 

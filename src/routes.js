@@ -199,6 +199,15 @@ function getUpdatePrivateKeyEncrypted(updates) {
   ).trim();
 }
 
+function getUpdatePublicKey(updates) {
+  if (!updates || typeof updates !== 'object') return '';
+  return String(
+    updates.public_key ??
+    updates.publicKey ??
+    ''
+  ).trim().toLowerCase();
+}
+
 function minutesBetween(nowMs, thenValue) {
   const thenMs = new Date(thenValue).getTime();
   if (Number.isNaN(thenMs)) return Number.POSITIVE_INFINITY;
@@ -650,8 +659,12 @@ const handleUpdate = async (req, res) => {
     }
 
     const updateData = {};
-    
-    if (updates?.newPasswordHash || updates?.newPassword) {
+    const requestedPasswordChange = Boolean(updates?.newPasswordHash || updates?.newPassword);
+    const nextPrivateKeyEncrypted = getUpdatePrivateKeyEncrypted(updates);
+    const nextPublicKey = getUpdatePublicKey(updates);
+    const requestedCredentialChange = requestedPasswordChange || Boolean(nextPrivateKeyEncrypted) || Boolean(nextPublicKey);
+
+    if (requestedPasswordChange) {
       const nextPasswordHash = String(
         updates.newPasswordHash || normalizePasswordHashFromSignin('', updates.newPassword)
       ).trim().toLowerCase();
@@ -661,13 +674,26 @@ const handleUpdate = async (req, res) => {
       updateData.passwordHash = nextPasswordHash;
     }
 
-    const nextPrivateKeyEncrypted = getUpdatePrivateKeyEncrypted(updates);
     if (nextPrivateKeyEncrypted) {
       const encKeyCheck = validateEncryptedPrivateKey(nextPrivateKeyEncrypted);
       if (!encKeyCheck.valid) {
         return res.status(400).json({ error: encKeyCheck.error });
       }
       updateData.privateKeyEncrypted = nextPrivateKeyEncrypted;
+    }
+
+    if (nextPublicKey) {
+      const publicKeyCheck = validatePublicKey(nextPublicKey);
+      if (!publicKeyCheck.valid) {
+        return res.status(400).json({ error: publicKeyCheck.error });
+      }
+      updateData.publicKey = nextPublicKey;
+    }
+
+    if (requestedCredentialChange && (!updateData.passwordHash || !updateData.privateKeyEncrypted || !updateData.publicKey)) {
+      return res.status(400).json({
+        error: 'Credential updates require newPasswordHash/newPassword, private_key_encrypted, and public_key together',
+      });
     }
 
     if (updates?.relays) {

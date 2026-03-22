@@ -6,7 +6,7 @@ set -uo pipefail
 
 BASE_URL="http://localhost:3000"
 VERBOSE=false
-EXPECTED_TESTS=12
+EXPECTED_TESTS=14
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -111,6 +111,31 @@ if (actualPublicKey !== expectedPublicKey) {
   console.error(`Pubkey mismatch: expected ${expectedPublicKey}, got ${actualPublicKey}`);
   process.exit(1);
 }
+EOF
+}
+
+rotate_key_password() {
+  local private_key_encrypted="$1"
+  local old_password="$2"
+  local new_password="$3"
+
+  PRIVATE_KEY_ENCRYPTED="$private_key_encrypted" \
+  OLD_PASSWORD="$old_password" \
+  NEW_PASSWORD="$new_password" \
+  node --input-type=module <<'EOF'
+import { getPublicKey } from 'nostr-tools';
+import { decrypt, encrypt } from 'nostr-tools/nip49';
+
+const privateKeyEncrypted = String(process.env.PRIVATE_KEY_ENCRYPTED || '').trim();
+const oldPassword = String(process.env.OLD_PASSWORD || '');
+const newPassword = String(process.env.NEW_PASSWORD || '');
+
+const secretKey = decrypt(privateKeyEncrypted, oldPassword);
+const publicKey = getPublicKey(secretKey).toLowerCase();
+const rotatedPrivateKeyEncrypted = encrypt(secretKey, newPassword);
+
+console.log(publicKey);
+console.log(rotatedPrivateKeyEncrypted);
 EOF
 }
 
@@ -233,6 +258,32 @@ if [ "$SIGNIN_WITH_KEY_PUBLIC_KEY" = "$RETURNED_PUBLIC_KEY" ] && [ "$SIGNIN_WITH
   pass_step "Sign in returned the provided key material and it remained valid"
 else
   fail_step "Sign in did not return the provided key material" "$SIGNIN_WITH_KEY_RESPONSE"
+fi
+
+start_test "Rotate Password And Key Together"
+ROTATED_TEST_PASS="testpass456"
+ROTATED_TEST_PASS_HASH=$(sha256_hex "$ROTATED_TEST_PASS")
+readarray -t ROTATED_KEY_DATA < <(rotate_key_password "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" "$ROTATED_TEST_PASS")
+ROTATED_PUBLIC_KEY="${ROTATED_KEY_DATA[0]}"
+ROTATED_PRIVATE_KEY_ENCRYPTED="${ROTATED_KEY_DATA[1]}"
+UPDATE_CREDENTIALS_RESPONSE=$(post_json "/auth/update" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"updates\":{\"newPasswordHash\":\"$ROTATED_TEST_PASS_HASH\",\"public_key\":\"$ROTATED_PUBLIC_KEY\",\"private_key_encrypted\":\"$ROTATED_PRIVATE_KEY_ENCRYPTED\"}}")
+print_response "$UPDATE_CREDENTIALS_RESPONSE"
+if echo "$UPDATE_CREDENTIALS_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+  pass_step "Password, pubkey, and encrypted key rotated together"
+else
+  fail_step "Credential rotation failed" "$UPDATE_CREDENTIALS_RESPONSE"
+fi
+
+start_test "Sign In With Rotated Credentials"
+ROTATED_SIGNIN_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$ROTATED_TEST_PASS_HASH\"}")
+print_response "$ROTATED_SIGNIN_RESPONSE"
+ROTATED_SIGNIN_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$ROTATED_SIGNIN_RESPONSE")
+ROTATED_SIGNIN_PRIVATE_KEY_ENCRYPTED=$(jq -r '.private_key_encrypted // empty' <<<"$ROTATED_SIGNIN_RESPONSE")
+if [ "$ROTATED_SIGNIN_PUBLIC_KEY" = "$ROTATED_PUBLIC_KEY" ] && [ "$ROTATED_SIGNIN_PRIVATE_KEY_ENCRYPTED" = "$ROTATED_PRIVATE_KEY_ENCRYPTED" ]; then
+  verify_returned_keypair "$ROTATED_SIGNIN_PUBLIC_KEY" "$ROTATED_SIGNIN_PRIVATE_KEY_ENCRYPTED" "$ROTATED_TEST_PASS" || fail_step "Rotated key is invalid after sign in"
+  pass_step "Rotated credentials sign in successfully"
+else
+  fail_step "Sign in did not return the rotated credentials" "$ROTATED_SIGNIN_RESPONSE"
 fi
 
 start_test "Invalid Password Hash"

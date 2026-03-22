@@ -459,8 +459,8 @@ document.addEventListener('DOMContentLoaded', function () {
         resolvedPublicKey = String(encrypted.publicKey || '').trim().toLowerCase();
       }
 
-      if (!resolvedPublicKey || resolvedPublicKey !== String(state.publicKey || '').trim().toLowerCase()) {
-        throw new Error('Private key does not match the signed-in account public key.');
+      if (!resolvedPublicKey) {
+        throw new Error('Unable to derive a public key from the provided private key.');
       }
 
       await request('/api/v1/auth/update', {
@@ -468,13 +468,17 @@ document.addEventListener('DOMContentLoaded', function () {
         password: state.password,
         updates: {
           newPassword,
+          public_key: resolvedPublicKey,
           private_key_encrypted: encryptedPrivateKey,
         },
       });
       state.password = newPassword;
+      state.publicKey = resolvedPublicKey;
       encryptedKeyEl.textContent = encryptedPrivateKey;
+      publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(resolvedPublicKey) || resolvedPublicKey || '—';
       privateKeyEl.textContent = '—';
-      setStatus(credentialsStatus, 'Password and key updated after local verification.', 'success');
+      setProfilePicture(resolvedPublicKey);
+      setStatus(credentialsStatus, 'Password, public key, and encrypted key updated after local verification.', 'success');
       credentialsForm.reset();
     } catch (error) {
       setStatus(credentialsStatus, error.message, 'error');
