@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', function () {
           ? ` Verification link: ${data.verify_url}`
           : '';
         const keyHint = data.key_source === 'generated'
-          ? ` A Nostr keypair was generated automatically (pubkey: ${data.public_key || 'unknown'}).`
+          ? ` A Nostr keypair was generated automatically (pubkey: ${window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || 'unknown'}).`
           : '';
         setStatus(signupStatus, `${data.message || 'Verification sent.'}${keyHint}${verificationHint}`, 'success');
 
@@ -302,7 +302,7 @@ document.addEventListener('DOMContentLoaded', function () {
       state.username = username;
       state.password = password;
 
-      publicKeyEl.textContent = data.public_key || '—';
+      publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || '—';
       encryptedKeyEl.textContent = data.private_key_encrypted || '—';
       relayListEl.textContent = (data.relays || []).join(', ') || '—';
       accountPanel.hidden = false;

@@ -26,6 +26,7 @@
       </section>
     </main>
 
+    <script src="/nostr.js"></script>
     <script>
       const params = new URLSearchParams(window.location.search);
       const token = (params.get('token') || '').trim();
@@ -139,7 +140,7 @@
         verifyMessage.textContent = 'Enter your password to activate this account.';
         verifiedNip05 = String(data.nip05 || '').trim();
         verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
-        const displayPubkey = String(data.public_key || '').trim();
+        const displayPubkey = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || String(data.public_key || '').trim();
         verifyPublicKey.textContent = displayPubkey ? `Public key: ${displayPubkey}` : '';
         if (data.expires_at) {
           const minutesLeft = Math.max(
