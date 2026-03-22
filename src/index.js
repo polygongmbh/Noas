@@ -43,6 +43,9 @@ app.use((req, res, next) => {
 
 // Serve landing page and static assets
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));
+app.use('/vendor/nostr-tools', express.static(join(__dirname, '..', 'node_modules', 'nostr-tools', 'lib')));
+app.use('/vendor/@noble', express.static(join(__dirname, '..', 'node_modules', '@noble')));
+app.use('/vendor/@scure', express.static(join(__dirname, '..', 'node_modules', '@scure')));
 
 app.get('/verify', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'verify.html'));

@@ -18,8 +18,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const deletePanel = document.getElementById('deletePanel');
   const publicKeyEl = document.getElementById('publicKey');
   const encryptedKeyEl = document.getElementById('encryptedKey');
+  const privateKeyEl = document.getElementById('privateKey');
   const relayListEl = document.getElementById('relayList');
   const copyEncrypted = document.getElementById('copyEncrypted');
+  const decryptPrivateKeyButton = document.getElementById('decryptPrivateKey');
 
   const signupStartForm = document.getElementById('signupStartForm');
   const signupUsername = document.getElementById('signupUsername');
@@ -241,15 +243,19 @@ document.addEventListener('DOMContentLoaded', function () {
       setStatus(signupStatus, 'Sending verification email...', 'info');
 
       try {
-        const passwordHash = await sha256Hex(password);
-        const data = await request('/api/v1/auth/register', {
+        const requestBody = {
           username,
           email: email || undefined,
-          password_hash: passwordHash,
           public_key: publicKey || undefined,
           private_key_encrypted: privateKeyEncrypted || undefined,
           redirect: redirect || undefined,
-        });
+        };
+        if (publicKey || privateKeyEncrypted) {
+          requestBody.password_hash = await sha256Hex(password);
+        } else {
+          requestBody.password = password;
+        }
+        const data = await request('/api/v1/auth/register', requestBody);
 
         state.signupUsername = username;
         if (resendUsername && !resendUsername.value) {
@@ -304,6 +310,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || '—';
       encryptedKeyEl.textContent = data.private_key_encrypted || '—';
+      privateKeyEl.textContent = '—';
       relayListEl.textContent = (data.relays || []).join(', ') || '—';
       accountPanel.hidden = false;
       updatePanel.hidden = false;
@@ -323,6 +330,28 @@ document.addEventListener('DOMContentLoaded', function () {
       setStatus(signinStatus, 'Encrypted key copied to clipboard.', 'success');
     } catch (error) {
       setStatus(signinStatus, 'Unable to copy key. Copy it manually.', 'error');
+    }
+  });
+
+  decryptPrivateKeyButton.addEventListener('click', async () => {
+    const encryptedPrivateKey = encryptedKeyEl.textContent;
+    if (!encryptedPrivateKey || encryptedPrivateKey === '—') {
+      setStatus(signinStatus, 'No encrypted key is available to decrypt.', 'error');
+      return;
+    }
+    if (!state.password) {
+      setStatus(signinStatus, 'Sign in again before decrypting your key.', 'error');
+      return;
+    }
+
+    setStatus(signinStatus, 'Decrypting private key locally...', 'info');
+    try {
+      const decrypted = await window.NoasNostr.decryptPrivateKey(encryptedPrivateKey, state.password);
+      privateKeyEl.textContent = decrypted.nsec || decrypted.hex || '—';
+      setStatus(signinStatus, 'Private key decrypted locally in your browser.', 'success');
+    } catch (error) {
+      privateKeyEl.textContent = '—';
+      setStatus(signinStatus, `Unable to decrypt private key: ${error.message}`, 'error');
     }
   });
 
@@ -396,6 +425,7 @@ document.addEventListener('DOMContentLoaded', function () {
       deleteForm.reset();
       state.username = null;
       state.password = null;
+      privateKeyEl.textContent = '—';
     } catch (error) {
       setStatus(deleteStatus, error.message, 'error');
     }

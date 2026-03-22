@@ -18,25 +18,11 @@ done
 TEST_USER="test_$(date +%s)"
 TEST_PASS="testpass123"
 
-sha256_hex() {
-  local value="$1" cmd
-  for cmd in "shasum -a 256" "sha256sum" "openssl dgst -sha256 -r"; do
-    if command -v "${cmd%% *}" >/dev/null 2>&1; then
-      printf '%s' "$value" | $cmd | awk '{print $1}'
-      return
-    fi
-  done
-  echo "No SHA-256 tool found (expected shasum, sha256sum, or openssl)" >&2
-  exit 1
-}
-
 print_response() {
   if [ "$VERBOSE" = true ]; then
     echo "  RESPONSE: $1"
   fi
 }
-
-TEST_PASS_HASH=$(sha256_hex "$TEST_PASS")
 
 echo "🧪 Noas API Integration Tests"
 echo "================================"
@@ -55,7 +41,7 @@ API_URL=${API_URL:-"$BASE_URL/api/v1"}
 echo "✓ Test 2: Register User"
 REGISTER_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
+  -d "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$REGISTER_RESPONSE"
 echo "$REGISTER_RESPONSE" | grep -q "success" && echo "  PASS: User registered" || { echo "  FAIL: Registration failed"; echo "$REGISTER_RESPONSE"; exit 1; }
@@ -70,7 +56,7 @@ echo ""
 echo "✓ Test 3: Sign In"
 SIGNIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
+  -d "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$SIGNIN_RESPONSE"
 echo "$SIGNIN_RESPONSE" | grep -q "private_key_encrypted" && echo "  PASS: Sign in successful" || { echo "  FAIL: Sign in failed"; echo "$SIGNIN_RESPONSE"; exit 1; }
@@ -79,7 +65,7 @@ echo ""
 echo "✓ Test 4: Invalid Password"
 INVALID_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$(sha256_hex "wrongpass")\"}")
+  -d "{\"username\":\"$TEST_USER\",\"password\":\"wrongpass\"}")
 
 print_response "$INVALID_RESPONSE"
 echo "$INVALID_RESPONSE" | grep -q "Invalid credentials" && echo "  PASS: Invalid password rejected" || { echo "  FAIL: Should reject invalid password"; echo "$INVALID_RESPONSE"; exit 1; }
@@ -95,7 +81,7 @@ echo ""
 echo "✓ Test 6: Duplicate Username"
 DUPLICATE_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
+  -d "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$DUPLICATE_RESPONSE"
 echo "$DUPLICATE_RESPONSE" | grep -Eq "already active|pending verification" && echo "  PASS: Duplicate username rejected" || { echo "  FAIL: Should reject duplicate"; echo "$DUPLICATE_RESPONSE"; exit 1; }
@@ -104,7 +90,7 @@ echo ""
 echo "✓ Test 7: Invalid Username Format"
 INVALID_USER_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"Invalid-User\",\"password_hash\":\"$TEST_PASS_HASH\"}")
+  -d "{\"username\":\"Invalid-User\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$INVALID_USER_RESPONSE"
 echo "$INVALID_USER_RESPONSE" | grep -q "lowercase" && echo "  PASS: Invalid username format rejected" || { echo "  FAIL: Should reject invalid format"; echo "$INVALID_USER_RESPONSE"; exit 1; }

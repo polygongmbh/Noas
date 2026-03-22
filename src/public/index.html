@@ -6,6 +6,17 @@
     <meta name="description" content="Noas is a minimal Nostr account service for secure key storage, relay updates, and account management." />
     <title>Noas | Nostr Account Service</title>
     <link rel="stylesheet" href="/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "nostr-tools": "/vendor/nostr-tools/esm/index.js",
+          "nostr-tools/": "/vendor/nostr-tools/esm/",
+          "@noble/ciphers/": "/vendor/@noble/ciphers/",
+          "@noble/hashes/": "/vendor/@noble/hashes/",
+          "@scure/base": "/vendor/@scure/base/index.js"
+        }
+      }
+    </script>
   </head>
   <body>
     <div class="bg" aria-hidden="true"></div>
@@ -123,12 +134,17 @@
             <code id="encryptedKey">—</code>
           </div>
           <div class="field">
+            <span>Decrypted private key</span>
+            <code id="privateKey">—</code>
+          </div>
+          <div class="field">
             <span>Relays</span>
             <code id="relayList">—</code>
           </div>
 
           <div class="actions inline">
             <button id="copyEncrypted" class="btn ghost" type="button">Copy encrypted key</button>
+            <button id="decryptPrivateKey" class="btn ghost" type="button">Decrypt private key</button>
           </div>
         </div>
 
@@ -229,7 +245,14 @@
 
       <section class="panel">
         <h2>Example</h2>
-        <p>Registration payload:</p>
+        <p>Registration payload (auto-generate keypair):</p>
+        <pre><code>{
+  "username": "alice",
+  "password": "securepassword123",
+  "redirect": "https://nodex.polygon.gmbh"
+}
+</code></pre>
+        <p>Registration payload (client-provided keypair):</p>
         <pre><code>{
   "username": "alice",
   "password_hash": "sha256_hex_of_password",

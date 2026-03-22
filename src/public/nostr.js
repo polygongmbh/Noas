@@ -1,4 +1,7 @@
 (function attachNoasNostr(globalScope) {
+  let nip49ModulePromise = null;
+  let nostrToolsModulePromise = null;
+
   function hexToBytes(hex) {
     const normalized = String(hex || '').trim().toLowerCase();
     if (!/^[a-f0-9]{64}$/.test(normalized)) return null;
@@ -77,7 +80,48 @@
     return `npub1${words.concat(checksum).map((value) => alphabet[value]).join('')}`;
   }
 
+  function bytesToHex(bytes) {
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function loadNip49Module() {
+    if (!nip49ModulePromise) {
+      nip49ModulePromise = import('nostr-tools/nip49');
+    }
+    return nip49ModulePromise;
+  }
+
+  async function loadNostrToolsModule() {
+    if (!nostrToolsModulePromise) {
+      nostrToolsModulePromise = import('nostr-tools');
+    }
+    return nostrToolsModulePromise;
+  }
+
+  async function decryptPrivateKey(ncryptsec, password) {
+    const normalizedKey = String(ncryptsec || '').trim();
+    const normalizedPassword = String(password || '');
+    if (!normalizedKey) {
+      throw new Error('Encrypted private key is required');
+    }
+    if (!normalizedPassword) {
+      throw new Error('Password is required');
+    }
+
+    const [{ decrypt }, { nip19 }] = await Promise.all([
+      loadNip49Module(),
+      loadNostrToolsModule(),
+    ]);
+    const secretKey = decrypt(normalizedKey, normalizedPassword);
+
+    return {
+      hex: bytesToHex(secretKey),
+      nsec: nip19.nsecEncode(secretKey),
+    };
+  }
+
   globalScope.NoasNostr = {
+    decryptPrivateKey,
     npubFromHexPublicKey,
   };
 }(window));
