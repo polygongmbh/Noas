@@ -5,6 +5,15 @@
 set -e
 
 BASE_URL="http://localhost:3000"
+VERBOSE=false
+
+for arg in "$@"; do
+  case "$arg" in
+    -v|--verbose)
+      VERBOSE=true
+      ;;
+  esac
+done
 
 TEST_USER="test_$(date +%s)"
 TEST_PASS="testpass123"
@@ -21,6 +30,12 @@ sha256_hex() {
   exit 1
 }
 
+print_response() {
+  if [ "$VERBOSE" = true ]; then
+    echo "  RESPONSE: $1"
+  fi
+}
+
 TEST_PASS_HASH=$(sha256_hex "$TEST_PASS")
 
 echo "🧪 Noas API Integration Tests"
@@ -29,6 +44,7 @@ echo ""
 
 echo "✓ Test 1: Health Check"
 HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
+print_response "$HEALTH_RESPONSE"
 echo "$HEALTH_RESPONSE" | grep -q "ok" && echo "  PASS: Server is healthy" || { echo "  FAIL: Health check failed"; echo "$HEALTH_RESPONSE"; exit 1; }
 echo ""
 
@@ -41,6 +57,7 @@ REGISTER_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 
+print_response "$REGISTER_RESPONSE"
 echo "$REGISTER_RESPONSE" | grep -q "success" && echo "  PASS: User registered" || { echo "  FAIL: Registration failed"; echo "$REGISTER_RESPONSE"; exit 1; }
 if printf '%s' "$REGISTER_RESPONSE" | grep -qi "unverified_email"; then
   echo "  FAIL: Registration returned unverified_email"
@@ -55,6 +72,7 @@ SIGNIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 
+print_response "$SIGNIN_RESPONSE"
 echo "$SIGNIN_RESPONSE" | grep -q "encryptedPrivateKey" && echo "  PASS: Sign in successful" || { echo "  FAIL: Sign in failed"; echo "$SIGNIN_RESPONSE"; exit 1; }
 echo ""
 
@@ -63,12 +81,14 @@ INVALID_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$(sha256_hex "wrongpass")\"}")
 
+print_response "$INVALID_RESPONSE"
 echo "$INVALID_RESPONSE" | grep -q "Invalid credentials" && echo "  PASS: Invalid password rejected" || { echo "  FAIL: Should reject invalid password"; echo "$INVALID_RESPONSE"; exit 1; }
 echo ""
 
 echo "✓ Test 5: NIP-05 Verification"
 NIP05_RESPONSE=$(curl -s "$BASE_URL/.well-known/nostr.json?name=$TEST_USER")
 
+print_response "$NIP05_RESPONSE"
 echo "$NIP05_RESPONSE" | grep -q "\"$TEST_USER\"" && echo "  PASS: NIP-05 verification works" || { echo "  FAIL: NIP-05 failed"; echo "$NIP05_RESPONSE"; exit 1; }
 echo ""
 
@@ -77,6 +97,7 @@ DUPLICATE_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 
+print_response "$DUPLICATE_RESPONSE"
 echo "$DUPLICATE_RESPONSE" | grep -Eq "already active|pending verification" && echo "  PASS: Duplicate username rejected" || { echo "  FAIL: Should reject duplicate"; echo "$DUPLICATE_RESPONSE"; exit 1; }
 echo ""
 
@@ -85,6 +106,7 @@ INVALID_USER_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"Invalid-User\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 
+print_response "$INVALID_USER_RESPONSE"
 echo "$INVALID_USER_RESPONSE" | grep -q "lowercase" && echo "  PASS: Invalid username format rejected" || { echo "  FAIL: Should reject invalid format"; echo "$INVALID_USER_RESPONSE"; exit 1; }
 echo ""
 
