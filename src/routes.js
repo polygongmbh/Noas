@@ -167,6 +167,15 @@ async function resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncryptedR
   };
 }
 
+function getUpdatePrivateKeyEncrypted(updates) {
+  if (!updates || typeof updates !== 'object') return '';
+  return String(
+    updates.private_key_encrypted ??
+    updates.encryptedPrivateKey ??
+    ''
+  ).trim();
+}
+
 function minutesBetween(nowMs, thenValue) {
   const thenMs = new Date(thenValue).getTime();
   if (Number.isNaN(thenMs)) return Number.POSITIVE_INFINITY;
@@ -579,8 +588,8 @@ const handleSignin = async (req, res) => {
     const derivedEmail = normalizeEmail(buildNip05Identifier(normalizedUsername));
     res.json({
       success: true,
-      encryptedPrivateKey: user.private_key_encrypted || null,
-      publicKey: user.public_key || null,
+      private_key_encrypted: user.private_key_encrypted || null,
+      public_key: user.public_key || null,
       relays: getDomainScopedRelays(derivedEmail, user.relays || []),
       status: user.status,
     });
@@ -627,12 +636,13 @@ const handleUpdate = async (req, res) => {
       updateData.passwordHash = nextPasswordHash;
     }
 
-    if (updates?.encryptedPrivateKey) {
-      const encKeyCheck = validateEncryptedPrivateKey(updates.encryptedPrivateKey);
+    const nextPrivateKeyEncrypted = getUpdatePrivateKeyEncrypted(updates);
+    if (nextPrivateKeyEncrypted) {
+      const encKeyCheck = validateEncryptedPrivateKey(nextPrivateKeyEncrypted);
       if (!encKeyCheck.valid) {
         return res.status(400).json({ error: encKeyCheck.error });
       }
-      updateData.privateKeyEncrypted = updates.encryptedPrivateKey;
+      updateData.privateKeyEncrypted = nextPrivateKeyEncrypted;
     }
 
     if (updates?.relays) {
@@ -651,7 +661,7 @@ const handleUpdate = async (req, res) => {
       success: true,
       user: {
         username: updated.username,
-        publicKey: updated.public_key || null,
+        public_key: updated.public_key || null,
       },
     });
   } catch (error) {
@@ -669,15 +679,12 @@ const handleUpdate = async (req, res) => {
  */
 const handleDelete = async (req, res) => {
   try {
-    const { username, password, password_hash: passwordHashInput, savedKey } = req.body;
+    const { username, password, password_hash: passwordHashInput } = req.body;
     const normalizedUsername = String(username || '').trim().toLowerCase();
     const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
 
     if (!normalizedUsername || !normalizedPasswordHash) {
       return res.status(400).json({ error: 'Username and password are required' });
-    }
-    if (!savedKey) {
-      return res.status(400).json({ error: 'Confirm that you saved your private key' });
     }
 
     const user = await getActiveNostrUserByUsername(normalizedUsername);
@@ -695,7 +702,7 @@ const handleDelete = async (req, res) => {
       success: true,
       deleted: {
         username: user.username,
-        publicKey: user.public_key || null,
+        public_key: user.public_key || null,
       },
     });
   } catch (error) {
@@ -748,7 +755,7 @@ const handlePictureUpload = async (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({
       success: true,
-      publicKey: updated.public_key,
+      public_key: updated.public_key,
       url: `${baseUrl}/api/v1/picture/${updated.public_key}`,
     });
   } catch (error) {

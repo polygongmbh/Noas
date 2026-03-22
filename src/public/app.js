@@ -302,8 +302,8 @@ document.addEventListener('DOMContentLoaded', function () {
       state.username = username;
       state.password = password;
 
-      publicKeyEl.textContent = data.publicKey || '—';
-      encryptedKeyEl.textContent = data.encryptedPrivateKey || '—';
+      publicKeyEl.textContent = data.public_key || '—';
+      encryptedKeyEl.textContent = data.private_key_encrypted || '—';
       relayListEl.textContent = (data.relays || []).join(', ') || '—';
       accountPanel.hidden = false;
       updatePanel.hidden = false;
@@ -336,11 +336,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const formData = new FormData(updateForm);
     const updates = {};
     const newPassword = formData.get('newPassword');
-    const encryptedPrivateKey = formData.get('encryptedPrivateKey');
+    const privateKeyEncrypted = formData.get('private_key_encrypted');
     const relays = parseRelays(formData.get('relays'));
 
     if (newPassword) updates.newPassword = newPassword;
-    if (encryptedPrivateKey) updates.encryptedPrivateKey = encryptedPrivateKey;
+    if (privateKeyEncrypted) updates.private_key_encrypted = privateKeyEncrypted;
     if (relays.length) updates.relays = relays;
 
     if (Object.keys(updates).length === 0) {
@@ -369,7 +369,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const formData = new FormData(deleteForm);
-    const savedKey = formData.get('savedKey');
+    const savedKey = formData.get('saved_key');
     const confirm = formData.get('confirm');
 
     if (!savedKey) {
@@ -386,7 +386,6 @@ document.addEventListener('DOMContentLoaded', function () {
       await request('/api/v1/auth/delete', {
         username: state.username,
         password: state.password,
-        savedKey: true,
       });
       setStatus(deleteStatus, 'Account deleted.', 'success');
       accountPanel.hidden = true;

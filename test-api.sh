@@ -73,7 +73,7 @@ SIGNIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/signin" \
   -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
 
 print_response "$SIGNIN_RESPONSE"
-echo "$SIGNIN_RESPONSE" | grep -q "encryptedPrivateKey" && echo "  PASS: Sign in successful" || { echo "  FAIL: Sign in failed"; echo "$SIGNIN_RESPONSE"; exit 1; }
+echo "$SIGNIN_RESPONSE" | grep -q "private_key_encrypted" && echo "  PASS: Sign in successful" || { echo "  FAIL: Sign in failed"; echo "$SIGNIN_RESPONSE"; exit 1; }
 echo ""
 
 echo "✓ Test 4: Invalid Password"

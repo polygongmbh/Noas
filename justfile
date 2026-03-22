@@ -108,7 +108,7 @@ health:
 # Demo: Register a user
 demo-register username="demo_user" password="securepass123":
     @echo "Registering user: {{username}}"
-    @bash -lc 'curl -s -X POST "{{noas_base_url}}/register" -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","publicKey":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","encryptedPrivateKey":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
+    @bash -lc 'curl -s -X POST "{{noas_base_url}}/register" -H "Content-Type: application/json" -d '"'"'{"username":"{{username}}","password":"{{password}}","public_key":"abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234","private_key_encrypted":"ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"}'"'"' | (command -v jq >/dev/null && jq || cat)'; echo ""
 
 # Demo: Sign in
 demo-signin username="demo_user" password="securepass123":

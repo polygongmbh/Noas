@@ -205,8 +205,8 @@ Sign in and retrieve encrypted private key (active accounts only).
 ```json
 {
   "success": true,
-  "encryptedPrivateKey": "ncryptsec1...",
-  "publicKey": "a0b1c2d3...",
+  "private_key_encrypted": "ncryptsec1...",
+  "public_key": "a0b1c2d3...",
   "relays": ["wss://relay.example.com"]
 }
 ```
@@ -222,7 +222,7 @@ Update password hash, encrypted private key, or relays (requires authentication)
   "password": "currentpassword",
   "updates": {
     "newPasswordHash": "sha256_hex_of_new_password",
-    "encryptedPrivateKey": "ncryptsec1...",
+    "private_key_encrypted": "ncryptsec1...",
     "relays": ["wss://new-relay.com"]
   }
 }
