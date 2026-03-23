@@ -228,52 +228,77 @@
         <div class="card">
           <h2>Register</h2>
           <p>Create account and send verification email.</p>
-          <code>POST /api/v1/auth/register</code>
+          <div class="endpoint-list">
+            <code>POST /api/v1/auth/register</code>
+          </div>
         </div>
         <div class="card">
           <h2>Verify (GET/POST)</h2>
           <p>Preview token and verify using password hash.</p>
-          <code>GET /api/v1/auth/verify · POST /api/v1/auth/verify</code>
+          <div class="endpoint-list">
+            <code>GET /api/v1/auth/verify</code>
+            <code>POST /api/v1/auth/verify</code>
+          </div>
         </div>
         <div class="card">
           <h2>Resend</h2>
           <p>Resend verification link; UI clients apply cooldown locally.</p>
-          <code>POST /api/v1/auth/resend</code>
+          <div class="endpoint-list">
+            <code>POST /api/v1/auth/resend</code>
+          </div>
         </div>
         <div class="card">
           <h2>Sign in</h2>
           <p>Authenticate with your password hash and retrieve your encrypted key.</p>
-          <code>POST /api/v1/auth/signin</code>
+          <div class="endpoint-list">
+            <code>POST /api/v1/auth/signin</code>
+          </div>
         </div>
         <div class="card">
           <h2>Update</h2>
           <p>Rotate password, pubkey, and encrypted key together, or update relays separately.</p>
-          <code>POST /api/v1/auth/update</code>
+          <div class="endpoint-list">
+            <code>POST /api/v1/auth/update</code>
+          </div>
         </div>
         <div class="card">
           <h2>Delete</h2>
           <p>Remove your account after confirmation.</p>
-          <code>POST /api/v1/auth/delete</code>
+          <div class="endpoint-list">
+            <code>POST /api/v1/auth/delete</code>
+          </div>
         </div>
         <div class="card">
           <h2>Profile Picture</h2>
           <p>Store a profile image for your account and fetch it by current pubkey with Last-Modified caching.</p>
-          <code>POST /api/v1/picture · GET /api/v1/picture/:pubkey</code>
+          <div class="endpoint-list">
+            <code>POST /api/v1/picture</code>
+            <code>GET /api/v1/picture/:pubkey</code>
+          </div>
         </div>
         <div class="card">
           <h2>NIP-05</h2>
           <p>Verify usernames with standard NIP-05 lookups.</p>
-          <code>GET /.well-known/nostr.json</code>
+          <div class="endpoint-list">
+            <code>GET /.well-known/nostr.json</code>
+          </div>
         </div>
         <div class="card">
           <h2>Health</h2>
           <p>Check service status.</p>
-          <code>GET /api/v1/health</code>
+          <div class="endpoint-list">
+            <code>GET /api/v1/health</code>
+          </div>
         </div>
         <div class="card">
           <h2>NIP-46</h2>
           <p>Remote signer discovery, connection bootstrap, and encrypted request handling for active accounts.</p>
-          <code>GET /api/v1/nip46/info · GET /api/v1/nip46/connect/:username · POST /api/v1/nip46/request · POST /api/v1/nip46/nostrconnect</code>
+          <div class="endpoint-list">
+            <code>GET /api/v1/nip46/info</code>
+            <code>GET /api/v1/nip46/connect/:username</code>
+            <code>POST /api/v1/nip46/request</code>
+            <code>POST /api/v1/nip46/nostrconnect</code>
+          </div>
         </div>
       </section>
 
@@ -299,8 +324,7 @@
       </section>
 
       <footer class="footer">
-        <span>Domain: noas.progyssey.org</span>
-        <span>API first · minimal · secure · <span id="noasVersionFooter">v—</span></span>
+        <span class="footer-summary">API first · minimal · secure · <span id="noasVersionFooter">v—</span></span>
       </footer>
     </main>
 

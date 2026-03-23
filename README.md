@@ -173,7 +173,7 @@ If SMTP is configured, Noas sends a verification link to `username@NIP05_DOMAIN`
 If SMTP is not configured, verification-only dev mode works with `EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true`.  
 Set `REQUIRE_EMAIL_DELIVERY=true` to fail onboarding when mail cannot be delivered.
 
-Primary auth endpoints (v1.3):
+Primary auth endpoints (v1.4):
 
 - `POST /api/v1/auth/register` -> creates unverified account and sends verification email.
 - `GET /api/v1/auth/verify?token=...` -> previews verification link state.
