@@ -70,7 +70,7 @@
 
           <label>
             Redirect URL (optional)
-            <input type="url" id="signupRedirect" placeholder="https://nodex.polygon.gmbh" />
+            <input type="url" id="signupRedirect" placeholder="https://nodex.example.com" />
             <small>Passed through verification link as <code>redirect=</code></small>
           </label>
 
@@ -283,7 +283,7 @@
         <pre><code>{
   "username": "alice",
   "password": "securepassword123",
-  "redirect": "https://nodex.polygon.gmbh"
+  "redirect": "https://nodex.example.com"
 }
 </code></pre>
         <p>Registration payload (client-provided keypair):</p>
@@ -292,7 +292,7 @@
   "password_hash": "sha256_hex_of_password",
   "public_key": "64-char hex pubkey",
   "private_key_encrypted": "ncryptsec1...",
-  "redirect": "https://nodex.polygon.gmbh"
+  "redirect": "https://nodex.example.com"
 }
 </code></pre>
         <p>NIP-46 note: remote signing only works for accounts created through signup with a raw password that Noas stored for later key unlock.</p>

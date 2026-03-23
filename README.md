@@ -73,13 +73,13 @@ REQUIRE_EMAIL_VERIFICATION=true
 EMAIL_VERIFICATION_ENABLED=true
 VERIFICATION_EXPIRY_MINUTES=15
 RESEND_COOLDOWN_MINUTES=1
-NIP05_DOMAIN=polygon.gmbh
-NOAS_PUBLIC_URL=https://noas.polygon.gmbh
+NIP05_DOMAIN=example.com
+NOAS_PUBLIC_URL=https://noas.example.com
 NOAS_BASE_PATH=/noas
-ALLOWED_ORIGINS=https://nodex.polygon.gmbh,https://polygon.gmbh
+ALLOWED_ORIGINS=https://nodex.example.com,https://example.com
 ALLOWED_SIGNUP_EMAIL_DOMAIN=
 TENANT_DEFAULT_RELAYS=
-DOMAIN_RELAY_MAP=polygon.gmbh=wss://tasks.polygon.gmbh
+DOMAIN_RELAY_MAP=example.com=wss://tasks.example.com
 EMAIL_VERIFICATION_TOKEN_TTL_MINUTES=30
 EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=false
 REQUIRE_EMAIL_DELIVERY=false
@@ -97,7 +97,7 @@ NIP46_RELAYS=
 ```
 
 Primary domain settings:
-- `NIP05_DOMAIN`: base identity domain for NIP-05 handles (`user@polygon.gmbh`)
+- `NIP05_DOMAIN`: base identity domain for NIP-05 handles (`user@example.com`)
 - `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
@@ -144,7 +144,7 @@ Create account and send verification email.
 {
   "username": "alice",
   "password": "securepassword123",
-  "redirect": "https://nodex.polygon.gmbh"
+  "redirect": "https://nodex.example.com"
 }
 ```
 
@@ -155,7 +155,7 @@ Create account and send verification email.
   "password_hash": "sha256_hex_of_password",
   "public_key": "64-char hex pubkey",
   "private_key_encrypted": "ncryptsec1...",
-  "redirect": "https://nodex.polygon.gmbh"
+  "redirect": "https://nodex.example.com"
 }
 ```
 
@@ -164,8 +164,8 @@ Create account and send verification email.
 {
   "success": true,
   "status": "unverified_email",
-  "nip05": "alice@polygon.gmbh",
-  "message": "Check alice@polygon.gmbh to verify your account."
+  "nip05": "alice@example.com",
+  "message": "Check alice@example.com to verify your account."
 }
 ```
 
@@ -316,7 +316,7 @@ Example relay config:
 ```toml
 [verified_users]
 mode = "enabled"
-domain_whitelist = ["polygon.gmbh"]
+domain_whitelist = ["example.com"]
 ```
 
 ## Development

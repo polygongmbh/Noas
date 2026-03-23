@@ -90,7 +90,7 @@ test('POST /register creates a new user', async () => {
     username: 'apitestuser',
     password: 'testpassword123',
     nsecKey: APITEST_PRIVATE_KEY,
-    email: 'apitestuser@polygon.gmbh',
+    email: 'apitestuser@example.com',
     relays: ['wss://relay.test.com'],
   });
 
@@ -105,7 +105,7 @@ test('POST /onboarding/start -> /verify-email -> /onboarding/complete creates us
   const start = await request('POST', '/onboarding/start', {
     username: 'stageduser',
     password: 'stagepass123',
-    email: 'stageduser@polygon.gmbh',
+    email: 'stageduser@example.com',
     relays: ['wss://relay.test.com'],
   });
 
@@ -137,7 +137,7 @@ test('POST /onboarding/complete rejects before verification', async () => {
   await request('POST', '/onboarding/start', {
     username: 'pendinguser',
     password: 'stagepass123',
-    email: 'pendinguser@polygon.gmbh',
+    email: 'pendinguser@example.com',
   });
 
   const complete = await request('POST', '/onboarding/complete', {
@@ -156,7 +156,7 @@ test('POST /register rejects duplicate username', async () => {
     username: 'apitestuser',
     password: 'testpassword123',
     nsecKey: APITEST_PRIVATE_KEY,
-    email: 'apitestuser@polygon.gmbh',
+    email: 'apitestuser@example.com',
   });
 
   assert.strictEqual(status, 409);
@@ -169,7 +169,7 @@ test('POST /register validates username format', async () => {
     username: 'Invalid-User',
     password: 'testpassword123',
     nsecKey: APITEST_PRIVATE_KEY,
-    email: 'invalid@polygon.gmbh',
+    email: 'invalid@example.com',
   });
 
   assert.strictEqual(status, 400);
@@ -219,7 +219,7 @@ test('POST /update changes password', async () => {
     username: 'updateuser',
     password: 'oldpassword123',
     nsecKey: UPDATEUSER_PRIVATE_KEY,
-    email: 'updateuser@polygon.gmbh',
+    email: 'updateuser@example.com',
   });
 
   // Update password
