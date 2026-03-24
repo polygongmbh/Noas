@@ -48,7 +48,7 @@ import {
   handleConnect,
 } from './nip46.js';
 import { sendVerificationEmail } from './email.js';
-import { config } from './config.js';
+import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
 import { randomUUID, createHash } from 'crypto';
 
 export const router = express.Router();
@@ -86,10 +86,10 @@ function buildVerificationToken() {
   return randomUUID();
 }
 
-function buildVerificationLinkWithRedirect(token, redirect) {
+function buildVerificationLinkWithRedirect(token, redirect, noasPublicUrl = config.noasPublicUrl) {
   const params = new URLSearchParams({ token });
   if (redirect) params.set('redirect', redirect);
-  return `${config.noasPublicUrl}${config.noasBasePath}/verify?${params.toString()}`;
+  return `${noasPublicUrl}${config.noasBasePath}/verify?${params.toString()}`;
 }
 
 function isValidRedirectUrl(value) {
@@ -107,8 +107,47 @@ function isValidSha256Hex(value) {
   return /^[a-f0-9]{64}$/i.test(String(value || '').trim());
 }
 
-function buildNip05Identifier(username) {
-  return `${username}@${config.nip05RootDomain}`;
+function resolveRequestHostLike(req) {
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  if (forwardedHost) return forwardedHost.toLowerCase();
+  const directHost = String(req.get('host') || '').split(',')[0].trim();
+  return directHost.toLowerCase();
+}
+
+function resolveRequestNip05RootDomain(req) {
+  const requestDomain = rootDomainFromHostLike(resolveRequestHostLike(req));
+  if (config.nip05DomainsConfigured) {
+    if (requestDomain && config.nip05Domains.includes(requestDomain)) {
+      return requestDomain;
+    }
+    return config.nip05Domains[0] || config.nip05RootDomain;
+  }
+  return requestDomain || config.nip05RootDomain;
+}
+
+function resolveRequestPublicUrl(req) {
+  const hostLike = resolveRequestHostLike(req);
+  if (!hostLike) return config.noasPublicUrl;
+
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+  const fallbackProtocol = detectLocalHost(hostLike) ? 'http' : 'https';
+  const protocol = forwardedProto || req.protocol || fallbackProtocol;
+  const safeProtocol = protocol === 'http' || protocol === 'https' ? protocol : fallbackProtocol;
+  return `${safeProtocol}://${hostLike}`;
+}
+
+function resolveTenantContext(req) {
+  const nip05RootDomain = resolveRequestNip05RootDomain(req);
+  const noasPublicUrl = resolveRequestPublicUrl(req);
+  return {
+    nip05RootDomain,
+    noasPublicUrl,
+    apiBase: `${noasPublicUrl}${config.noasBasePath}/api/v1`,
+  };
+}
+
+function buildNip05Identifier(username, nip05RootDomain = config.nip05RootDomain) {
+  return `${username}@${nip05RootDomain}`;
 }
 
 function isNostrUserVerificationExpired(user, expiryMinutes) {
@@ -265,6 +304,7 @@ function normalizeBase64Payload(data, contentType) {
  */
 router.post('/api/v1/auth/register', async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const {
       username,
       password,
@@ -300,7 +340,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       return res.status(400).json({ error: error.message || 'Invalid key material' });
     }
 
-    const nip05 = buildNip05Identifier(normalizedUsername);
+    const nip05 = buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain);
     const email = normalizeEmail(nip05);
     await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
 
@@ -347,7 +387,11 @@ router.post('/api/v1/auth/register', async (req, res) => {
     });
 
     const verificationMinutes = Math.max(1, config.verificationExpiryMinutes);
-    const verificationLink = buildVerificationLinkWithRedirect(verificationToken, normalizedRedirect);
+    const verificationLink = buildVerificationLinkWithRedirect(
+      verificationToken,
+      normalizedRedirect,
+      tenant.noasPublicUrl
+    );
     const expiresAt = new Date(Date.now() + verificationMinutes * 60 * 1000);
     let emailDelivery = { sent: false, reason: 'not_attempted' };
     try {
@@ -399,6 +443,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
  */
 router.get('/api/v1/auth/verify', async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const token = String(req.query.token || '').trim();
     if (!token) {
       return res.status(400).json({ error: 'token is required' });
@@ -417,7 +462,7 @@ router.get('/api/v1/auth/verify', async (req, res) => {
     res.json({
       success: true,
       username: user.username,
-      nip05: buildNip05Identifier(user.username),
+      nip05: buildNip05Identifier(user.username, tenant.nip05RootDomain),
       public_key: user.public_key || null,
       expires_at: new Date(
         new Date(user.created_at).getTime() +
@@ -436,6 +481,7 @@ router.get('/api/v1/auth/verify', async (req, res) => {
  */
 router.post('/api/v1/auth/verify', async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const { token, password_hash: passwordHash } = req.body || {};
     const normalizedToken = String(token || '').trim();
     const normalizedPasswordHash = String(passwordHash || '').trim().toLowerCase();
@@ -471,7 +517,7 @@ router.post('/api/v1/auth/verify', async (req, res) => {
     res.json({
       success: true,
       activated: true,
-      nip05: buildNip05Identifier(user.username),
+      nip05: buildNip05Identifier(user.username, tenant.nip05RootDomain),
     });
   } catch (error) {
     console.error('V1 verify error:', error);
@@ -485,6 +531,7 @@ router.post('/api/v1/auth/verify', async (req, res) => {
  */
 router.post('/api/v1/auth/resend', async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
     const usernameCheck = validateUsername(normalizedUsername);
     if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
@@ -502,19 +549,20 @@ router.post('/api/v1/auth/resend', async (req, res) => {
 
     const verificationToken = buildVerificationToken();
     const updated = await updateNostrUserResendToken(normalizedUsername, verificationToken);
-    const verificationLink = buildVerificationLinkWithRedirect(verificationToken, null);
+    const verificationLink = buildVerificationLinkWithRedirect(verificationToken, null, tenant.noasPublicUrl);
     const expiresAt = new Date(
       new Date(updated.created_at).getTime() +
       Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
     );
-    const email = normalizeEmail(buildNip05Identifier(normalizedUsername));
+    const identifier = buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain);
+    const email = normalizeEmail(identifier);
 
     let emailDelivery = { sent: false, reason: 'not_attempted' };
     try {
       emailDelivery = await sendVerificationEmail({
         to: email,
         username: normalizedUsername,
-        identifier: buildNip05Identifier(normalizedUsername),
+        identifier,
         redirectTarget: null,
         verificationLink,
         expiresAt,
@@ -589,6 +637,7 @@ function normalizePasswordHashFromSignin(passwordHash, password) {
 
 const handleSignin = async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
     const normalizedPasswordHash = normalizePasswordHashFromSignin(
       req.body?.password_hash,
@@ -612,7 +661,7 @@ const handleSignin = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const derivedEmail = normalizeEmail(buildNip05Identifier(normalizedUsername));
+    const derivedEmail = normalizeEmail(buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain));
     res.json({
       success: true,
       private_key_encrypted: user.private_key_encrypted || null,
@@ -635,6 +684,7 @@ const handleSignin = async (req, res) => {
  */
 const handleUpdate = async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const { username, password, password_hash: passwordHashInput, updates } = req.body;
     const normalizedUsername = String(username || '').trim().toLowerCase();
     const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
@@ -692,7 +742,7 @@ const handleUpdate = async (req, res) => {
     }
 
     if (updates?.relays) {
-      const mappedRelays = config.domainRelayMap[config.nip05RootDomain];
+      const mappedRelays = config.domainRelayMap[tenant.nip05RootDomain];
       if (Array.isArray(mappedRelays) && mappedRelays.length > 0) {
         return res.status(403).json({
           error: 'Relay list is managed by domain policy for this account',
@@ -880,16 +930,17 @@ const handlePictureFetch = async (req, res) => {
  */
 router.get('/.well-known/nostr.json', async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const { name } = req.query;
 
     if (!name) {
       return res.json({
         noas: {
           version: config.apiVersion,
-          nip05_domain: config.nip05RootDomain,
-          public_url: config.noasPublicUrl,
+          nip05_domain: tenant.nip05RootDomain,
+          public_url: tenant.noasPublicUrl,
           base_path: config.noasBasePath || '/',
-          api_base: `${config.noasPublicUrl}${config.noasBasePath}/api/v1`,
+          api_base: tenant.apiBase,
           email_verification_enabled: config.emailVerificationEnabled,
           resend_cooldown_minutes: config.resendCooldownMinutes,
           trusted_redirect_origins: config.allowedOrigins,

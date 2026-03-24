@@ -97,7 +97,10 @@ NIP46_RELAYS=
 ```
 
 Primary domain settings:
-- `NIP05_DOMAIN`: base identity domain for NIP-05 handles (`user@example.com`)
+- `NIP05_DOMAIN`: optional NIP-05 domain override.
+  - Single domain: `example.com`
+  - Multi-tenant list: `noas.progyssey.org,noas.polygon.gmbh`
+  - Empty value: derive tenant domain from request host
 - `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
@@ -169,7 +172,7 @@ Create account and send verification email.
 }
 ```
 
-If SMTP is configured, Noas sends a verification link to `username@NIP05_DOMAIN`.  
+If SMTP is configured, Noas sends a verification link to `username@<tenant-domain>`, where tenant domain is resolved from `NIP05_DOMAIN` (single/multi) or the request host when `NIP05_DOMAIN` is empty.  
 If SMTP is not configured, verification-only dev mode works with `EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true`.  
 Set `REQUIRE_EMAIL_DELIVERY=true` to fail onboarding when mail cannot be delivered.
 
@@ -286,7 +289,7 @@ NIP-05 verification endpoint.
 }
 ```
 
-When called without `name`, returns Noas instance metadata (version, public URL, API base, and NIP-05 domain) for client discovery.
+When called without `name`, returns Noas instance metadata (version, public URL, API base, and NIP-05 domain) for client discovery. In multi-tenant mode this metadata is resolved per request host.
 
 ## Security Notes
 

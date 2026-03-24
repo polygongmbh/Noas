@@ -39,6 +39,17 @@ function parseRelayList(value) {
     .filter((relay) => relay.startsWith('wss://'));
 }
 
+function parseDomainList(value) {
+  return Array.from(
+    new Set(
+      String(value || '')
+        .split(',')
+        .map((domain) => rootDomainFromHostLike(domain))
+        .filter(Boolean)
+    )
+  );
+}
+
 function normalizePrivateKey(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -91,7 +102,7 @@ function normalizeBasePath(value) {
   return withLeading.endsWith('/') ? withLeading.slice(0, -1) : withLeading;
 }
 
-function rootDomainFromHostLike(value) {
+export function rootDomainFromHostLike(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const withoutProtocol = raw.replace(/^[a-z]+:\/\//i, '');
@@ -100,7 +111,7 @@ function rootDomainFromHostLike(value) {
   return host.toLowerCase();
 }
 
-function detectLocalHost(hostLike) {
+export function detectLocalHost(hostLike) {
   const domain = rootDomainFromHostLike(hostLike);
   return domain === 'localhost' || domain === '127.0.0.1' || domain === '::1';
 }
@@ -135,6 +146,7 @@ function resolveDomain({ domainEnv, noasPublicUrl, nip05Domain, port }) {
 
 const configuredPort = parseInt(process.env.PORT || '3000', 10);
 const configuredNip05Domain = process.env.NIP05_DOMAIN || process.env.NOAS_DOMAIN || '';
+const configuredNip05Domains = parseDomainList(configuredNip05Domain);
 
 // Export configuration object with all app settings
 export const config = {
@@ -171,7 +183,9 @@ export const config = {
   smtpPass: process.env.SMTP_PASS || '',
   smtpFrom: (process.env.SMTP_FROM || '').trim(),
   smtpReplyTo: (process.env.SMTP_REPLY_TO || '').trim(),
-  nip05Domain: (configuredNip05Domain || process.env.DOMAIN || '').trim(),
+  nip05DomainsConfigured: configuredNip05Domains.length > 0,
+  nip05Domains: configuredNip05Domains,
+  nip05Domain: (configuredNip05Domains[0] || process.env.DOMAIN || '').trim(),
   noasPublicUrl: (process.env.NOAS_PUBLIC_URL || '').trim(),
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
