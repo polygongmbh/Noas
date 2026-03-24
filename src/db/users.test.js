@@ -10,7 +10,9 @@ import assert from 'node:assert';
 import { query, closePool } from './pool.js';
 import { 
   createUser, 
+  createNostrUser,
   getUserByUsername, 
+  getNostrUserByUsername,
   getUserForNip05, 
   updateUser,
   updateUserProfilePicture,
@@ -46,6 +48,7 @@ before(async () => {
 after(async () => {
   await query('DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username = $1)', [testUser.username]);
   await query('DELETE FROM nostr_users WHERE username = $1', [testUser.username]);
+  await query('DELETE FROM nostr_users WHERE username = $1', ['tenantdupe']);
   await closePool();
 });
 
@@ -123,5 +126,41 @@ test('updateUserProfilePicture stores profile picture', async () => {
   assert.ok(updatedPicture);
   assert.strictEqual(updatedPicture.profile_picture_type, pictureType);
   assert.deepStrictEqual(updatedPicture.profile_picture, pictureData);
+});
+
+test('same username can exist in different tenant domains', async () => {
+  const username = 'tenantdupe';
+  const tenantA = 'noas.progyssey.org';
+  const tenantB = 'noas.polygon.gmbh';
+
+  await query('DELETE FROM nostr_users WHERE username = $1', [username]);
+
+  const userA = await createNostrUser({
+    tenantDomain: tenantA,
+    username,
+    passwordSha256: 'a'.repeat(64),
+    publicKey: 'b'.repeat(64),
+    privateKeyEncrypted: 'ncryptsec1tenanta',
+    status: 'active',
+  });
+  const userB = await createNostrUser({
+    tenantDomain: tenantB,
+    username,
+    passwordSha256: 'c'.repeat(64),
+    publicKey: 'd'.repeat(64),
+    privateKeyEncrypted: 'ncryptsec1tenantb',
+    status: 'active',
+  });
+
+  assert.ok(userA.id);
+  assert.ok(userB.id);
+  assert.notStrictEqual(userA.id, userB.id);
+
+  const scopedA = await getNostrUserByUsername(username, tenantA);
+  const scopedB = await getNostrUserByUsername(username, tenantB);
+  assert.ok(scopedA);
+  assert.ok(scopedB);
+  assert.strictEqual(scopedA.tenant_domain, tenantA);
+  assert.strictEqual(scopedB.tenant_domain, tenantB);
 });
 });

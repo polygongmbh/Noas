@@ -83,9 +83,10 @@ export function createConnectionToken(domain) {
  * @param {Object} requestData - Decrypted request data
  * @param {string} clientPubkey - Client's public key
  * @param {string} username - Username to connect to
+ * @param {string|null} tenantDomain - Optional tenant domain scope
  * @returns {Promise<Object>} Response object
  */
-export async function handleConnect(requestData, clientPubkey, username) {
+export async function handleConnect(requestData, clientPubkey, username, tenantDomain = null) {
   const { id, params } = requestData;
   const [remoteSigner, secret, requestedPerms] = params || [];
 
@@ -100,7 +101,10 @@ export async function handleConnect(requestData, clientPubkey, username) {
     }
 
     // Get user by username
-    const user = await getActiveNostrUserByUsername(String(username || '').trim().toLowerCase());
+    const user = await getActiveNostrUserByUsername(
+      String(username || '').trim().toLowerCase(),
+      tenantDomain
+    );
     if (!user) {
       return {
         id,
@@ -300,9 +304,10 @@ export function handlePing(requestData) {
  * Process a NIP-46 request
  * @param {Object} event - Nostr event containing the request
  * @param {string} username - Username for connection context
+ * @param {string|null} tenantDomain - Optional tenant domain scope
  * @returns {Promise<Object|null>} Response object or null if invalid
  */
-export async function processNip46Request(event, username) {
+export async function processNip46Request(event, username, tenantDomain = null) {
   try {
     if (!event || event.kind !== 24133 || !Array.isArray(event.tags)) {
       return null;
@@ -323,7 +328,7 @@ export async function processNip46Request(event, username) {
 
     switch (method) {
       case 'connect':
-        response = await handleConnect(requestData, event.pubkey, username);
+        response = await handleConnect(requestData, event.pubkey, username, tenantDomain);
         session = await getSessionByClientPubkey(event.pubkey);
         sessionId = session?.session_id;
         break;

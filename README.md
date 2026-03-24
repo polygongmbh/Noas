@@ -106,6 +106,7 @@ Primary domain settings:
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
 
 Most other domain-related behavior derives from these values.
+Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.
 
 ### 3. Set up database
 

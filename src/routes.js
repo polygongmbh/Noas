@@ -344,7 +344,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     const email = normalizeEmail(nip05);
     await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
 
-    const existing = await getNostrUserByUsername(normalizedUsername);
+    const existing = await getNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
     if (existing?.status === 'active') {
       return res.status(409).json({ error: 'Username already active. Sign in.' });
     }
@@ -357,6 +357,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
 
     if (!config.emailVerificationEnabled) {
       await createNostrUser({
+        tenantDomain: tenant.nip05RootDomain,
         username: normalizedUsername,
         passwordSha256: normalizedPasswordHash,
         publicKey: keyMaterial.publicKey,
@@ -377,6 +378,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
 
     const verificationToken = buildVerificationToken();
     await createNostrUser({
+      tenantDomain: tenant.nip05RootDomain,
       username: normalizedUsername,
       passwordSha256: normalizedPasswordHash,
       publicKey: keyMaterial.publicKey,
@@ -448,7 +450,7 @@ router.get('/api/v1/auth/verify', async (req, res) => {
     if (!token) {
       return res.status(400).json({ error: 'token is required' });
     }
-    const user = await getNostrUserByVerificationToken(token);
+    const user = await getNostrUserByVerificationToken(token, tenant.nip05RootDomain);
     if (!user) {
       return res.status(404).json({ error: 'Invalid link.' });
     }
@@ -492,7 +494,7 @@ router.post('/api/v1/auth/verify', async (req, res) => {
       return res.status(400).json({ error: 'password_hash must be a 64-character SHA-256 hex string' });
     }
 
-    const user = await getNostrUserByVerificationToken(normalizedToken);
+    const user = await getNostrUserByVerificationToken(normalizedToken, tenant.nip05RootDomain);
     if (!user) {
       return res.status(404).json({ error: 'Invalid link.' });
     }
@@ -512,7 +514,7 @@ router.post('/api/v1/auth/verify', async (req, res) => {
       });
     }
 
-    await activateNostrUserByUsername(user.username);
+    await activateNostrUserByUsername(user.username, tenant.nip05RootDomain);
 
     res.json({
       success: true,
@@ -537,7 +539,7 @@ router.post('/api/v1/auth/resend', async (req, res) => {
     if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
 
     await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
-    const user = await getNostrUserByUsername(normalizedUsername);
+    const user = await getNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
     if (!user || user.status !== 'unverified_email') {
       return res.status(404).json({ error: 'Invalid link.' });
     }
@@ -548,7 +550,11 @@ router.post('/api/v1/auth/resend', async (req, res) => {
     }
 
     const verificationToken = buildVerificationToken();
-    const updated = await updateNostrUserResendToken(normalizedUsername, verificationToken);
+    const updated = await updateNostrUserResendToken(
+      normalizedUsername,
+      verificationToken,
+      tenant.nip05RootDomain
+    );
     const verificationLink = buildVerificationLinkWithRedirect(verificationToken, null, tenant.noasPublicUrl);
     const expiresAt = new Date(
       new Date(updated.created_at).getTime() +
@@ -647,7 +653,7 @@ const handleSignin = async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getNostrUserByUsername(normalizedUsername);
+    const user = await getNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -693,7 +699,7 @@ const handleUpdate = async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getActiveNostrUserByUsername(normalizedUsername);
+    const user = await getActiveNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -751,7 +757,7 @@ const handleUpdate = async (req, res) => {
       updateData.relays = updates.relays;
     }
 
-    const updated = await updateNostrUser(normalizedUsername, updateData);
+    const updated = await updateNostrUser(normalizedUsername, updateData, tenant.nip05RootDomain);
 
     res.json({
       success: true,
@@ -775,6 +781,7 @@ const handleUpdate = async (req, res) => {
  */
 const handleDelete = async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const { username, password, password_hash: passwordHashInput } = req.body;
     const normalizedUsername = String(username || '').trim().toLowerCase();
     const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
@@ -783,7 +790,7 @@ const handleDelete = async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getActiveNostrUserByUsername(normalizedUsername);
+    const user = await getActiveNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -792,7 +799,7 @@ const handleDelete = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    await deleteNostrUser(normalizedUsername);
+    await deleteNostrUser(normalizedUsername, tenant.nip05RootDomain);
 
     res.json({
       success: true,
@@ -816,6 +823,7 @@ const handleDelete = async (req, res) => {
  */
 const handlePictureUpload = async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const {
       username,
       password,
@@ -830,7 +838,7 @@ const handlePictureUpload = async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getActiveNostrUserByUsername(normalizedUsername);
+    const user = await getActiveNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -948,7 +956,10 @@ router.get('/.well-known/nostr.json', async (req, res) => {
       });
     }
 
-    const user = await getActiveNostrUserForNip05(String(name).trim().toLowerCase());
+    const user = await getActiveNostrUserForNip05(
+      String(name).trim().toLowerCase(),
+      tenant.nip05RootDomain
+    );
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -1009,10 +1020,14 @@ const handleNip46Info = (req, res) => {
  */
 const handleNip46Connect = async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const { username } = req.params;
 
     // Validate username exists
-    const user = await getActiveNostrUserByUsername(String(username || '').trim().toLowerCase());
+    const user = await getActiveNostrUserByUsername(
+      String(username || '').trim().toLowerCase(),
+      tenant.nip05RootDomain
+    );
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -1041,6 +1056,7 @@ const handleNip46Connect = async (req, res) => {
  */
 const handleNip46Request = async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const { event, username } = req.body;
 
     if (!event || !event.kind || event.kind !== 24133) {
@@ -1052,7 +1068,7 @@ const handleNip46Request = async (req, res) => {
     }
 
     // Process the NIP-46 request
-    const response = await processNip46Request(event, username);
+    const response = await processNip46Request(event, username, tenant.nip05RootDomain);
     
     if (!response) {
       return res.status(400).json({ error: 'Invalid request' });
@@ -1080,6 +1096,7 @@ const handleNip46Request = async (req, res) => {
  */
 const handleNip46Nostrconnect = async (req, res) => {
   try {
+    const tenant = resolveTenantContext(req);
     const { nostrconnect_url, username } = req.body;
 
     if (!nostrconnect_url || !nostrconnect_url.startsWith('nostrconnect://')) {
@@ -1108,7 +1125,7 @@ const handleNip46Nostrconnect = async (req, res) => {
       method: 'connect',
       params: [signerPubkey, secret, perms]
     };
-    const response = await handleConnect(connectRequest, clientPubkey, username);
+    const response = await handleConnect(connectRequest, clientPubkey, username, tenant.nip05RootDomain);
     if (response.error === 'User not found') {
       return res.status(404).json({ error: response.error });
     }

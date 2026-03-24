@@ -15,6 +15,10 @@ const NOSTR_USER_STATUSES = {
   DISABLED: 'disabled',
 };
 
+function normalizeTenantDomain(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function mapLegacyUserRow(row) {
   if (!row) return undefined;
   return {
@@ -39,6 +43,7 @@ export async function createUser({
   passwordHash,
   rawPassword = null,
   relays = [],
+  tenantDomain = '',
 }) {
   const result = await createNostrUser({
     username,
@@ -47,6 +52,7 @@ export async function createUser({
     privateKeyEncrypted: encryptedPrivateKey,
     rawPassword,
     relays,
+    tenantDomain,
     status: NOSTR_USER_STATUSES.ACTIVE,
     verificationToken: null,
   });
@@ -59,11 +65,15 @@ export async function createUser({
  * @param {string} username - Username to look up
  * @returns {Promise<Object|undefined>} User object or undefined if not found
  */
-export async function getUserByUsername(username) {
-  const result = await query(
-    'SELECT * FROM nostr_users WHERE username = $1',
-    [username]
-  );
+export async function getUserByUsername(username, tenantDomain = null) {
+  const params = [username];
+  let sql = 'SELECT * FROM nostr_users WHERE username = $1';
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $2';
+  }
+  const result = await query(sql, params);
   return mapLegacyUserRow(result.rows[0]);
 }
 
@@ -72,11 +82,11 @@ export async function getUserByUsername(username) {
  * @param {string} email
  * @returns {Promise<Object|undefined>}
  */
-export async function getUserByEmail(email) {
+export async function getUserByEmail(email, tenantDomain = null) {
   const normalized = String(email || '').trim().toLowerCase();
   const username = normalized.split('@')[0];
   if (!username) return undefined;
-  return getUserByUsername(username);
+  return getUserByUsername(username, tenantDomain);
 }
 
 /**
@@ -85,15 +95,19 @@ export async function getUserByEmail(email) {
  * @param {string} username - Username to look up
  * @returns {Promise<Object|undefined>} Object with username/public_key/verification state
  */
-export async function getUserForNip05(username) {
-  const result = await query(
-    `SELECT username,
-            public_key,
-            CASE WHEN status = $2 THEN created_at ELSE NULL END AS email_verified_at
-     FROM nostr_users
-     WHERE username = $1`,
-    [username, NOSTR_USER_STATUSES.ACTIVE]
-  );
+export async function getUserForNip05(username, tenantDomain = null) {
+  const params = [username, NOSTR_USER_STATUSES.ACTIVE];
+  let sql = `SELECT username,
+                    public_key,
+                    CASE WHEN status = $2 THEN created_at ELSE NULL END AS email_verified_at
+             FROM nostr_users
+             WHERE username = $1`;
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $3';
+  }
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
@@ -115,8 +129,8 @@ export async function getUserProfilePictureByPublicKey(publicKey) {
  * @param {string} pictureType - MIME type of image
  * @returns {Promise<Object>} Updated user object
  */
-export async function updateUserProfilePicture(username, pictureData, pictureType) {
-  const user = await getNostrUserByUsername(username);
+export async function updateUserProfilePicture(username, pictureData, pictureType, tenantDomain = null) {
+  const user = await getNostrUserByUsername(username, tenantDomain);
   if (!user) return undefined;
   await updateNostrUserProfilePicture(user.id, pictureData, pictureType);
   return {
@@ -136,13 +150,13 @@ export async function updateUserProfilePicture(username, pictureData, pictureTyp
  * @param {Array} updates.relays - New relay list
  * @returns {Promise<Object>} Updated user object
  */
-export async function updateUser(username, updates) {
+export async function updateUser(username, updates, tenantDomain = null) {
   const updated = await updateNostrUser(username, {
     passwordSha256: updates.passwordHash,
     privateKeyEncrypted: updates.encryptedPrivateKey,
     publicKey: updates.publicKey,
     relays: updates.relays,
-  });
+  }, tenantDomain);
   return mapLegacyUserRow(updated);
 }
 
@@ -151,8 +165,8 @@ export async function updateUser(username, updates) {
  * @param {string} username - Username of user to delete
  * @returns {Promise<Object|undefined>} Deleted user summary or undefined if not found
  */
-export async function deleteUser(username) {
-  const result = await deleteNostrUser(username);
+export async function deleteUser(username, tenantDomain = null) {
+  const result = await deleteNostrUser(username, tenantDomain);
   return mapLegacyUserRow(result);
 }
 
@@ -162,19 +176,23 @@ export async function deleteUser(username) {
  * @param {string} token - Email verification token
  * @returns {Promise<Object|undefined>} Updated user summary or undefined if not verified
  */
-export async function verifyUserEmail(username, token) {
-  const user = await getNostrUserByVerificationToken(token);
+export async function verifyUserEmail(username, token, tenantDomain = null) {
+  const tenant = normalizeTenantDomain(tenantDomain);
+  const user = await getNostrUserByVerificationToken(token, tenant);
   if (!user || user.username !== username) {
     return undefined;
   }
-  const result = await query(
-    `UPDATE nostr_users
-     SET status = $1,
-         verification_token = NULL
-     WHERE username = $2
-     RETURNING *`,
-    [NOSTR_USER_STATUSES.ACTIVE, username]
-  );
+  const params = [NOSTR_USER_STATUSES.ACTIVE, username];
+  let sql = `UPDATE nostr_users
+             SET status = $1,
+                 verification_token = NULL
+             WHERE username = $2`;
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $3';
+  }
+  sql += ' RETURNING *';
+  const result = await query(sql, params);
   return mapLegacyUserRow(result.rows[0]);
 }
 
@@ -200,11 +218,15 @@ export async function deleteExpiredPendingNostrUsers(expiryMinutes) {
  * @param {string} username
  * @returns {Promise<Object|undefined>}
  */
-export async function getNostrUserByUsername(username) {
-  const result = await query(
-    'SELECT * FROM nostr_users WHERE username = $1',
-    [username]
-  );
+export async function getNostrUserByUsername(username, tenantDomain = null) {
+  const params = [username];
+  let sql = 'SELECT * FROM nostr_users WHERE username = $1';
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $2';
+  }
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
@@ -213,11 +235,15 @@ export async function getNostrUserByUsername(username) {
  * @param {string} token
  * @returns {Promise<Object|undefined>}
  */
-export async function getNostrUserByVerificationToken(token) {
-  const result = await query(
-    'SELECT * FROM nostr_users WHERE verification_token = $1',
-    [token]
-  );
+export async function getNostrUserByVerificationToken(token, tenantDomain = null) {
+  const params = [token];
+  let sql = 'SELECT * FROM nostr_users WHERE verification_token = $1';
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $2';
+  }
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
@@ -233,11 +259,13 @@ export async function createNostrUser({
   privateKeyEncrypted = null,
   rawPassword = null,
   relays = [],
+  tenantDomain = '',
   status = NOSTR_USER_STATUSES.UNVERIFIED_EMAIL,
   verificationToken = null,
 }) {
   const result = await query(
     `INSERT INTO nostr_users (
+      tenant_domain,
       username,
       password_sha256,
       raw_password,
@@ -247,9 +275,10 @@ export async function createNostrUser({
       status,
       verification_token
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *`,
     [
+      normalizeTenantDomain(tenantDomain),
       username,
       passwordSha256,
       rawPassword,
@@ -268,14 +297,18 @@ export async function createNostrUser({
  * @param {string} username
  * @returns {Promise<Object|undefined>}
  */
-export async function activateNostrUserByUsername(username) {
-  const result = await query(
-    `UPDATE nostr_users
-     SET status = $1
-     WHERE username = $2
-     RETURNING *`,
-    [NOSTR_USER_STATUSES.ACTIVE, username]
-  );
+export async function activateNostrUserByUsername(username, tenantDomain = null) {
+  const params = [NOSTR_USER_STATUSES.ACTIVE, username];
+  let sql = `UPDATE nostr_users
+             SET status = $1
+             WHERE username = $2`;
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $3';
+  }
+  sql += ' RETURNING *';
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
@@ -285,14 +318,18 @@ export async function activateNostrUserByUsername(username) {
  * @param {string} verificationToken
  * @returns {Promise<Object|undefined>}
  */
-export async function updateNostrUserResendToken(username, verificationToken) {
-  const result = await query(
-    `UPDATE nostr_users
-     SET verification_token = $1
-     WHERE username = $2
-     RETURNING *`,
-    [verificationToken, username]
-  );
+export async function updateNostrUserResendToken(username, verificationToken, tenantDomain = null) {
+  const params = [verificationToken, username];
+  let sql = `UPDATE nostr_users
+             SET verification_token = $1
+             WHERE username = $2`;
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $3';
+  }
+  sql += ' RETURNING *';
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
@@ -301,14 +338,18 @@ export async function updateNostrUserResendToken(username, verificationToken) {
  * @param {string} username
  * @returns {Promise<Object|undefined>}
  */
-export async function getActiveNostrUserForNip05(username) {
-  const result = await query(
-    `SELECT username, public_key
-     FROM nostr_users
-     WHERE username = $1
-       AND status = $2`,
-    [username, NOSTR_USER_STATUSES.ACTIVE]
-  );
+export async function getActiveNostrUserForNip05(username, tenantDomain = null) {
+  const params = [username, NOSTR_USER_STATUSES.ACTIVE];
+  let sql = `SELECT username, public_key
+             FROM nostr_users
+             WHERE username = $1
+               AND status = $2`;
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $3';
+  }
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
@@ -317,14 +358,18 @@ export async function getActiveNostrUserForNip05(username) {
  * @param {string} username
  * @returns {Promise<Object|undefined>}
  */
-export async function getActiveNostrUserByUsername(username) {
-  const result = await query(
-    `SELECT *
-     FROM nostr_users
-     WHERE username = $1
-       AND status = $2`,
-    [username, NOSTR_USER_STATUSES.ACTIVE]
-  );
+export async function getActiveNostrUserByUsername(username, tenantDomain = null) {
+  const params = [username, NOSTR_USER_STATUSES.ACTIVE];
+  let sql = `SELECT *
+             FROM nostr_users
+             WHERE username = $1
+               AND status = $2`;
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $3';
+  }
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
@@ -350,7 +395,7 @@ export async function getActiveNostrUserById(id) {
  * @param {Object} updates
  * @returns {Promise<Object|undefined>}
  */
-export async function updateNostrUser(username, updates) {
+export async function updateNostrUser(username, updates, tenantDomain = null) {
   const fields = [];
   const values = [];
   let param = 1;
@@ -377,10 +422,16 @@ export async function updateNostrUser(username, updates) {
   }
 
   values.push(username);
+  const tenant = normalizeTenantDomain(tenantDomain);
+  let whereClause = `WHERE username = $${param}`;
+  if (tenant) {
+    values.push(tenant);
+    whereClause += ` AND tenant_domain = $${param + 1}`;
+  }
   const result = await query(
     `UPDATE nostr_users
      SET ${fields.join(', ')}
-     WHERE username = $${param}
+     ${whereClause}
      RETURNING *`,
     values
   );
@@ -392,11 +443,16 @@ export async function updateNostrUser(username, updates) {
  * @param {string} username
  * @returns {Promise<Object|undefined>}
  */
-export async function deleteNostrUser(username) {
-  const result = await query(
-    'DELETE FROM nostr_users WHERE username = $1 RETURNING *',
-    [username]
-  );
+export async function deleteNostrUser(username, tenantDomain = null) {
+  const params = [username];
+  let sql = 'DELETE FROM nostr_users WHERE username = $1';
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $2';
+  }
+  sql += ' RETURNING *';
+  const result = await query(sql, params);
   return result.rows[0];
 }
 
