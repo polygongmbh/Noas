@@ -126,6 +126,12 @@ function resolveRequestNip05RootDomain(req) {
 }
 
 function resolveRequestPublicUrl(req) {
+  // If NOAS_PUBLIC_URL is explicitly configured, always use it
+  if (config.noasPublicUrl) {
+    return config.noasPublicUrl;
+  }
+
+  // Otherwise derive from request headers
   const hostLike = resolveRequestHostLike(req);
   if (!hostLike) return config.noasPublicUrl;
 
