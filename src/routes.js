@@ -335,7 +335,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     }
     let keyMaterial;
     try {
-      keyMaterial = await resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncrypted, normalizedPasswordHash);
+      keyMaterial = await resolveRegistrationKeyMaterial(publicKeyRaw, privateKeyEncrypted, normalizedPassword);
     } catch (error) {
       return res.status(400).json({ error: error.message || 'Invalid key material' });
     }
