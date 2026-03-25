@@ -101,7 +101,7 @@ Primary domain settings:
   - Single domain: `example.com`
   - Multi-tenant list: `noas.progyssey.org,noas.polygon.gmbh`
   - Empty value: derive tenant domain from request host
-- `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API
+- `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. When set, this always takes precedence over request-derived URLs for `api_base` and verification links.
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
 
@@ -290,7 +290,7 @@ NIP-05 verification endpoint.
 }
 ```
 
-When called without `name`, returns Noas instance metadata (version, public URL, API base, and NIP-05 domain) for client discovery. In multi-tenant mode this metadata is resolved per request host.
+When called without `name`, returns Noas instance metadata (version, public URL, API base, and NIP-05 domain) for client discovery. If `NOAS_PUBLIC_URL` is configured, it takes precedence for `api_base`; otherwise the URL is derived from request headers.
 
 ## Security Notes
 
