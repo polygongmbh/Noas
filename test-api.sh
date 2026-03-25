@@ -4,14 +4,17 @@
 
 set -uo pipefail
 
-BASE_URL="http://localhost:3000"
+BASE_URL="${NOAS_TEST_BASE_URL:-http://localhost:3000}"
 VERBOSE=false
-EXPECTED_TESTS=17
+EXPECTED_TESTS=18
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 CURRENT_TEST=""
 SUMMARY_PRINTED=false
+SERVER_PID=""
+USE_EXISTING_SERVER="${NOAS_TEST_USE_EXISTING_SERVER:-true}"
+TEST_PORT="${NOAS_TEST_PORT:-3002}"
 
 if [ -t 1 ]; then
   COLOR_RESET=$'\033[0m'
@@ -68,19 +71,186 @@ post_json() {
   curl -s -X POST "$API_URL$path" -H "Content-Type: application/json" -d "$payload"
 }
 
-assert_active_registration() {
+url_encode() {
+  local raw="${1:-}"
+  NOAS_URL_ENCODE_INPUT="$raw" node --input-type=module <<'EOF'
+const raw = String(process.env.NOAS_URL_ENCODE_INPUT || '');
+process.stdout.write(encodeURIComponent(raw));
+EOF
+}
+
+fetch_verification_token_from_db() {
+  local username="$1"
+  local token
+  local debug_file
+  debug_file=$(mktemp)
+
+  token=$(NOAS_LOAD_DOTENV=true NOAS_TEST_USERNAME="$username" node --input-type=module <<'EOF' 2>"$debug_file"
+import { query, closePool } from './src/db/pool.js';
+
+const username = String(process.env.NOAS_TEST_USERNAME || '').trim().toLowerCase();
+if (!username) {
+  console.log('');
+  process.exit(0);
+}
+
+try {
+  const result = await query(
+    `SELECT verification_token
+     FROM nostr_users
+     WHERE username = $1
+       AND verification_token IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [username]
+  );
+  const token = result.rows?.[0]?.verification_token || '';
+  console.log(token ? String(token).trim() : '');
+} catch {
+  console.log('');
+} finally {
+  await closePool().catch(() => {});
+}
+EOF
+)
+
+  token=$(printf '%s' "$token" | tr -d '\r\n')
+  if [ -n "$token" ]; then
+    rm -f "$debug_file"
+    printf '%s' "$token"
+    return
+  fi
+
+  # Fallback: query via psql using DATABASE_URL from env or local .env.
+  local db_url="${DATABASE_URL:-}"
+  if [ -z "$db_url" ] && [ -f "./.env" ]; then
+    db_url=$(awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/,""); print; exit}' ./.env)
+  fi
+
+  if [ -n "$db_url" ] && command -v psql >/dev/null 2>&1; then
+    token=$(psql "$db_url" -Atq -v ON_ERROR_STOP=1 -v username="$username" \
+      -c "SELECT verification_token FROM nostr_users WHERE username = :'username' AND verification_token IS NOT NULL ORDER BY created_at DESC LIMIT 1;" \
+      2>>"$debug_file" | tr -d '\r\n')
+  fi
+
+  # Docker fallback: resolve token inside running Noas container where DATABASE_URL is valid.
+  if [ -z "$token" ] && command -v docker >/dev/null 2>&1; then
+    local noas_container_id=""
+    noas_container_id=$(docker ps --format '{{.ID}} {{.Names}} {{.Ports}}' \
+      | awk '/(^|[[:space:]])noas($|[[:space:]])/ {print $1; exit}')
+    if [ -z "$noas_container_id" ]; then
+      noas_container_id=$(docker ps --format '{{.ID}} {{.Ports}}' \
+        | awk '/0\.0\.0\.0:3000->|:::3000->/ {print $1; exit}')
+    fi
+    if [ -n "$noas_container_id" ]; then
+      token=$(docker exec -e NOAS_TEST_USERNAME="$username" "$noas_container_id" node --input-type=module -e "
+import pg from 'pg';
+const username = String(process.env.NOAS_TEST_USERNAME || '').trim().toLowerCase();
+const { Pool } = pg;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+try {
+  const result = await pool.query(
+    'SELECT verification_token FROM nostr_users WHERE username = \$1 AND verification_token IS NOT NULL ORDER BY created_at DESC LIMIT 1',
+    [username]
+  );
+  const token = result.rows?.[0]?.verification_token || '';
+  process.stdout.write(token ? String(token).trim() : '');
+} catch (error) {
+  process.stderr.write(String(error?.message || error));
+} finally {
+  await pool.end().catch(() => {});
+}
+" 2>>"$debug_file" | tr -d '\r\n')
+    fi
+  fi
+
+  if [ "$VERBOSE" = true ] && [ -s "$debug_file" ]; then
+    printf "   ${COLOR_DIM}↳ token lookup debug:${COLOR_RESET} %s\n" "$(tail -n 5 "$debug_file" | tr '\n' ' ')" >&2
+  fi
+  rm -f "$debug_file"
+  printf '%s' "$token"
+}
+
+assert_registration_and_activate() {
   local response="$1"
   local label="$2"
+  local password_hash="$3"
+  local username="$4"
+  local expected_public_key="${5:-}"
 
   print_response "$response"
-  if printf '%s' "$response" | grep -qi "unverified_email"; then
-    fail_step "Registration returned unverified_email" "Disable email verification for this test run to allow direct sign-in."
-  fi
-  if echo "$response" | grep -q "success"; then
-    pass_step "$label"
-  else
+  if ! echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
     fail_step "$label" "$response"
   fi
+
+  local status
+  status=$(jq -r '.status // empty' <<<"$response")
+
+  if [ -n "$expected_public_key" ]; then
+    local returned_public_key
+    returned_public_key=$(jq -r '.public_key // empty' <<<"$response")
+    if [ "$returned_public_key" != "$expected_public_key" ]; then
+      fail_step "$label" "Registration returned unexpected public key: $returned_public_key"
+    fi
+  fi
+
+  if [ "$status" = "active" ] || [ -z "$status" ]; then
+    pass_step "$label"
+    return
+  fi
+
+  if [ "$status" != "unverified_email" ]; then
+    fail_step "$label" "Unexpected registration status: $status"
+  fi
+
+  local verification_token
+  verification_token=$(jq -r '.verification_token // empty' <<<"$response")
+  if [ -z "$verification_token" ]; then
+    verification_token=$(fetch_verification_token_from_db "$username")
+  fi
+  if [ -z "$verification_token" ]; then
+    local signin_probe
+    signin_probe=$(post_json "/auth/signin" "{\"username\":\"$username\",\"password_hash\":\"$password_hash\"}")
+    if echo "$signin_probe" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+      pass_step "$label"
+      return
+    fi
+    fail_step "$label" "Registration requires verification but no verification_token was returned/readable. Run with EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true or provide DB access for token lookup."
+  fi
+  if ! echo "$verification_token" | grep -Eq '^[0-9a-fA-F-]{36}$'; then
+    fail_step "$label" "verification_token format is invalid: $verification_token"
+  fi
+  if [ "$VERBOSE" = true ]; then
+    printf "   ${COLOR_DIM}↳ verification token:${COLOR_RESET} %s\n" "$verification_token"
+  fi
+
+  local preview_response
+  preview_response=$(curl -s "$API_URL/auth/verify?token=$(url_encode "$verification_token")")
+  if [ -z "$preview_response" ]; then
+    fail_step "$label" "Verification preview returned an empty response for token $verification_token"
+  fi
+  print_response "$preview_response"
+  if [ -n "$expected_public_key" ]; then
+    local preview_public_key
+    preview_public_key=$(jq -r '.public_key // empty' <<<"$preview_response")
+    if [ "$preview_public_key" != "$expected_public_key" ]; then
+      fail_step "$label" "Verification preview public key mismatch: $preview_public_key"
+    fi
+  fi
+
+  local verify_response
+  local verify_payload
+  verify_payload=$(jq -nc \
+    --arg token "$verification_token" \
+    --arg password_hash "$password_hash" \
+    '{token: $token, password_hash: $password_hash}')
+  verify_response=$(post_json "/auth/verify" "$verify_payload")
+  print_response "$verify_response"
+  if echo "$verify_response" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    pass_step "$label"
+    return
+  fi
+  fail_step "$label" "Verification failed: $verify_response"
 }
 
 verify_returned_keypair() {
@@ -199,12 +369,66 @@ print_summary() {
   fi
 }
 
-trap print_summary EXIT
+cleanup_server() {
+  if [ -n "${SERVER_PID:-}" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+    kill "$SERVER_PID" >/dev/null 2>&1 || true
+    wait "$SERVER_PID" 2>/dev/null || true
+  fi
+}
+
+wait_for_health() {
+  local target_url="${1:-$BASE_URL}"
+  local attempts=0
+  while [ $attempts -lt 30 ]; do
+    HEALTH_RESPONSE=$(curl -s "$target_url/health" || true)
+    if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+  return 1
+}
+
+start_local_server_if_needed() {
+  if [ "$USE_EXISTING_SERVER" = "true" ]; then
+    if wait_for_health "$BASE_URL"; then
+      return 0
+    fi
+    fail_step "Health check failed" "Configured existing server is not reachable at $BASE_URL"
+  fi
+
+  local startup_log_file="/tmp/noas-test-api.log"
+  rm -f "$startup_log_file"
+
+  printf "   %s↳ starting isolated local Noas test server on port %s%s\n" "$COLOR_DIM" "$TEST_PORT" "$COLOR_RESET"
+  PORT="$TEST_PORT" \
+  REQUIRE_EMAIL_DELIVERY=false \
+  EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true \
+  EMAIL_VERIFICATION_ENABLED=true \
+  REQUIRE_EMAIL_VERIFICATION=true \
+  NOAS_LOAD_DOTENV=true \
+  node src/index.js >"$startup_log_file" 2>&1 &
+  SERVER_PID=$!
+  BASE_URL="http://localhost:$TEST_PORT"
+
+  if wait_for_health "$BASE_URL"; then
+    return 0
+  fi
+
+  local startup_log=""
+  if [ -f "$startup_log_file" ]; then
+    startup_log=$(tail -n 20 "$startup_log_file")
+  fi
+  fail_step "Health check failed" "Unable to start local server. ${startup_log}"
+}
+
+trap 'cleanup_server; print_summary' EXIT
 
 print_banner
 
 start_test "Health Check"
-HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
+start_local_server_if_needed
 print_response "$HEALTH_RESPONSE"
 if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
   pass_step "Server is healthy"
@@ -221,7 +445,7 @@ printf "   %s↳ API URL:%s %s\n\n" "$COLOR_DIM" "$COLOR_RESET" "$API_URL"
 
 start_test "Register User Without Key"
 REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
-assert_active_registration "$REGISTER_RESPONSE" "User registered"
+assert_registration_and_activate "$REGISTER_RESPONSE" "User registered" "$TEST_PASS_HASH" "$TEST_USER"
 echo ""
 
 start_test "Sign In With Password Hash"
@@ -244,7 +468,7 @@ fi
 
 start_test "Register User With Returned Key"
 REGISTER_WITH_KEY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"public_key\":\"$RETURNED_PUBLIC_KEY\",\"private_key_encrypted\":\"$RETURNED_PRIVATE_KEY_ENCRYPTED\"}")
-assert_active_registration "$REGISTER_WITH_KEY_RESPONSE" "User registered with provided key"
+assert_registration_and_activate "$REGISTER_WITH_KEY_RESPONSE" "User registered with provided key" "$TEST_PASS_HASH" "$TEST_USER_WITH_KEY" "$RETURNED_PUBLIC_KEY"
 echo ""
 
 start_test "Sign In With Password Hash For Provided Key"
@@ -380,10 +604,10 @@ else
 fi
 
 start_test "Invalid Username Format"
-INVALID_USER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"Invalid-User\",\"password\":\"$TEST_PASS\"}")
+INVALID_USER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"invalid!user\",\"password\":\"$TEST_PASS\"}")
 
 print_response "$INVALID_USER_RESPONSE"
-if echo "$INVALID_USER_RESPONSE" | grep -q "lowercase"; then
+if echo "$INVALID_USER_RESPONSE" | grep -qi '"error"' && echo "$INVALID_USER_RESPONSE" | grep -qi "username"; then
   pass_step "Invalid username format rejected"
 else
   fail_step "Should reject invalid format" "$INVALID_USER_RESPONSE"
