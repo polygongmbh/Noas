@@ -11,7 +11,6 @@
  * - POST /verify-email - Legacy alias (deprecated)
  * - POST /api/v1/auth/update - Update user password or relays
  * - POST /api/v1/auth/delete - Delete user account
- * - POST /api/v1/picture - Upload profile picture
  * - GET /api/v1/picture/:identifier - Serve profile picture by pubkey or username
  * - GET /.well-known/nostr.json - NIP-05 verification
  * - GET /api/v1/health - Health check endpoint
@@ -304,6 +303,33 @@ function normalizeBase64Payload(data, contentType) {
   return { buffer, contentType: resolvedType };
 }
 
+function parseOptionalProfilePicture(payload) {
+  const pictureData = String(payload?.profile_picture_data || '').trim();
+  const pictureContentType = String(payload?.profile_picture_content_type || '').trim().toLowerCase();
+  const hasData = Boolean(pictureData);
+  const hasContentType = Boolean(pictureContentType);
+
+  if (!hasData && !hasContentType) {
+    return { hasPicture: false };
+  }
+  if (!hasData || !hasContentType) {
+    return {
+      hasPicture: false,
+      error: 'profile_picture_data and profile_picture_content_type are required together',
+    };
+  }
+
+  const imageResult = normalizeBase64Payload(pictureData, pictureContentType);
+  if (imageResult.error) {
+    return { hasPicture: false, error: imageResult.error };
+  }
+  return {
+    hasPicture: true,
+    buffer: imageResult.buffer,
+    contentType: imageResult.contentType,
+  };
+}
+
 /**
  * POST /api/v1/auth/register
  * Create account and send verification email.
@@ -317,6 +343,8 @@ router.post('/api/v1/auth/register', async (req, res) => {
       password_hash: passwordHash,
       public_key: publicKeyRaw,
       private_key_encrypted: privateKeyEncrypted,
+      profile_picture_data: profilePictureData,
+      profile_picture_content_type: profilePictureContentType,
       redirect,
     } = req.body || {};
     const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -345,6 +373,13 @@ router.post('/api/v1/auth/register', async (req, res) => {
     } catch (error) {
       return res.status(400).json({ error: error.message || 'Invalid key material' });
     }
+    const profilePicture = parseOptionalProfilePicture({
+      profile_picture_data: profilePictureData,
+      profile_picture_content_type: profilePictureContentType,
+    });
+    if (profilePicture.error) {
+      return res.status(400).json({ error: profilePicture.error });
+    }
 
     const nip05 = buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain);
     const email = normalizeEmail(nip05);
@@ -362,7 +397,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     }
 
     if (!config.emailVerificationEnabled) {
-      await createNostrUser({
+      const createdUser = await createNostrUser({
         tenantDomain: tenant.nip05RootDomain,
         username: normalizedUsername,
         passwordSha256: normalizedPasswordHash,
@@ -372,18 +407,30 @@ router.post('/api/v1/auth/register', async (req, res) => {
         status: 'active',
         verificationToken: null,
       });
+      if (profilePicture.hasPicture) {
+        const updatedPicture = await updateNostrUserProfilePicture(
+          createdUser.id,
+          profilePicture.buffer,
+          profilePicture.contentType
+        );
+        if (!updatedPicture) {
+          return res.status(500).json({ error: 'Profile picture update failed' });
+        }
+      }
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
       return res.status(200).json({
         success: true,
         status: 'active',
         nip05,
         public_key: keyMaterial.publicKey,
+        picture_url: profilePicture.hasPicture ? `${baseUrl}/api/v1/picture/${keyMaterial.publicKey}` : undefined,
         key_source: keyMaterial.keySource,
         message: 'Account is active. You can now sign in.',
       });
     }
 
     const verificationToken = buildVerificationToken();
-    await createNostrUser({
+    const createdUser = await createNostrUser({
       tenantDomain: tenant.nip05RootDomain,
       username: normalizedUsername,
       passwordSha256: normalizedPasswordHash,
@@ -393,6 +440,16 @@ router.post('/api/v1/auth/register', async (req, res) => {
       status: 'unverified_email',
       verificationToken,
     });
+    if (profilePicture.hasPicture) {
+      const updatedPicture = await updateNostrUserProfilePicture(
+        createdUser.id,
+        profilePicture.buffer,
+        profilePicture.contentType
+      );
+      if (!updatedPicture) {
+        return res.status(500).json({ error: 'Profile picture update failed' });
+      }
+    }
 
     const verificationMinutes = Math.max(1, config.verificationExpiryMinutes);
     const verificationLink = buildVerificationLinkWithRedirect(
@@ -428,6 +485,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       status: 'unverified_email',
       nip05,
       public_key: keyMaterial.publicKey,
+      picture_uploaded: profilePicture.hasPicture,
       key_source: keyMaterial.keySource,
       message: `Check ${email} to verify your account.`,
     };
@@ -720,6 +778,10 @@ const handleUpdate = async (req, res) => {
     const nextPrivateKeyEncrypted = getUpdatePrivateKeyEncrypted(updates);
     const nextPublicKey = getUpdatePublicKey(updates);
     const requestedCredentialChange = requestedPasswordChange || Boolean(nextPrivateKeyEncrypted) || Boolean(nextPublicKey);
+    const profilePictureUpdate = parseOptionalProfilePicture(updates || {});
+    if (profilePictureUpdate.error) {
+      return res.status(400).json({ error: profilePictureUpdate.error });
+    }
 
     if (requestedPasswordChange) {
       const nextPasswordHash = String(
@@ -763,7 +825,26 @@ const handleUpdate = async (req, res) => {
       updateData.relays = updates.relays;
     }
 
-    const updated = await updateNostrUser(normalizedUsername, updateData, tenant.nip05RootDomain);
+    const hasAccountFieldUpdates = Object.keys(updateData).length > 0;
+    if (!hasAccountFieldUpdates && !profilePictureUpdate.hasPicture) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    let updated = user;
+    if (hasAccountFieldUpdates) {
+      updated = await updateNostrUser(normalizedUsername, updateData, tenant.nip05RootDomain);
+    }
+    if (profilePictureUpdate.hasPicture) {
+      const updatedPicture = await updateNostrUserProfilePicture(
+        user.id,
+        profilePictureUpdate.buffer,
+        profilePictureUpdate.contentType
+      );
+      if (!updatedPicture) {
+        return res.status(500).json({ error: 'Profile picture update failed' });
+      }
+    }
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     res.json({
       success: true,
@@ -771,6 +852,9 @@ const handleUpdate = async (req, res) => {
         username: updated.username,
         public_key: updated.public_key || null,
       },
+      picture_url: profilePictureUpdate.hasPicture && (updated.public_key || user.public_key)
+        ? `${baseUrl}/api/v1/picture/${updated.public_key || user.public_key}`
+        : undefined,
     });
   } catch (error) {
     console.error('Update error:', error);
@@ -817,66 +901,6 @@ const handleDelete = async (req, res) => {
   } catch (error) {
     console.error('Delete error:', error);
     res.status(500).json({ error: 'Account deletion failed' });
-  }
-};
-
-/**
- * POST /picture
- * Upload a profile picture for a user
- * 
- * Authenticates user and stores a profile picture (base64-encoded).
- * Returns a standard URL for use in kind:0 events.
- */
-const handlePictureUpload = async (req, res) => {
-  try {
-    const tenant = resolveTenantContext(req);
-    const {
-      username,
-      password,
-      password_hash: passwordHashInput,
-      data,
-      content_type: contentTypeRaw,
-    } = req.body;
-    const normalizedUsername = String(username || '').trim().toLowerCase();
-    const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
-
-    if (!normalizedUsername || !normalizedPasswordHash) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-
-    const user = await getActiveNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    if (user.password_sha256 !== normalizedPasswordHash) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const imageResult = normalizeBase64Payload(data, contentTypeRaw);
-    if (imageResult.error) {
-      return res.status(400).json({ error: imageResult.error });
-    }
-
-    const updated = await updateNostrUserProfilePicture(
-      user.id,
-      imageResult.buffer,
-      imageResult.contentType
-    );
-
-    if (!updated) {
-      return res.status(500).json({ error: 'Profile picture update failed' });
-    }
-
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    res.json({
-      success: true,
-      public_key: user.public_key,
-      url: `${baseUrl}/api/v1/picture/${user.public_key}`,
-    });
-  } catch (error) {
-    console.error('Profile picture upload error:', error);
-    res.status(500).json({ error: 'Profile picture upload failed' });
   }
 };
 
@@ -1177,9 +1201,6 @@ router.post('/update', handleUpdate);
 
 router.post('/api/v1/auth/delete', handleDelete);
 router.post('/delete', handleDelete);
-
-router.post('/api/v1/picture', handlePictureUpload);
-router.post('/picture', handlePictureUpload);
 
 router.get('/api/v1/picture/:identifier', handlePictureFetch);
 router.get('/picture/:identifier', handlePictureFetch);

@@ -6,7 +6,7 @@ set -uo pipefail
 
 BASE_URL="${NOAS_TEST_BASE_URL:-http://localhost:3000}"
 VERBOSE=false
-EXPECTED_TESTS=19
+EXPECTED_TESTS=21
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -49,6 +49,8 @@ TEST_USER_WITH_KEY="${TEST_USER}_key"
 TEST_PASS="testpass123"
 TEST_PICTURE_BASE64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+XG1cAAAAASUVORK5CYII="
 TEST_PICTURE_CONTENT_TYPE="image/png"
+TEST_PICTURE_UPDATED_BASE64="R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+TEST_PICTURE_UPDATED_CONTENT_TYPE="image/gif"
 
 sha256_hex() {
   if command -v shasum >/dev/null 2>&1; then printf '%s' "$1" | shasum -a 256 | awk '{print $1}'; return; fi
@@ -472,7 +474,7 @@ WRONG_PASS_HASH=$(sha256_hex "wrongpass")
 printf "   %s↳ API URL:%s %s\n\n" "$COLOR_DIM" "$COLOR_RESET" "$API_URL"
 
 start_test "Register User Without Key"
-REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}")
+REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\",\"profile_picture_data\":\"$TEST_PICTURE_BASE64\",\"profile_picture_content_type\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
 assert_registration_and_activate "$REGISTER_RESPONSE" "User registered" "$TEST_PASS_HASH" "$TEST_USER"
 echo ""
 
@@ -586,15 +588,35 @@ else
   fail_step "NIP-46 nostrconnect failed" "$NIP46_NOSTRCONNECT_RESPONSE"
 fi
 
-start_test "Upload Profile Picture"
-PICTURE_UPLOAD_RESPONSE=$(post_json "/picture" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"data\":\"$TEST_PICTURE_BASE64\",\"content_type\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
-print_response "$PICTURE_UPLOAD_RESPONSE"
-PICTURE_URL=$(jq -r '.url // empty' <<<"$PICTURE_UPLOAD_RESPONSE")
-PICTURE_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$PICTURE_UPLOAD_RESPONSE")
-if echo "$PICTURE_UPLOAD_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true' && [ -n "$PICTURE_URL" ] && [ "$PICTURE_PUBLIC_KEY" = "$RETURNED_PUBLIC_KEY" ]; then
-  pass_step "Profile picture uploaded and public URL returned"
+start_test "Fetch Profile Picture From Registration"
+PICTURE_REG_HEADERS_FILE=$(mktemp)
+PICTURE_REG_BODY_FILE=$(mktemp)
+trap 'rm -f "${PICTURE_HEADERS_FILE:-}" "${PICTURE_BODY_FILE:-}" "${PICTURE_304_HEADERS_FILE:-}" "${PICTURE_304_BODY_FILE:-}" "${PICTURE_BY_NAME_HEADERS_FILE:-}" "${PICTURE_BY_NAME_BODY_FILE:-}" "${PICTURE_REG_HEADERS_FILE:-}" "${PICTURE_REG_BODY_FILE:-}"; print_summary' EXIT
+PICTURE_REG_STATUS=$(curl -s -D "$PICTURE_REG_HEADERS_FILE" -o "$PICTURE_REG_BODY_FILE" -w "%{http_code}" "$API_URL/picture/$RETURNED_PUBLIC_KEY")
+PICTURE_REG_CONTENT_TYPE=$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub(/\r/, "", $2); print $2; exit}' "$PICTURE_REG_HEADERS_FILE")
+PICTURE_REG_BASE64=$(base64_file "$PICTURE_REG_BODY_FILE")
+if [ "$PICTURE_REG_STATUS" = "200" ] && [ "$PICTURE_REG_CONTENT_TYPE" = "$TEST_PICTURE_CONTENT_TYPE" ] && [ "$PICTURE_REG_BASE64" = "$TEST_PICTURE_BASE64" ]; then
+  pass_step "Profile picture from registration is stored and readable"
 else
-  fail_step "Profile picture upload failed" "$PICTURE_UPLOAD_RESPONSE"
+  fail_step "Profile picture from registration failed" "status=$PICTURE_REG_STATUS content_type=$PICTURE_REG_CONTENT_TYPE"
+fi
+
+start_test "Update Profile Picture Via /auth/update"
+PICTURE_UPLOAD_RESPONSE=$(post_json "/auth/update" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"updates\":{\"profile_picture_data\":\"$TEST_PICTURE_UPDATED_BASE64\",\"profile_picture_content_type\":\"$TEST_PICTURE_UPDATED_CONTENT_TYPE\"}}")
+print_response "$PICTURE_UPLOAD_RESPONSE"
+PICTURE_URL=$(jq -r '.picture_url // empty' <<<"$PICTURE_UPLOAD_RESPONSE")
+if echo "$PICTURE_UPLOAD_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true' && [ -n "$PICTURE_URL" ]; then
+  pass_step "Profile picture updated through /auth/update"
+else
+  fail_step "Profile picture update through /auth/update failed" "$PICTURE_UPLOAD_RESPONSE"
+fi
+
+start_test "POST /picture Is Not Available"
+LEGACY_PICTURE_UPLOAD_STATUS=$(curl -s -o /tmp/noas_legacy_picture.out -w "%{http_code}" -X POST "$API_URL/picture" -H "Content-Type: application/json" -d "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"data\":\"$TEST_PICTURE_BASE64\",\"content_type\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
+if [ "$LEGACY_PICTURE_UPLOAD_STATUS" = "404" ]; then
+  pass_step "Legacy profile picture upload endpoint is not available"
+else
+  fail_step "Legacy profile picture upload endpoint should not be available" "status=$LEGACY_PICTURE_UPLOAD_STATUS"
 fi
 
 start_test "Fetch Profile Picture"
@@ -602,12 +624,12 @@ PICTURE_HEADERS_FILE=$(mktemp)
 PICTURE_BODY_FILE=$(mktemp)
 PICTURE_304_HEADERS_FILE=$(mktemp)
 PICTURE_304_BODY_FILE=$(mktemp)
-trap 'rm -f "$PICTURE_HEADERS_FILE" "$PICTURE_BODY_FILE" "$PICTURE_304_HEADERS_FILE" "$PICTURE_304_BODY_FILE"; print_summary' EXIT
+trap 'rm -f "${PICTURE_HEADERS_FILE:-}" "${PICTURE_BODY_FILE:-}" "${PICTURE_304_HEADERS_FILE:-}" "${PICTURE_304_BODY_FILE:-}" "${PICTURE_BY_NAME_HEADERS_FILE:-}" "${PICTURE_BY_NAME_BODY_FILE:-}" "${PICTURE_REG_HEADERS_FILE:-}" "${PICTURE_REG_BODY_FILE:-}"; print_summary' EXIT
 PICTURE_STATUS=$(curl -s -D "$PICTURE_HEADERS_FILE" -o "$PICTURE_BODY_FILE" -w "%{http_code}" "$API_URL/picture/$RETURNED_PUBLIC_KEY")
 PICTURE_RESPONSE_CONTENT_TYPE=$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub(/\r/, "", $2); print $2; exit}' "$PICTURE_HEADERS_FILE")
 PICTURE_LAST_MODIFIED=$(awk 'BEGIN{IGNORECASE=1} /^Last-Modified:/ {$1=""; sub(/^ /, ""); gsub(/\r/, ""); print; exit}' "$PICTURE_HEADERS_FILE")
 PICTURE_RESPONSE_BASE64=$(base64_file "$PICTURE_BODY_FILE")
-if [ "$PICTURE_STATUS" = "200" ] && [ "$PICTURE_RESPONSE_CONTENT_TYPE" = "$TEST_PICTURE_CONTENT_TYPE" ] && [ "$PICTURE_RESPONSE_BASE64" = "$TEST_PICTURE_BASE64" ] && [ -n "$PICTURE_LAST_MODIFIED" ]; then
+if [ "$PICTURE_STATUS" = "200" ] && [ "$PICTURE_RESPONSE_CONTENT_TYPE" = "$TEST_PICTURE_UPDATED_CONTENT_TYPE" ] && [ "$PICTURE_RESPONSE_BASE64" = "$TEST_PICTURE_UPDATED_BASE64" ] && [ -n "$PICTURE_LAST_MODIFIED" ]; then
   pass_step "Profile picture fetch returned the stored image with Last-Modified"
 else
   fail_step "Profile picture fetch failed" "status=$PICTURE_STATUS content_type=$PICTURE_RESPONSE_CONTENT_TYPE"
@@ -616,11 +638,11 @@ fi
 start_test "Fetch Profile Picture By Username"
 PICTURE_BY_NAME_HEADERS_FILE=$(mktemp)
 PICTURE_BY_NAME_BODY_FILE=$(mktemp)
-trap 'rm -f "$PICTURE_HEADERS_FILE" "$PICTURE_BODY_FILE" "$PICTURE_304_HEADERS_FILE" "$PICTURE_304_BODY_FILE" "$PICTURE_BY_NAME_HEADERS_FILE" "$PICTURE_BY_NAME_BODY_FILE"; print_summary' EXIT
+trap 'rm -f "${PICTURE_HEADERS_FILE:-}" "${PICTURE_BODY_FILE:-}" "${PICTURE_304_HEADERS_FILE:-}" "${PICTURE_304_BODY_FILE:-}" "${PICTURE_BY_NAME_HEADERS_FILE:-}" "${PICTURE_BY_NAME_BODY_FILE:-}" "${PICTURE_REG_HEADERS_FILE:-}" "${PICTURE_REG_BODY_FILE:-}"; print_summary' EXIT
 PICTURE_BY_NAME_STATUS=$(curl -s -D "$PICTURE_BY_NAME_HEADERS_FILE" -o "$PICTURE_BY_NAME_BODY_FILE" -w "%{http_code}" "$API_URL/picture/$TEST_USER")
 PICTURE_BY_NAME_CONTENT_TYPE=$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub(/\r/, "", $2); print $2; exit}' "$PICTURE_BY_NAME_HEADERS_FILE")
 PICTURE_BY_NAME_BASE64=$(base64_file "$PICTURE_BY_NAME_BODY_FILE")
-if [ "$PICTURE_BY_NAME_STATUS" = "200" ] && [ "$PICTURE_BY_NAME_CONTENT_TYPE" = "$TEST_PICTURE_CONTENT_TYPE" ] && [ "$PICTURE_BY_NAME_BASE64" = "$TEST_PICTURE_BASE64" ]; then
+if [ "$PICTURE_BY_NAME_STATUS" = "200" ] && [ "$PICTURE_BY_NAME_CONTENT_TYPE" = "$TEST_PICTURE_UPDATED_CONTENT_TYPE" ] && [ "$PICTURE_BY_NAME_BASE64" = "$TEST_PICTURE_UPDATED_BASE64" ]; then
   pass_step "Profile picture fetched by username"
 else
   fail_step "Profile picture fetch by username failed" "status=$PICTURE_BY_NAME_STATUS content_type=$PICTURE_BY_NAME_CONTENT_TYPE"

@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const signupRedirect = document.getElementById('signupRedirect');
   const signupPublicKey = document.getElementById('signupPublicKey');
   const signupPrivateKeyEncrypted = document.getElementById('signupPrivateKeyEncrypted');
+  const signupProfilePictureInput = document.getElementById('signupProfilePictureInput');
   const signupStatus = document.getElementById('signupStatus');
   const verificationFlash = document.getElementById('verificationFlash');
   const resendForm = document.getElementById('resendForm');
@@ -297,6 +298,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const password = signupPassword.value;
       const publicKey = signupPublicKey?.value.trim() || '';
       const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
+      const signupProfilePicture = signupProfilePictureInput?.files?.[0] || null;
       const redirect = signupRedirect?.value.trim() || '';
 
       setStatus(signupStatus, 'Sending verification email...', 'info');
@@ -309,6 +311,10 @@ document.addEventListener('DOMContentLoaded', function () {
           private_key_encrypted: privateKeyEncrypted || undefined,
           redirect: redirect || undefined,
         };
+        if (signupProfilePicture) {
+          requestBody.profile_picture_data = await fileToBase64(signupProfilePicture);
+          requestBody.profile_picture_content_type = signupProfilePicture.type || 'application/octet-stream';
+        }
         if (publicKey || privateKeyEncrypted) {
           requestBody.password_hash = await sha256Hex(password);
         } else {
@@ -547,22 +553,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
     try {
       const payloadBase64 = await fileToBase64(file);
-      const passwordHash = await sha256Hex(state.password);
-      const data = await request('/api/v1/picture', {
+      const data = await request('/api/v1/auth/update', {
         username: state.username,
-        password_hash: passwordHash,
-        data: payloadBase64,
-        content_type: file.type || 'application/octet-stream',
+        password: state.password,
+        updates: {
+          profile_picture_data: payloadBase64,
+          profile_picture_content_type: file.type || 'application/octet-stream',
+        },
       });
 
-      const pictureUrl = `${data.url}?t=${Date.now()}`;
+      const resolvedPictureUrl = data.picture_url || `/api/v1/picture/${state.publicKey || state.username}`;
+      const pictureUrl = `${resolvedPictureUrl}?t=${Date.now()}`;
       if (profileSummary) profileSummary.hidden = false;
       if (profilePicturePreview) {
         profilePicturePreview.src = pictureUrl;
         profilePicturePreview.hidden = false;
       }
       if (profilePictureStatus) {
-        profilePictureStatus.textContent = data.url || 'Profile picture uploaded';
+        profilePictureStatus.textContent = resolvedPictureUrl || 'Profile picture uploaded';
       }
       setStatus(pictureStatus, 'Profile picture uploaded.', 'success');
       pictureForm.reset();

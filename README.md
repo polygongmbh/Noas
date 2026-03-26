@@ -148,6 +148,8 @@ Create account and send verification email.
 {
   "username": "alice",
   "password": "securepassword123",
+  "profile_picture_data": "<base64_image>",
+  "profile_picture_content_type": "image/png",
   "redirect": "https://nodex.example.com"
 }
 ```
@@ -159,6 +161,8 @@ Create account and send verification email.
   "password_hash": "sha256_hex_of_password",
   "public_key": "64-char hex pubkey",
   "private_key_encrypted": "ncryptsec1...",
+  "profile_picture_data": "<base64_image>",
+  "profile_picture_content_type": "image/png",
   "redirect": "https://nodex.example.com"
 }
 ```
@@ -206,16 +210,16 @@ Resend verification email for a pending account. UI clients should respect the a
 }
 ```
 
-### POST /api/v1/picture
-
-Upload or replace the authenticated account's profile picture.
-
 ### GET /api/v1/picture/:pubkey
 ### GET /api/v1/picture/:name
 
 Fetch the current profile picture by either:
 - the account's current public key (`hex` or `npub`)
 - the account username
+
+Profile picture writes are accepted on:
+- `POST /api/v1/auth/register` with `profile_picture_data` + `profile_picture_content_type`
+- `POST /api/v1/auth/update` with `updates.profile_picture_data` + `updates.profile_picture_content_type`
 
 Cache behavior:
 - Returns `Last-Modified` based on the stored picture update time.
@@ -247,7 +251,7 @@ Sign in and retrieve encrypted private key (active accounts only).
 }
 ```
 
-### POST /update
+### POST /api/v1/auth/update
 
 Update password hash, public key, encrypted private key, or relays (requires authentication).
 
@@ -260,7 +264,9 @@ Update password hash, public key, encrypted private key, or relays (requires aut
     "new_password_hash": "sha256_hex_of_new_password",
     "public_key": "64-char hex pubkey",
     "private_key_encrypted": "ncryptsec1...",
-    "relays": ["wss://new-relay.com"]
+    "relays": ["wss://new-relay.com"],
+    "profile_picture_data": "<base64_image>",
+    "profile_picture_content_type": "image/png"
   }
 }
 ```

@@ -87,6 +87,12 @@
             <small>Provide together with Public Key, or leave both blank for auto-generation.</small>
           </label>
 
+          <label>
+            Profile Picture (optional)
+            <input type="file" id="signupProfilePictureInput" accept="image/*" />
+            <small>Attach an image (JPG, PNG, GIF, or WebP) up to 2MB during registration.</small>
+          </label>
+
           <button type="submit" class="btn">Register & Send Verification</button>
           <div id="signupStatus" class="status"></div>
         </form>
@@ -271,9 +277,10 @@
         </div>
         <div class="card">
           <h2>Profile Picture</h2>
-          <p>Store a profile image for your account and fetch it by current pubkey or username with Last-Modified caching.</p>
+          <p>Set a profile image during registration or account update, then fetch it by pubkey or username with Last-Modified caching.</p>
           <div class="endpoint-list">
-            <code>POST /api/v1/picture</code>
+            <code>POST /api/v1/auth/register (optional picture fields)</code>
+            <code>POST /api/v1/auth/update (updates.profile_picture_*)</code>
             <code>GET /api/v1/picture/:pubkey</code>
             <code>GET /api/v1/picture/:name</code>
           </div>
