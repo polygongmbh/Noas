@@ -6,7 +6,7 @@ set -uo pipefail
 
 BASE_URL="${NOAS_TEST_BASE_URL:-http://localhost:3000}"
 VERBOSE=false
-EXPECTED_TESTS=18
+EXPECTED_TESTS=19
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -76,6 +76,23 @@ url_encode() {
   NOAS_URL_ENCODE_INPUT="$raw" node --input-type=module <<'EOF'
 const raw = String(process.env.NOAS_URL_ENCODE_INPUT || '');
 process.stdout.write(encodeURIComponent(raw));
+EOF
+}
+
+url_origin() {
+  local raw="${1:-}"
+  NOAS_URL_ORIGIN_INPUT="$raw" node --input-type=module <<'EOF'
+const raw = String(process.env.NOAS_URL_ORIGIN_INPUT || '').trim();
+if (!raw) {
+  process.stdout.write('');
+  process.exit(0);
+}
+try {
+  const parsed = new URL(raw);
+  process.stdout.write(parsed.origin);
+} catch {
+  process.stdout.write('');
+}
 EOF
 }
 
@@ -437,8 +454,19 @@ else
 fi
 
 printf "%s🌐 Resolving API base%s\n" "$COLOR_BOLD$COLOR_CYAN" "$COLOR_RESET"
-API_URL=$(curl -s "$BASE_URL/.well-known/nostr.json" | jq -r '.noas.api_base // empty' || true)
-API_URL=${API_URL:-"$BASE_URL/api/v1"}
+DISCOVERED_API_URL=$(curl -s "$BASE_URL/.well-known/nostr.json" | jq -r '.noas.api_base // empty' || true)
+API_URL=${NOAS_TEST_API_URL:-$DISCOVERED_API_URL}
+if [ -z "$API_URL" ]; then
+  API_URL="$BASE_URL/api/v1"
+fi
+
+BASE_ORIGIN=$(url_origin "$BASE_URL")
+API_ORIGIN=$(url_origin "$API_URL")
+if [ -z "${NOAS_TEST_TRUST_DISCOVERED_API_BASE:-}" ] && [ -n "$BASE_ORIGIN" ] && [ -n "$API_ORIGIN" ] && [ "$BASE_ORIGIN" != "$API_ORIGIN" ] && [ -z "${NOAS_TEST_API_URL:-}" ]; then
+  API_URL="$BASE_URL/api/v1"
+  printf "   %s↳ discovered api_base origin (%s) differs from base (%s), using local API URL%s\n" "$COLOR_DIM" "$API_ORIGIN" "$BASE_ORIGIN" "$COLOR_RESET"
+fi
+
 TEST_PASS_HASH=$(sha256_hex "$TEST_PASS")
 WRONG_PASS_HASH=$(sha256_hex "wrongpass")
 printf "   %s↳ API URL:%s %s\n\n" "$COLOR_DIM" "$COLOR_RESET" "$API_URL"
@@ -583,6 +611,19 @@ if [ "$PICTURE_STATUS" = "200" ] && [ "$PICTURE_RESPONSE_CONTENT_TYPE" = "$TEST_
   pass_step "Profile picture fetch returned the stored image with Last-Modified"
 else
   fail_step "Profile picture fetch failed" "status=$PICTURE_STATUS content_type=$PICTURE_RESPONSE_CONTENT_TYPE"
+fi
+
+start_test "Fetch Profile Picture By Username"
+PICTURE_BY_NAME_HEADERS_FILE=$(mktemp)
+PICTURE_BY_NAME_BODY_FILE=$(mktemp)
+trap 'rm -f "$PICTURE_HEADERS_FILE" "$PICTURE_BODY_FILE" "$PICTURE_304_HEADERS_FILE" "$PICTURE_304_BODY_FILE" "$PICTURE_BY_NAME_HEADERS_FILE" "$PICTURE_BY_NAME_BODY_FILE"; print_summary' EXIT
+PICTURE_BY_NAME_STATUS=$(curl -s -D "$PICTURE_BY_NAME_HEADERS_FILE" -o "$PICTURE_BY_NAME_BODY_FILE" -w "%{http_code}" "$API_URL/picture/$TEST_USER")
+PICTURE_BY_NAME_CONTENT_TYPE=$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub(/\r/, "", $2); print $2; exit}' "$PICTURE_BY_NAME_HEADERS_FILE")
+PICTURE_BY_NAME_BASE64=$(base64_file "$PICTURE_BY_NAME_BODY_FILE")
+if [ "$PICTURE_BY_NAME_STATUS" = "200" ] && [ "$PICTURE_BY_NAME_CONTENT_TYPE" = "$TEST_PICTURE_CONTENT_TYPE" ] && [ "$PICTURE_BY_NAME_BASE64" = "$TEST_PICTURE_BASE64" ]; then
+  pass_step "Profile picture fetched by username"
+else
+  fail_step "Profile picture fetch by username failed" "status=$PICTURE_BY_NAME_STATUS content_type=$PICTURE_BY_NAME_CONTENT_TYPE"
 fi
 
 start_test "Fetch Profile Picture Not Modified"

@@ -12,7 +12,7 @@
  * - POST /api/v1/auth/update - Update user password or relays
  * - POST /api/v1/auth/delete - Delete user account
  * - POST /api/v1/picture - Upload profile picture
- * - GET /api/v1/picture/:pubkey - Serve profile picture by public key
+ * - GET /api/v1/picture/:identifier - Serve profile picture by pubkey or username
  * - GET /.well-known/nostr.json - NIP-05 verification
  * - GET /api/v1/health - Health check endpoint
  * - POST /api/v1/nip46/request - Handle NIP-46 requests
@@ -881,17 +881,23 @@ const handlePictureUpload = async (req, res) => {
 };
 
 /**
- * GET /picture/:pubkey
- * Serve a user's profile picture by public key
+ * GET /picture/:identifier
+ * Serve a user's profile picture by public key (hex/npub) or username.
  */
 const handlePictureFetch = async (req, res) => {
   try {
-    const rawPubkey = String(req.params?.pubkey || '').trim();
-    let pubkey = rawPubkey;
-    if (rawPubkey.startsWith('npub1')) {
+    const tenant = resolveTenantContext(req);
+    const rawIdentifier = String(req.params?.identifier || '').trim().toLowerCase();
+    if (!rawIdentifier) {
+      return res.status(400).json({ error: 'Picture identifier is required' });
+    }
+
+    let pubkey = rawIdentifier;
+
+    if (rawIdentifier.startsWith('npub1')) {
       try {
         const { nip19 } = await import('nostr-tools');
-        const decoded = nip19.decode(rawPubkey);
+        const decoded = nip19.decode(rawIdentifier);
         if (decoded.type !== 'npub' || typeof decoded.data !== 'string') {
           return res.status(400).json({ error: 'Public key must be a valid npub or hex pubkey' });
         }
@@ -900,9 +906,19 @@ const handlePictureFetch = async (req, res) => {
         return res.status(400).json({ error: 'Public key must be a valid npub or hex pubkey' });
       }
     }
+
     const pubkeyCheck = validatePublicKey(pubkey);
     if (!pubkeyCheck.valid) {
-      return res.status(400).json({ error: pubkeyCheck.error });
+      const usernameCheck = validateUsername(rawIdentifier);
+      if (!usernameCheck.valid) {
+        return res.status(400).json({ error: 'Picture identifier must be a valid pubkey or username' });
+      }
+
+      const user = await getActiveNostrUserByUsername(rawIdentifier, tenant.nip05RootDomain);
+      if (!user || !user.public_key) {
+        return res.status(404).json({ error: 'Profile picture not found' });
+      }
+      pubkey = user.public_key;
     }
 
     const picture = await getNostrUserProfilePictureByPublicKey(pubkey);
@@ -1165,8 +1181,8 @@ router.post('/delete', handleDelete);
 router.post('/api/v1/picture', handlePictureUpload);
 router.post('/picture', handlePictureUpload);
 
-router.get('/api/v1/picture/:pubkey', handlePictureFetch);
-router.get('/picture/:pubkey', handlePictureFetch);
+router.get('/api/v1/picture/:identifier', handlePictureFetch);
+router.get('/picture/:identifier', handlePictureFetch);
 
 router.get('/api/v1/health', handleHealth);
 router.get('/health', handleHealth);

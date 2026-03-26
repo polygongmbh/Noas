@@ -211,8 +211,11 @@ Resend verification email for a pending account. UI clients should respect the a
 Upload or replace the authenticated account's profile picture.
 
 ### GET /api/v1/picture/:pubkey
+### GET /api/v1/picture/:name
 
-Fetch the current profile picture for the account currently using that pubkey.
+Fetch the current profile picture by either:
+- the account's current public key (`hex` or `npub`)
+- the account username
 
 Cache behavior:
 - Returns `Last-Modified` based on the stored picture update time.
