@@ -12,7 +12,8 @@
         <h1>Verify your identity</h1>
         <p id="verifyMessage">Checking verification link...</p>
         <p id="verifyNip05"></p>
-        <p id="verifyPublicKey"></p>
+        <p id="verifyPublicKeyHex"></p>
+        <p id="verifyPublicKeyNpub"></p>
         <p id="verifyExpiry"></p>
         <form id="verifyForm" class="form" hidden>
           <label>
@@ -36,7 +37,8 @@
       const verifyStatus = document.getElementById('verifyStatus');
       const verifyMessage = document.getElementById('verifyMessage');
       const verifyNip05 = document.getElementById('verifyNip05');
-      const verifyPublicKey = document.getElementById('verifyPublicKey');
+      const verifyPublicKeyHex = document.getElementById('verifyPublicKeyHex');
+      const verifyPublicKeyNpub = document.getElementById('verifyPublicKeyNpub');
       const verifyExpiry = document.getElementById('verifyExpiry');
       const backToApp = document.getElementById('backToApp');
       let verifiedNip05 = '';
@@ -132,7 +134,8 @@
         verifyStatus.textContent = '';
         verifyPassword.value = '';
         verifyNip05.textContent = '';
-        verifyPublicKey.textContent = '';
+        verifyPublicKeyHex.textContent = '';
+        verifyPublicKeyNpub.textContent = '';
         verifyExpiry.textContent = '';
       }
 
@@ -140,8 +143,10 @@
         verifyMessage.textContent = 'Enter your password to activate this account.';
         verifiedNip05 = String(data.nip05 || '').trim();
         verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
-        const displayPubkey = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || String(data.public_key || '').trim();
-        verifyPublicKey.textContent = displayPubkey ? `Public key: ${displayPubkey}` : '';
+        const hexPubkey = String(data.public_key || '').trim().toLowerCase();
+        const npubPubkey = window.NoasNostr?.npubFromHexPublicKey(hexPubkey) || '';
+        verifyPublicKeyHex.textContent = hexPubkey ? `Public key (hex): ${hexPubkey}` : '';
+        verifyPublicKeyNpub.textContent = npubPubkey ? `Public key (npub): ${npubPubkey}` : '';
         if (data.expires_at) {
           const minutesLeft = Math.max(
             1,
