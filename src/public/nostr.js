@@ -86,7 +86,7 @@
 
   async function loadNip49Module() {
     if (!nip49ModulePromise) {
-      nip49ModulePromise = import('nostr-tools/nip49');
+      nip49ModulePromise = import('nostr-tools/nip49.js');
     }
     return nip49ModulePromise;
   }
