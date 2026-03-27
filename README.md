@@ -69,15 +69,13 @@ Edit `.env` with your PostgreSQL connection string:
 DATABASE_URL=postgresql://user:password@localhost:5432/noas?sslmode=disable
 DOMAIN=yourdomain.com
 PORT=3000
-REQUIRE_EMAIL_VERIFICATION=true
-EMAIL_VERIFICATION_ENABLED=true
+EMAIL_VERIFICATION_MODE=required_nip05_domains
 VERIFICATION_EXPIRY_MINUTES=15
 RESEND_COOLDOWN_MINUTES=1
 NIP05_DOMAIN=example.com
 NOAS_PUBLIC_URL=https://noas.example.com
 NOAS_BASE_PATH=/noas
 ALLOWED_ORIGINS=https://nodex.example.com,https://example.com
-ALLOWED_SIGNUP_EMAIL_DOMAIN=
 TENANT_DEFAULT_RELAYS=
 DOMAIN_RELAY_MAP=example.com=wss://tasks.example.com
 EMAIL_VERIFICATION_TOKEN_TTL_MINUTES=30
@@ -107,6 +105,12 @@ Primary domain settings:
 
 Most other domain-related behavior derives from these values.
 Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.
+
+Email verification modes (`EMAIL_VERIFICATION_MODE`):
+- `off`: account is active immediately after register; no email verification step.
+- `required`: email verification is required; client must provide `email`.
+- `required_nip05_domains`: email verification is required and locked to `username@<tenant_nip05_domain>`.
+- Default: `required_nip05_domains` when mode and legacy flags are not set.
 
 ### 3. Set up database
 
@@ -147,6 +151,7 @@ Create account and send verification email.
 ```json
 {
   "username": "alice",
+  "email": "alice@example.com",
   "password": "securepassword123",
   "profile_picture_data": "<base64_image>",
   "profile_picture_content_type": "image/png",
@@ -158,6 +163,7 @@ Create account and send verification email.
 ```json
 {
   "username": "alice",
+  "email": "alice@example.com",
   "password_hash": "sha256_hex_of_password",
   "public_key": "64-char hex pubkey",
   "private_key_encrypted": "ncryptsec1...",
@@ -177,7 +183,12 @@ Create account and send verification email.
 }
 ```
 
-If SMTP is configured, Noas sends a verification link to `username@<tenant-domain>`, where tenant domain is resolved from `NIP05_DOMAIN` (single/multi) or the request host when `NIP05_DOMAIN` is empty.  
+`status` is mode-dependent:
+- `off` -> `active`
+- `required` / `required_nip05_domains` -> `unverified_email`
+
+If SMTP is configured, Noas sends a verification link to the resolved registration email.  
+With `EMAIL_VERIFICATION_MODE=required_nip05_domains`, this is always `username@<tenant-domain>` (tenant domain resolved from `NIP05_DOMAIN` or request host when `NIP05_DOMAIN` is empty).  
 If SMTP is not configured, verification-only dev mode works with `EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true`.  
 Set `REQUIRE_EMAIL_DELIVERY=true` to fail onboarding when mail cannot be delivered.
 
@@ -314,7 +325,7 @@ When called without `name`, returns Noas instance metadata (version, public URL,
 - Uses HTTPS in production
 - Username validation: 3-32 chars, lowercase alphanumeric + underscore
 - Username can be independent from email local-part (must still be unique and valid format)
-- Optional email verification gate before sign-in (`EMAIL_VERIFICATION_ENABLED=true`)
+- Email verification mode is controlled by `EMAIL_VERIFICATION_MODE` (`off`, `required`, `required_nip05_domains`)
 - When email verification is enabled, NIP-05 lookups only expose verified users
 - SMTP delivery is configurable via `SMTP_URL` or `SMTP_HOST`/`SMTP_PORT` + credentials
 
@@ -325,7 +336,6 @@ For relays such as `nostr-rs-relay`, prefer domain-based access control:
 - Relay config enforces publishing from `nip05` identities at approved domains
 - Noas is the identity authority (accounts + email verification + NIP-05 mapping)
 - Noas does not need direct relay allowlist API integration for per-user writes
-- Keep `ALLOWED_SIGNUP_EMAIL_DOMAIN` empty if all domains should register
 - Use `DOMAIN_RELAY_MAP` to attach company-specific relays by email domain
 
 Example relay config:

@@ -102,6 +102,25 @@ function normalizeBasePath(value) {
   return withLeading.endsWith('/') ? withLeading.slice(0, -1) : withLeading;
 }
 
+function parseEmailVerificationMode() {
+  const raw = String(process.env.EMAIL_VERIFICATION_MODE || '').trim().toLowerCase();
+  if (raw === 'off' || raw === 'required' || raw === 'required_nip05_domains') {
+    return raw;
+  }
+
+  // Backward compatibility for older deployments that still set legacy flags.
+  const legacyEnabledRaw = String(process.env.EMAIL_VERIFICATION_ENABLED || '').trim().toLowerCase();
+  if (legacyEnabledRaw === 'true') return 'required_nip05_domains';
+  if (legacyEnabledRaw === 'false') return 'off';
+
+  const legacyRequiredRaw = String(process.env.REQUIRE_EMAIL_VERIFICATION || '').trim().toLowerCase();
+  if (legacyRequiredRaw === 'true') return 'required_nip05_domains';
+  if (legacyRequiredRaw === 'false') return 'off';
+
+  // Default behavior matches previous Noas behavior.
+  return 'required_nip05_domains';
+}
+
 export function rootDomainFromHostLike(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -147,6 +166,7 @@ function resolveDomain({ domainEnv, noasPublicUrl, nip05Domain, port }) {
 const configuredPort = parseInt(process.env.PORT || '3000', 10);
 const configuredNip05Domain = process.env.NIP05_DOMAIN || process.env.NOAS_DOMAIN || '';
 const configuredNip05Domains = parseDomainList(configuredNip05Domain);
+const emailVerificationMode = parseEmailVerificationMode();
 
 // Export configuration object with all app settings
 export const config = {
@@ -159,12 +179,9 @@ export const config = {
     port: configuredPort,
   }),
   isTest: process.env.NODE_ENV === 'test',
-  requireEmailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
-  emailVerificationEnabled:
-    process.env.EMAIL_VERIFICATION_ENABLED
-      ? process.env.EMAIL_VERIFICATION_ENABLED === 'true'
-      : process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
-  allowedSignupEmailDomain: (process.env.ALLOWED_SIGNUP_EMAIL_DOMAIN || '').trim().toLowerCase(),
+  emailVerificationMode,
+  emailVerificationEnabled: emailVerificationMode !== 'off',
+  emailVerificationLocksToNip05Domain: emailVerificationMode === 'required_nip05_domains',
   tenantDefaultRelays: parseRelayList(process.env.TENANT_DEFAULT_RELAYS),
   domainRelayMap: parseDomainRelayMap(process.env.DOMAIN_RELAY_MAP),
   exposeVerificationTokenInResponse: process.env.EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE === 'true',

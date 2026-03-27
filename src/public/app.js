@@ -4,7 +4,8 @@ document.addEventListener('DOMContentLoaded', function () {
     password: null,
     publicKey: null,
     signupUsername: null,
-    emailVerificationEnabled: false,
+    emailVerificationMode: 'required_nip05_domains',
+    emailVerificationEnabled: true,
     resendCooldownMinutes: 1,
     lastResendAttemptAt: 0,
     nip05Domain: window.location.hostname || '',
@@ -63,9 +64,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function syncSignupEmailLockState() {
     if (!signupEmail || !signupEmailLabel || !signupEmailHint) return;
-    const lockEmail = Boolean(state.emailVerificationEnabled);
-    const lockHint = 'Because email verification is enabled, email must be username@NIP05_DOMAIN.';
+    const verificationMode = String(state.emailVerificationMode || 'off').trim().toLowerCase();
+    const lockEmail = verificationMode === 'required_nip05_domains';
+    const requireEmail = verificationMode === 'required' || lockEmail;
+    const lockHint = 'Because EMAIL_VERIFICATION_MODE=required_nip05_domains, email must be username@NIP05_DOMAIN.';
+    const requiredHint = 'Email verification is required. Enter the email that should receive verification links.';
     signupEmail.readOnly = lockEmail;
+    signupEmail.required = requireEmail;
     signupEmail.dataset.locked = lockEmail ? 'true' : 'false';
 
     if (lockEmail) {
@@ -77,7 +82,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     signupEmail.removeAttribute('title');
-    signupEmailHint.textContent = 'Used for account and verification emails.';
+    signupEmailHint.textContent = requireEmail
+      ? requiredHint
+      : 'Optional when EMAIL_VERIFICATION_MODE=off. Used for account and verification emails.';
     signupEmailLabel.classList.remove('email-lock-hint');
   }
 
@@ -105,9 +112,13 @@ document.addEventListener('DOMContentLoaded', function () {
       const label = normalizeVersionLabel(data?.noas?.version);
       if (noasVersion) noasVersion.textContent = label;
       if (noasVersionFooter) noasVersionFooter.textContent = label;
-      if (typeof metadata.email_verification_enabled === 'boolean') {
-        state.emailVerificationEnabled = metadata.email_verification_enabled;
+      const modeFromMetadata = String(metadata.email_verification_mode || '').trim().toLowerCase();
+      if (modeFromMetadata === 'off' || modeFromMetadata === 'required' || modeFromMetadata === 'required_nip05_domains') {
+        state.emailVerificationMode = modeFromMetadata;
+      } else if (typeof metadata.email_verification_enabled === 'boolean') {
+        state.emailVerificationMode = metadata.email_verification_enabled ? 'required_nip05_domains' : 'off';
       }
+      state.emailVerificationEnabled = state.emailVerificationMode !== 'off';
       if (Number.isFinite(Number(metadata.resend_cooldown_minutes))) {
         state.resendCooldownMinutes = Math.max(1, Number(metadata.resend_cooldown_minutes) || 1);
       }
@@ -123,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (signupUsername) {
     signupUsername.addEventListener('input', () => {
-      if (state.emailVerificationEnabled) {
+      if (state.emailVerificationMode === 'required_nip05_domains') {
         syncSignupEmailLockState();
       }
     });
@@ -226,7 +237,9 @@ document.addEventListener('DOMContentLoaded', function () {
       signupPassword?.focus();
       return false;
     }
-    if (!email) {
+    const verificationMode = String(state.emailVerificationMode || 'off').trim().toLowerCase();
+    const requireEmail = verificationMode === 'required' || verificationMode === 'required_nip05_domains';
+    if (requireEmail && !email) {
       setStatus(signupStatus, 'Email is required', 'error');
       signupEmail?.focus();
       return false;
@@ -247,16 +260,16 @@ document.addEventListener('DOMContentLoaded', function () {
       signupPassword?.focus();
       return false;
     }
-    if (!signupEmail?.checkValidity()) {
+    if (email && !signupEmail?.checkValidity()) {
       setStatus(signupStatus, 'Please enter a valid email address', 'error');
       signupEmail?.focus();
       return false;
     }
-    if (state.emailVerificationEnabled) {
+    if (verificationMode === 'required_nip05_domains') {
       const expectedEmail = getDerivedSignupEmail(username);
       if (email !== expectedEmail) {
         signupEmail.value = expectedEmail;
-        setStatus(signupStatus, 'Email must follow username@NIP05_DOMAIN when email verification is enabled', 'error');
+        setStatus(signupStatus, 'Email must follow username@NIP05_DOMAIN when verification mode is required_nip05_domains', 'error');
         signupEmail?.focus();
         return false;
       }

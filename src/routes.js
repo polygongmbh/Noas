@@ -106,6 +106,11 @@ function isValidSha256Hex(value) {
   return /^[a-f0-9]{64}$/i.test(String(value || '').trim());
 }
 
+function isValidEmailAddress(value) {
+  const normalized = normalizeEmail(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+}
+
 function resolveRequestHostLike(req) {
   const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
   if (forwardedHost) return forwardedHost.toLowerCase();
@@ -153,6 +158,34 @@ function resolveTenantContext(req) {
 
 function buildNip05Identifier(username, nip05RootDomain = config.nip05RootDomain) {
   return `${username}@${nip05RootDomain}`;
+}
+
+function resolveRegistrationEmail({ mode, requestedEmail, username, tenantDomain }) {
+  const normalizedRequestedEmail = normalizeEmail(requestedEmail);
+  const nip05Email = normalizeEmail(buildNip05Identifier(username, tenantDomain));
+
+  if (mode === 'off') {
+    return { email: normalizedRequestedEmail || null };
+  }
+
+  if (mode === 'required') {
+    if (!normalizedRequestedEmail) {
+      return { error: 'email is required' };
+    }
+    if (!isValidEmailAddress(normalizedRequestedEmail)) {
+      return { error: 'email must be a valid email address' };
+    }
+    return { email: normalizedRequestedEmail };
+  }
+
+  if (mode === 'required_nip05_domains') {
+    if (normalizedRequestedEmail && normalizedRequestedEmail !== nip05Email) {
+      return { error: `email must be ${nip05Email} when EMAIL_VERIFICATION_MODE=required_nip05_domains` };
+    }
+    return { email: nip05Email };
+  }
+
+  return { error: 'Invalid EMAIL_VERIFICATION_MODE value' };
 }
 
 function isNostrUserVerificationExpired(user, expiryMinutes) {
@@ -339,6 +372,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     const tenant = resolveTenantContext(req);
     const {
       username,
+      email,
       password,
       password_hash: passwordHash,
       public_key: publicKeyRaw,
@@ -348,6 +382,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       redirect,
     } = req.body || {};
     const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     const normalizedPassword = String(password || '');
     const normalizedRedirect = String(redirect || '').trim() || null;
     const hasKeyMaterial = Boolean(String(publicKeyRaw || '').trim()) || Boolean(String(privateKeyEncrypted || '').trim());
@@ -382,7 +417,16 @@ router.post('/api/v1/auth/register', async (req, res) => {
     }
 
     const nip05 = buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain);
-    const email = normalizeEmail(nip05);
+    const registrationEmailResult = resolveRegistrationEmail({
+      mode: config.emailVerificationMode,
+      requestedEmail: normalizedEmail,
+      username: normalizedUsername,
+      tenantDomain: tenant.nip05RootDomain,
+    });
+    if (registrationEmailResult.error) {
+      return res.status(400).json({ error: registrationEmailResult.error });
+    }
+    const registrationEmail = registrationEmailResult.email;
     await deleteExpiredPendingNostrUsers(config.verificationExpiryMinutes);
 
     const existing = await getNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
@@ -403,6 +447,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         passwordSha256: normalizedPasswordHash,
         publicKey: keyMaterial.publicKey,
         privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
+        registrationEmail,
         rawPassword: normalizedPassword || null,
         status: 'active',
         verificationToken: null,
@@ -436,6 +481,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       passwordSha256: normalizedPasswordHash,
       publicKey: keyMaterial.publicKey,
       privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
+      registrationEmail,
       rawPassword: normalizedPassword || null,
       status: 'unverified_email',
       verificationToken,
@@ -461,7 +507,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
     let emailDelivery = { sent: false, reason: 'not_attempted' };
     try {
       emailDelivery = await sendVerificationEmail({
-        to: email,
+        to: registrationEmail,
         username: normalizedUsername,
         identifier: nip05,
         redirectTarget: normalizedRedirect,
@@ -487,7 +533,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       public_key: keyMaterial.publicKey,
       picture_uploaded: profilePicture.hasPicture,
       key_source: keyMaterial.keySource,
-      message: `Check ${email} to verify your account.`,
+      message: `Check ${registrationEmail} to verify your account.`,
     };
     if (config.exposeVerificationTokenInResponse || config.isTest) {
       responseBody.verification_token = verificationToken;
@@ -625,7 +671,7 @@ router.post('/api/v1/auth/resend', async (req, res) => {
       Math.max(1, config.verificationExpiryMinutes) * 60 * 1000
     );
     const identifier = buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain);
-    const email = normalizeEmail(identifier);
+    const email = normalizeEmail(updated.registration_email || identifier);
 
     let emailDelivery = { sent: false, reason: 'not_attempted' };
     try {
@@ -995,7 +1041,9 @@ router.get('/.well-known/nostr.json', async (req, res) => {
           public_url: tenant.noasPublicUrl,
           base_path: config.noasBasePath || '/',
           api_base: tenant.apiBase,
+          email_verification_mode: config.emailVerificationMode,
           email_verification_enabled: config.emailVerificationEnabled,
+          email_verification_locks_to_nip05_domain: config.emailVerificationLocksToNip05Domain,
           resend_cooldown_minutes: config.resendCooldownMinutes,
           trusted_redirect_origins: config.allowedOrigins,
         },

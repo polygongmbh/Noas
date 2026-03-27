@@ -257,6 +257,7 @@ export async function createNostrUser({
   passwordSha256,
   publicKey = null,
   privateKeyEncrypted = null,
+  registrationEmail = null,
   rawPassword = null,
   relays = [],
   tenantDomain = '',
@@ -271,11 +272,12 @@ export async function createNostrUser({
       raw_password,
       public_key,
       private_key_encrypted,
+      registration_email,
       relays,
       status,
       verification_token
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING *`,
     [
       normalizeTenantDomain(tenantDomain),
@@ -284,6 +286,7 @@ export async function createNostrUser({
       rawPassword,
       publicKey,
       privateKeyEncrypted,
+      registrationEmail,
       JSON.stringify(relays),
       status,
       verificationToken,
