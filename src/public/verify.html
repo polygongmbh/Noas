@@ -24,6 +24,7 @@
           <div id="verifyStatus" class="status"></div>
         </form>
         <button id="backToApp" class="btn" hidden>Back to app</button>
+        <button id="backToNoas" class="btn subtle" hidden>Back to Noas</button>
       </section>
     </main>
 
@@ -41,6 +42,7 @@
       const verifyPublicKeyNpub = document.getElementById('verifyPublicKeyNpub');
       const verifyExpiry = document.getElementById('verifyExpiry');
       const backToApp = document.getElementById('backToApp');
+      const backToNoas = document.getElementById('backToNoas');
       let verifiedNip05 = '';
       let trustedNip05Domain = '';
       let trustedOrigins = [];
@@ -74,12 +76,36 @@
       }
 
       const redirect = normalizeRedirect(redirectRaw);
+      const tenantLandingUrl = new URL('/', window.location.origin).toString();
 
       if (redirect) {
         backToApp.hidden = false;
         backToApp.addEventListener('click', () => {
           window.location.assign(redirect);
         });
+      }
+
+      if (backToNoas) {
+        backToNoas.addEventListener('click', () => {
+          window.location.assign(tenantLandingUrl);
+        });
+      }
+
+      function isAlreadyUsedError(message) {
+        const normalized = String(message || '').trim().toLowerCase();
+        return normalized.includes('already active') || normalized.includes('already used');
+      }
+
+      function showAlreadyUsedActions() {
+        if (redirect) {
+          backToApp.hidden = false;
+          backToApp.textContent = 'Back to app';
+        } else {
+          backToApp.hidden = true;
+        }
+        if (backToNoas) {
+          backToNoas.hidden = false;
+        }
       }
 
       async function loadTrustMetadata() {
@@ -170,6 +196,9 @@
           }
           renderPreview(data);
         } catch (error) {
+          if (isAlreadyUsedError(error.message)) {
+            showAlreadyUsedActions();
+          }
           renderError(error.message || 'Invalid link.');
         }
       }
@@ -216,6 +245,9 @@
             window.location.assign(destination);
           }, 700);
         } catch (error) {
+          if (isAlreadyUsedError(error.message)) {
+            showAlreadyUsedActions();
+          }
           setStatus(error.message || 'Verification failed.', 'error');
         }
       });

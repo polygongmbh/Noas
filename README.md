@@ -188,6 +188,10 @@ Primary auth endpoints (v1.4):
 - `POST /api/v1/auth/verify` -> verifies token + password hash and activates account.
 - `POST /api/v1/auth/resend` -> resends verification email; clients should apply cooldown locally.
 
+Verification UI behavior:
+- `GET /verify?token=...` shows password confirmation for pending accounts.
+- If a verification link was already used, the page shows `Back to app` (when `redirect` is present) and `Back to Noas` (tenant landing page).
+
 ### POST /api/v1/auth/verify
 
 Activate account by confirming token + password hash.

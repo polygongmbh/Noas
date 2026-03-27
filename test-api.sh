@@ -266,8 +266,14 @@ assert_registration_and_activate() {
   verify_response=$(post_json "/auth/verify" "$verify_payload")
   print_response "$verify_response"
   if echo "$verify_response" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
-    pass_step "$label"
-    return
+    local verify_again_response
+    verify_again_response=$(post_json "/auth/verify" "$verify_payload")
+    print_response "$verify_again_response"
+    if echo "$verify_again_response" | grep -q 'Account already active\. Sign in\.'; then
+      pass_step "$label"
+      return
+    fi
+    fail_step "$label" "Second verification attempt should report already active: $verify_again_response"
   fi
   fail_step "$label" "Verification failed: $verify_response"
 }
