@@ -23,23 +23,21 @@ services:
       noas-db:
         condition: service_healthy
     command: ["sh", "-lc", "npm run db:migrate && npm start"]
-    ports:
-      - 3000:3000
+    # ports:
+    #   - 3000:3000
     environment:
       PORT: 3000
       # Keep container runtime env owned by docker-compose.
       NOAS_LOAD_DOTENV: "false"
       DATABASE_URL: postgresql://noas:noas@noas-db:5432/noas?sslmode=disable
       DOMAIN: ${DOMAIN:-}
-      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-false}
-      EMAIL_VERIFICATION_ENABLED: ${EMAIL_VERIFICATION_ENABLED:-false}
+      EMAIL_VERIFICATION_MODE: ${EMAIL_VERIFICATION_MODE:-required_nip05_domains}
       VERIFICATION_EXPIRY_MINUTES: ${VERIFICATION_EXPIRY_MINUTES:-15}
       RESEND_COOLDOWN_MINUTES: ${RESEND_COOLDOWN_MINUTES:-1}
       NIP05_DOMAIN: ${NIP05_DOMAIN:-}
       NOAS_PUBLIC_URL: ${NOAS_PUBLIC_URL:-}
       NOAS_BASE_PATH: ${NOAS_BASE_PATH:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      ALLOWED_SIGNUP_EMAIL_DOMAIN: ${ALLOWED_SIGNUP_EMAIL_DOMAIN:-}
       TENANT_DEFAULT_RELAYS: ${TENANT_DEFAULT_RELAYS:-}
       DOMAIN_RELAY_MAP: ${DOMAIN_RELAY_MAP:-}
       EMAIL_VERIFICATION_TOKEN_TTL_MINUTES: ${EMAIL_VERIFICATION_TOKEN_TTL_MINUTES:-30}
@@ -63,4 +61,4 @@ volumes:
 
 networks:
   noas:
-    #external: true
+    external: true
