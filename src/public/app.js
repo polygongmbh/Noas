@@ -648,12 +648,16 @@ document.addEventListener('DOMContentLoaded', function () {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('verified') === '1') {
     const nip05 = (urlParams.get('nip05') || '').trim();
-    const message = nip05
+    const email = (urlParams.get('email') || '').trim();
+    const message = email
+      ? `Account verified for ${email}. You can now sign in.`
+      : nip05
       ? `Account verified for ${nip05}. You can now sign in.`
       : 'Account verified. You can now sign in.';
     setStatus(verificationFlash, message, 'success');
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete('verified');
+    cleanUrl.searchParams.delete('email');
     cleanUrl.searchParams.delete('nip05');
     window.history.replaceState({}, '', cleanUrl.toString());
   }

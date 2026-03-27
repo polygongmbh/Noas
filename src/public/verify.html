@@ -44,6 +44,7 @@
       const backToApp = document.getElementById('backToApp');
       const backToNoas = document.getElementById('backToNoas');
       let verifiedNip05 = '';
+      let verifiedEmail = '';
       let trustedNip05Domain = '';
       let trustedOrigins = [];
 
@@ -168,6 +169,7 @@
       function renderPreview(data) {
         verifyMessage.textContent = 'Enter your password to activate this account.';
         verifiedNip05 = String(data.nip05 || '').trim();
+        verifiedEmail = String(data.registration_email || '').trim();
         verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
         const hexPubkey = String(data.public_key || '').trim().toLowerCase();
         const npubPubkey = window.NoasNostr?.npubFromHexPublicKey(hexPubkey) || '';
@@ -237,7 +239,9 @@
           }
           const homeUrl = new URL('/', window.location.origin);
           homeUrl.searchParams.set('verified', '1');
-          if (verifiedNip05) {
+          if (verifiedEmail) {
+            homeUrl.searchParams.set('email', verifiedEmail);
+          } else if (verifiedNip05) {
             homeUrl.searchParams.set('nip05', verifiedNip05);
           }
           const destination = redirect || homeUrl.toString();
