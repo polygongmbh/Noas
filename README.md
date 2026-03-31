@@ -97,7 +97,7 @@ NIP46_RELAYS=
 Primary domain settings:
 - `NIP05_DOMAIN`: optional NIP-05 domain override.
   - Single domain: `example.com`
-  - Multi-tenant list: `noas.progyssey.org,noas.polygon.gmbh`
+  - Multi-tenant list: `noas.example.org,noas.example.gmbh`
   - Empty value: derive tenant domain from request host
 - `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. When set, this always takes precedence over request-derived URLs for `api_base` and verification links.
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
@@ -155,7 +155,7 @@ Create account and send verification email.
   "password": "securepassword123",
   "profile_picture_data": "<base64_image>",
   "profile_picture_content_type": "image/png",
-  "redirect": "https://nodex.example.com"
+  "redirect": "https://example.com"
 }
 ```
 
@@ -169,7 +169,7 @@ Create account and send verification email.
   "private_key_encrypted": "ncryptsec1...",
   "profile_picture_data": "<base64_image>",
   "profile_picture_content_type": "image/png",
-  "redirect": "https://nodex.example.com"
+  "redirect": "https://example.com"
 }
 ```
 
