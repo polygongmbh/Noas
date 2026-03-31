@@ -39,6 +39,25 @@ function parseRelayList(value) {
     .filter((relay) => relay.startsWith('wss://'));
 }
 
+function parseHttpUrlList(value) {
+  return Array.from(
+    new Set(
+      String(value || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .filter((entry) => {
+          try {
+            const parsed = new URL(entry);
+            return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+          } catch {
+            return false;
+          }
+        })
+    )
+  );
+}
+
 function parseDomainList(value) {
   return Array.from(
     new Set(
@@ -207,6 +226,9 @@ export const config = {
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,
+  nip86RelayUrls: parseHttpUrlList(process.env.NIP86_RELAY_URLS),
+  nip86Method: (process.env.NIP86_METHOD || 'allowpubkey').trim() || 'allowpubkey',
+  nip86TimeoutMs: Math.max(500, parseInt(process.env.NIP86_TIMEOUT_MS || '5000', 10) || 5000),
   nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
   nip46Relays: parseRelayList(process.env.NIP46_RELAYS) || [],
 };

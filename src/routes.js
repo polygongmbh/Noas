@@ -49,6 +49,7 @@ import {
 import { sendVerificationEmail } from './email.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
 import { randomUUID, createHash } from 'crypto';
+import { sendAllowPubkeyToRelays } from './nip86.js';
 
 export const router = express.Router();
 
@@ -627,10 +628,40 @@ router.post('/api/v1/auth/verify', async (req, res) => {
 
     await activateNostrUserByUsername(user.username, tenant.nip05RootDomain);
 
+    let relayAllow = {
+      attempted: false,
+      relays_total: config.nip86RelayUrls.length,
+      relays_success: 0,
+      relays_failed: 0,
+    };
+    if (config.nip86RelayUrls.length > 0 && user.public_key) {
+      const relayResults = await sendAllowPubkeyToRelays({
+        pubkey: user.public_key,
+        relayUrls: config.nip86RelayUrls,
+        method: config.nip86Method,
+        timeoutMs: config.nip86TimeoutMs,
+      });
+      const relaysSuccess = relayResults.filter((result) => result.success).length;
+      relayAllow = {
+        attempted: true,
+        relays_total: relayResults.length,
+        relays_success: relaysSuccess,
+        relays_failed: relayResults.length - relaysSuccess,
+      };
+      if (relayAllow.relays_failed > 0) {
+        console.warn('NIP-86 allowpubkey failed on one or more relays', {
+          username: user.username,
+          tenant_domain: tenant.nip05RootDomain,
+          relay_results: relayResults,
+        });
+      }
+    }
+
     res.json({
       success: true,
       activated: true,
       nip05: buildNip05Identifier(user.username, tenant.nip05RootDomain),
+      relay_allow: relayAllow,
     });
   } catch (error) {
     console.error('V1 verify error:', error);

@@ -241,7 +241,7 @@
         </div>
         <div class="card">
           <h2>Verify (GET/POST)</h2>
-          <p>Preview token and verify using password hash. Preview response includes <code>registration_email</code> when available.</p>
+          <p>Preview token and verify using password hash. Verify responses include <code>relay_allow</code> summary for NIP-86 allowpubkey relay sync.</p>
           <div class="endpoint-list">
             <code>GET /api/v1/auth/verify</code>
             <code>POST /api/v1/auth/verify</code>
@@ -329,6 +329,7 @@
   "redirect": "https://nodex.example.com"
 }
 </code></pre>
+        <p>NIP-86 note: when <code>NIP86_RELAY_URLS</code> is configured, verification triggers relay JSON-RPC <code>allowpubkey</code> calls for the verified pubkey.</p>
         <p>NIP-46 note: remote signing only works for accounts created through signup with a raw password that Noas stored for later key unlock.</p>
       </section>
 

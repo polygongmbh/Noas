@@ -8,9 +8,9 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "npm run test:unit && npm run test:integration",
-    "test:watch": "NODE_ENV=test node --test --watch src/auth.test.js src/db/users.test.js src/db/nip46.test.js src/nip46.test.js",
-    "test:unit": "NODE_ENV=test node --test src/auth.test.js src/db/users.test.js src/db/nip46.test.js src/nip46.test.js",
-    "test:stable": "NODE_ENV=test node --test src/auth.test.js src/db/nip46.test.js src/nip46-demo.test.js",
+    "test:watch": "NODE_ENV=test node --test --watch src/auth.test.js src/db/users.test.js src/db/nip46.test.js src/nip46.test.js src/nip86.test.js",
+    "test:unit": "NODE_ENV=test node --test src/auth.test.js src/db/users.test.js src/db/nip46.test.js src/nip46.test.js src/nip86.test.js",
+    "test:stable": "NODE_ENV=test node --test src/auth.test.js src/db/nip46.test.js src/nip46-demo.test.js src/nip86.test.js",
     "test:integration": "./test-api.sh",
     "db:migrate": "dbmate --migrations-dir ./db/migrations --no-dump-schema up",
     "db:new": "dbmate --migrations-dir ./db/migrations new"

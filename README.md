@@ -92,6 +92,9 @@ SMTP_REPLY_TO=
 SMTP_REJECT_UNAUTHORIZED=true
 NIP46_SIGNER_PRIVATE_KEY=
 NIP46_RELAYS=
+NIP86_RELAY_URLS=
+NIP86_METHOD=allowpubkey
+NIP86_TIMEOUT_MS=5000
 ```
 
 Primary domain settings:
@@ -102,6 +105,9 @@ Primary domain settings:
 - `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. When set, this always takes precedence over request-derived URLs for `api_base` and verification links.
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
+- `NIP86_RELAY_URLS`: comma-separated HTTP(S) relay admin endpoints that receive JSON-RPC `allowpubkey` after verification
+- `NIP86_METHOD`: JSON-RPC method name for relay allow calls (default: `allowpubkey`)
+- `NIP86_TIMEOUT_MS`: timeout per relay allow request (default: `5000`)
 
 Most other domain-related behavior derives from these values.
 Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.
@@ -229,6 +235,23 @@ Activate account by confirming token + password hash.
 }
 ```
 
+**Response:**
+```json
+{
+  "success": true,
+  "activated": true,
+  "nip05": "alice@example.com",
+  "relay_allow": {
+    "attempted": true,
+    "relays_total": 2,
+    "relays_success": 2,
+    "relays_failed": 0
+  }
+}
+```
+
+`relay_allow.attempted` is `false` when `NIP86_RELAY_URLS` is not configured.
+
 ### POST /api/v1/auth/resend
 
 Resend verification email for a pending account. UI clients should respect the advertised resend cooldown locally.
@@ -343,21 +366,24 @@ When called without `name`, returns Noas instance metadata (version, public URL,
 - When email verification is enabled, NIP-05 lookups only expose verified users
 - SMTP delivery is configurable via `SMTP_URL` or `SMTP_HOST`/`SMTP_PORT` + credentials
 
-## Relay Access Model (Domain Whitelist)
+## Relay Access Model (NIP-86 Allowpubkey)
 
-For relays such as `nostr-rs-relay`, prefer domain-based access control:
+Noas can push relay allowlist updates through NIP-86 JSON-RPC after account verification:
 
-- Relay config enforces publishing from `nip05` identities at approved domains
-- Noas is the identity authority (accounts + email verification + NIP-05 mapping)
-- Noas does not need direct relay allowlist API integration for per-user writes
-- Use `DOMAIN_RELAY_MAP` to attach company-specific relays by email domain
+- On successful `POST /api/v1/auth/verify`, Noas activates the account first.
+- If `NIP86_RELAY_URLS` is configured, Noas sends one JSON-RPC request per configured relay URL.
+- Default request method is `allowpubkey`, with params `[<hex_pubkey>]`.
+- Verification still succeeds even if one or more relay calls fail; Noas logs failures and returns `relay_allow` summary in the verify response.
 
-Example relay config:
+Example request body sent by Noas:
 
-```toml
-[verified_users]
-mode = "enabled"
-domain_whitelist = ["example.com"]
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "uuid",
+  "method": "allowpubkey",
+  "params": ["hex_pubkey"]
+}
 ```
 
 ## Development

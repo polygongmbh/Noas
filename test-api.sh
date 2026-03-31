@@ -273,6 +273,18 @@ assert_registration_and_activate() {
   verify_response=$(post_json "/auth/verify" "$verify_payload")
   print_response "$verify_response"
   if echo "$verify_response" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    local relay_allow_attempted
+    relay_allow_attempted=$(jq -r '.relay_allow.attempted // empty' <<<"$verify_response")
+    local relay_allow_total
+    relay_allow_total=$(jq -r '.relay_allow.relays_total // empty' <<<"$verify_response")
+    local relay_allow_success
+    relay_allow_success=$(jq -r '.relay_allow.relays_success // empty' <<<"$verify_response")
+    local relay_allow_failed
+    relay_allow_failed=$(jq -r '.relay_allow.relays_failed // empty' <<<"$verify_response")
+    if [ -z "$relay_allow_attempted" ] || [ -z "$relay_allow_total" ] || [ -z "$relay_allow_success" ] || [ -z "$relay_allow_failed" ]; then
+      fail_step "$label" "Verification response missing relay_allow summary: $verify_response"
+    fi
+
     local verify_again_response
     verify_again_response=$(post_json "/auth/verify" "$verify_payload")
     print_response "$verify_again_response"
