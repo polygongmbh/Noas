@@ -256,6 +256,13 @@ assert_registration_and_activate() {
       fail_step "$label" "Verification preview public key mismatch: $preview_public_key"
     fi
   fi
+  local preview_registration_email
+  preview_registration_email=$(jq -r '.registration_email // empty' <<<"$preview_response")
+  if [ -n "$preview_registration_email" ]; then
+    if ! echo "$preview_registration_email" | grep -q '@'; then
+      fail_step "$label" "Verification preview registration_email looks invalid: $preview_registration_email"
+    fi
+  fi
 
   local verify_response
   local verify_payload

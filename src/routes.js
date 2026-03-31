@@ -575,6 +575,7 @@ router.get('/api/v1/auth/verify', async (req, res) => {
       success: true,
       username: user.username,
       nip05: buildNip05Identifier(user.username, tenant.nip05RootDomain),
+      registration_email: user.registration_email || null,
       public_key: user.public_key || null,
       expires_at: new Date(
         new Date(user.created_at).getTime() +

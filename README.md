@@ -199,6 +199,20 @@ Primary auth endpoints (v1.4):
 - `POST /api/v1/auth/verify` -> verifies token + password hash and activates account.
 - `POST /api/v1/auth/resend` -> resends verification email; clients should apply cooldown locally.
 
+`GET /api/v1/auth/verify?token=...` response includes the resolved email used for verification when available:
+```json
+{
+  "success": true,
+  "username": "alice",
+  "nip05": "alice@example.com",
+  "registration_email": "alice@work.example",
+  "public_key": "hex_public_key",
+  "expires_at": "2024-01-01T00:00:00.000Z"
+}
+```
+
+`registration_email` is null when the account was created without an email or before the migration.
+
 Verification UI behavior:
 - `GET /verify?token=...` shows password confirmation for pending accounts.
 - If a verification link was already used, the page shows `Back to app` (when `redirect` is present) and `Back to Noas` (tenant landing page).
