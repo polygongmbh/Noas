@@ -274,7 +274,7 @@ assert_registration_and_activate() {
   print_response "$verify_response"
   if echo "$verify_response" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
     local relay_allow_attempted
-    relay_allow_attempted=$(jq -r '.relay_allow.attempted // empty' <<<"$verify_response")
+    relay_allow_attempted=$(jq -r 'if .relay_allow | has("attempted") then .relay_allow.attempted else empty end' <<<"$verify_response")
     local relay_allow_total
     relay_allow_total=$(jq -r '.relay_allow.relays_total // empty' <<<"$verify_response")
     local relay_allow_success
@@ -495,10 +495,16 @@ fi
 
 TEST_PASS_HASH=$(sha256_hex "$TEST_PASS")
 WRONG_PASS_HASH=$(sha256_hex "wrongpass")
+TEST_RELAYS_JSON='["wss://relay.example.com","wss://relay2.example.com"]'
+REGISTER_RELAYS_ALLOWED=true
 printf "   %s↳ API URL:%s %s\n\n" "$COLOR_DIM" "$COLOR_RESET" "$API_URL"
 
 start_test "Register User Without Key"
-REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\",\"profile_picture_data\":\"$TEST_PICTURE_BASE64\",\"profile_picture_content_type\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
+REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\",\"profile_picture_data\":\"$TEST_PICTURE_BASE64\",\"profile_picture_content_type\":\"$TEST_PICTURE_CONTENT_TYPE\",\"relays\":$TEST_RELAYS_JSON}")
+if echo "$REGISTER_RESPONSE" | jq -e '.error == "Relay list is managed by domain policy for this account"' >/dev/null 2>&1; then
+  REGISTER_RELAYS_ALLOWED=false
+  REGISTER_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\",\"profile_picture_data\":\"$TEST_PICTURE_BASE64\",\"profile_picture_content_type\":\"$TEST_PICTURE_CONTENT_TYPE\"}")
+fi
 assert_registration_and_activate "$REGISTER_RESPONSE" "User registered" "$TEST_PASS_HASH" "$TEST_USER"
 echo ""
 
@@ -511,6 +517,24 @@ if [ -n "$RETURNED_PUBLIC_KEY" ] && [ -n "$RETURNED_PRIVATE_KEY_ENCRYPTED" ]; th
   pass_step "Sign in returned key material"
 else
   fail_step "Sign in failed" "$SIGNIN_RESPONSE"
+fi
+
+start_test "Sign In Returns Registered Relays"
+if [ "$REGISTER_RELAYS_ALLOWED" = true ]; then
+  SIGNIN_RELAYS=$(jq -c '.relays // empty' <<<"$SIGNIN_RESPONSE")
+  if [ -n "$SIGNIN_RELAYS" ] && [ "$SIGNIN_RELAYS" != "null" ]; then
+    EXPECTED_RELAYS_SORTED=$(jq -c 'sort' <<<"$TEST_RELAYS_JSON")
+    SIGNIN_RELAYS_SORTED=$(jq -c 'sort' <<<"$SIGNIN_RELAYS")
+    if [ "$SIGNIN_RELAYS_SORTED" = "$EXPECTED_RELAYS_SORTED" ]; then
+      pass_step "Sign in returned relays provided at registration"
+    else
+      fail_step "Sign in did not return expected relays" "$SIGNIN_RESPONSE"
+    fi
+  else
+    fail_step "Sign in did not return relays" "$SIGNIN_RESPONSE"
+  fi
+else
+  pass_step "Relays managed by domain policy; skipping relay assertion"
 fi
 
 start_test "Validate Returned Key"
