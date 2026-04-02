@@ -25,36 +25,8 @@ services:
     command: ["sh", "-lc", "npm run db:migrate && npm start"]
     # ports:
     #   - 3000:3000
-    environment:
-      PORT: 3000
-      # Keep container runtime env owned by docker-compose.
-      NOAS_LOAD_DOTENV: "false"
-      DATABASE_URL: postgresql://noas:noas@noas-db:5432/noas?sslmode=disable
-      DOMAIN: ${DOMAIN:-}
-      EMAIL_VERIFICATION_MODE: ${EMAIL_VERIFICATION_MODE:-required_nip05_domains}
-      VERIFICATION_EXPIRY_MINUTES: ${VERIFICATION_EXPIRY_MINUTES:-15}
-      RESEND_COOLDOWN_MINUTES: ${RESEND_COOLDOWN_MINUTES:-1}
-      NIP05_DOMAIN: ${NIP05_DOMAIN:-}
-      NOAS_PUBLIC_URL: ${NOAS_PUBLIC_URL:-}
-      NOAS_BASE_PATH: ${NOAS_BASE_PATH:-}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      TENANT_DEFAULT_RELAYS: ${TENANT_DEFAULT_RELAYS:-}
-      DOMAIN_RELAY_MAP: ${DOMAIN_RELAY_MAP:-}
-      NIP86_RELAY_URLS: ${NIP86_RELAY_URLS:-}
-      NIP86_METHOD: ${NIP86_METHOD:-allowpubkey}
-      NIP86_TIMEOUT_MS: ${NIP86_TIMEOUT_MS:-5000}
-      EMAIL_VERIFICATION_TOKEN_TTL_MINUTES: ${EMAIL_VERIFICATION_TOKEN_TTL_MINUTES:-30}
-      EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE: ${EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE:-false}
-      REQUIRE_EMAIL_DELIVERY: ${REQUIRE_EMAIL_DELIVERY:-false}
-      SMTP_URL: ${SMTP_URL:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
-      SMTP_REJECT_UNAUTHORIZED: ${SMTP_REJECT_UNAUTHORIZED:-true}
+    env_file:
+      - .env
     networks:
       - noas
       - default

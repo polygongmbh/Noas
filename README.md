@@ -15,9 +15,9 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 ## Setup
 
 Runtime config model:
-- Docker: `docker-compose.yml` is the runtime source of truth (`NOAS_LOAD_DOTENV=false`).
+- Docker: `.env` is the runtime source of truth (loaded via `env_file` in `docker-compose.yml`).
 - Database migrations are managed with `dbmate` from `db/migrations/`.
-- Local `npm run dev`: `.env` is used (`NOAS_LOAD_DOTENV=true`).
+- Local `npm run dev`: `.env` is loaded by the app.
 
 For local Postgres, include `?sslmode=disable` in `DATABASE_URL`. Managed Postgres providers may require `sslmode=require` instead.
 
