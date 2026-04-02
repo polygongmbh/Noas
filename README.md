@@ -159,6 +159,7 @@ Create account and send verification email.
   "username": "alice",
   "email": "alice@example.com",
   "password": "securepassword123",
+  "relays": ["wss://relay.example.com"],
   "profile_picture_data": "<base64_image>",
   "profile_picture_content_type": "image/png",
   "redirect": "https://example.com"
@@ -173,6 +174,7 @@ Create account and send verification email.
   "password_hash": "sha256_hex_of_password",
   "public_key": "64-char hex pubkey",
   "private_key_encrypted": "ncryptsec1...",
+  "relays": ["wss://relay.example.com"],
   "profile_picture_data": "<base64_image>",
   "profile_picture_content_type": "image/png",
   "redirect": "https://example.com"

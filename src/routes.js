@@ -381,11 +381,13 @@ router.post('/api/v1/auth/register', async (req, res) => {
       profile_picture_data: profilePictureData,
       profile_picture_content_type: profilePictureContentType,
       redirect,
+      relays,
     } = req.body || {};
     const normalizedUsername = String(username || '').trim().toLowerCase();
     const normalizedEmail = normalizeEmail(email);
     const normalizedPassword = String(password || '');
     const normalizedRedirect = String(redirect || '').trim() || null;
+    const requestedRelays = relays === undefined ? undefined : relays;
     const hasKeyMaterial = Boolean(String(publicKeyRaw || '').trim()) || Boolean(String(privateKeyEncrypted || '').trim());
 
     const usernameCheck = validateUsername(normalizedUsername);
@@ -415,6 +417,17 @@ router.post('/api/v1/auth/register', async (req, res) => {
     });
     if (profilePicture.error) {
       return res.status(400).json({ error: profilePicture.error });
+    }
+    if (requestedRelays !== undefined) {
+      if (!Array.isArray(requestedRelays)) {
+        return res.status(400).json({ error: 'relays must be an array of relay URLs' });
+      }
+      const mappedRelays = config.domainRelayMap[tenant.nip05RootDomain];
+      if (Array.isArray(mappedRelays) && mappedRelays.length > 0) {
+        return res.status(403).json({
+          error: 'Relay list is managed by domain policy for this account',
+        });
+      }
     }
 
     const nip05 = buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain);
@@ -450,6 +463,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
         registrationEmail,
         rawPassword: normalizedPassword || null,
+        relays: requestedRelays || [],
         status: 'active',
         verificationToken: null,
       });
@@ -484,6 +498,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       privateKeyEncrypted: keyMaterial.privateKeyEncrypted,
       registrationEmail,
       rawPassword: normalizedPassword || null,
+      relays: requestedRelays || [],
       status: 'unverified_email',
       verificationToken,
     });
