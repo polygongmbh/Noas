@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install build tools for bcrypt native module fallback
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
+  && apt-get install -y --no-install-recommends python3 make g++ curl jq \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
