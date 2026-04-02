@@ -77,7 +77,7 @@
 
           <label>
             Public Key (optional)
-            <input type="text" id="signupPublicKey" placeholder="64-char hex pubkey or npub1..." />
+            <input type="text" id="signupPublicKey" placeholder="npub1... (or 64-char hex)" />
             <small>Leave blank to auto-generate a Nostr keypair.</small>
           </label>
 
@@ -325,7 +325,7 @@
         <pre><code>{
   "username": "alice",
   "password_hash": "sha256_hex_of_password",
-  "public_key": "64-char hex pubkey",
+  "public_key": "npub1...",
   "private_key_encrypted": "ncryptsec1...",
   "relays": ["wss://relay.example.com"],
   "redirect": "https://nodex.example.com"

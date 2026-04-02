@@ -56,6 +56,33 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+async function resolvePublicKeyFormats(publicKey) {
+  const raw = String(publicKey || '').trim();
+  if (!raw) {
+    return { npub: null, hex: null };
+  }
+
+  try {
+    const { nip19 } = await import('nostr-tools');
+    if (raw.startsWith('npub1')) {
+      const decoded = nip19.decode(raw);
+      if (decoded.type === 'npub' && typeof decoded.data === 'string') {
+        return { npub: raw, hex: decoded.data.toLowerCase() };
+      }
+      return { npub: raw, hex: null };
+    }
+
+    if (/^[a-f0-9]{64}$/i.test(raw)) {
+      const hex = raw.toLowerCase();
+      return { npub: nip19.npubEncode(hex), hex };
+    }
+  } catch {
+    return { npub: raw.startsWith('npub1') ? raw : null, hex: null };
+  }
+
+  return { npub: null, hex: null };
+}
+
 export async function sendVerificationEmail({
   to,
   username,
@@ -72,6 +99,27 @@ export async function sendVerificationEmail({
       reason: 'smtp_not_configured',
     };
   }
+
+  const publicKeyFormats = await resolvePublicKeyFormats(publicKey);
+  const publicKeyText = publicKeyFormats.npub
+    ? [
+        'Your public key (npub):',
+        publicKeyFormats.npub,
+        publicKeyFormats.hex ? `Hex: ${publicKeyFormats.hex}` : null,
+      ].filter(Boolean).join('\n')
+    : (publicKeyFormats.hex ? `Your public key (hex):\n${publicKeyFormats.hex}` : null);
+  const publicKeyHtml = publicKeyFormats.npub
+    ? [
+        '<p>Your public key (npub):<br /><code>',
+        escapeHtml(publicKeyFormats.npub),
+        '</code></p>',
+        publicKeyFormats.hex
+          ? `<p>Hex:<br /><code>${escapeHtml(publicKeyFormats.hex)}</code></p>`
+          : '',
+      ].join('')
+    : (publicKeyFormats.hex
+      ? `<p>Your public key (hex):<br /><code>${escapeHtml(publicKeyFormats.hex)}</code></p>`
+      : '');
 
   const expiresInMinutes = (() => {
     if (!expiresAt) return null;
@@ -90,7 +138,7 @@ export async function sendVerificationEmail({
       ? `The Nostr identity ${identifier} was registered for use on ${redirectLabel}.`
       : `Someone registered the Nostr identity ${identifier}.`,
     '',
-    publicKey ? `Your public key:\n${publicKey}` : null,
+    publicKeyText,
     '',
     'If this was you, verify your account:',
     verificationLink,
@@ -110,9 +158,7 @@ export async function sendVerificationEmail({
     redirectLabel
       ? `<p>The Nostr identity <strong>${escapeHtml(identifier)}</strong> was registered for use on <strong>${escapeHtml(redirectLabel)}</strong>.</p>`
       : `<p>Someone registered the Nostr identity <strong>${escapeHtml(identifier)}</strong>.</p>`,
-    publicKey
-      ? `<p>Your public key:<br /><code>${escapeHtml(publicKey)}</code></p>`
-      : '',
+    publicKeyHtml,
     '<p>If this was you, verify your account:</p>',
     `<p><a href="${escapeHtml(verificationLink)}">${escapeHtml(verificationLink)}</a></p>`,
     '<p>You will be asked to enter your password to confirm ownership.</p>',
