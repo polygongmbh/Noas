@@ -43,7 +43,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const signupEmailHint = document.getElementById('signupEmailHint');
   const signupPassword = document.getElementById('signupPassword');
   const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
-  const signupRedirect = document.getElementById('signupRedirect');
   const signupPublicKey = document.getElementById('signupPublicKey');
   const signupPrivateKeyEncrypted = document.getElementById('signupPrivateKeyEncrypted');
   const signupProfilePictureInput = document.getElementById('signupProfilePictureInput');
@@ -225,8 +224,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const passwordConfirm = signupPasswordConfirm?.value || '';
     const publicKey = signupPublicKey?.value.trim() || '';
     const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
-    const redirect = signupRedirect?.value.trim() || '';
-
     if (!username) {
       setStatus(signupStatus, 'Username is required', 'error');
       signupUsername?.focus();
@@ -284,15 +281,6 @@ document.addEventListener('DOMContentLoaded', function () {
       signupPrivateKeyEncrypted?.focus();
       return false;
     }
-    if (redirect) {
-      try {
-        new URL(redirect);
-      } catch {
-        setStatus(signupStatus, 'Redirect must be a valid URL', 'error');
-        signupRedirect?.focus();
-        return false;
-      }
-    }
     if (password !== passwordConfirm) {
       setStatus(signupStatus, 'Passwords do not match', 'error');
       signupPasswordConfirm?.focus();
@@ -312,8 +300,6 @@ document.addEventListener('DOMContentLoaded', function () {
       const publicKey = signupPublicKey?.value.trim() || '';
       const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
       const signupProfilePicture = signupProfilePictureInput?.files?.[0] || null;
-      const redirect = signupRedirect?.value.trim() || '';
-
       setStatus(signupStatus, 'Sending verification email...', 'info');
 
       try {
@@ -322,7 +308,6 @@ document.addEventListener('DOMContentLoaded', function () {
           email: email || undefined,
           public_key: publicKey || undefined,
           private_key_encrypted: privateKeyEncrypted || undefined,
-          redirect: redirect || undefined,
         };
         if (signupProfilePicture) {
           requestBody.profile_picture_data = await fileToBase64(signupProfilePicture);
