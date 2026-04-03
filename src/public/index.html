@@ -43,7 +43,7 @@
 
       <section class="panel">
         <h2>Create New Account</h2>
-        <p>Register with username + email + password. Verification is sent to your account email.</p>
+        <p id="signupDescription">Register with username + email + password. Verification is sent to your account email.</p>
         <div id="verificationFlash" class="status" role="status"></div>
 
         <form id="signupStartForm" class="form">
@@ -87,7 +87,7 @@
             <small>Attach an image (JPG, PNG, GIF, or WebP) up to 2MB during registration.</small>
           </label>
 
-          <button type="submit" class="btn">Register & Send Verification</button>
+          <button type="submit" class="btn" id="signupSubmit">Register & Send Verification</button>
           <div id="signupStatus" class="status"></div>
         </form>
 
@@ -100,7 +100,7 @@
           <div id="resendStatus" class="status"></div>
         </form>
 
-        <div class="result">
+        <div class="result" id="verificationNextStep">
           <h3>Next Step</h3>
           <p>Open your verification email and continue at <code>/verify?token=...</code>.</p>
         </div>

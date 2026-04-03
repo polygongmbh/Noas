@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const signupStartForm = document.getElementById('signupStartForm');
   const signupUsername = document.getElementById('signupUsername');
+  const signupDescription = document.getElementById('signupDescription');
   const signupEmailLabel = document.getElementById('signupEmailLabel');
   const signupEmail = document.getElementById('signupEmail');
   const signupEmailHint = document.getElementById('signupEmailHint');
@@ -46,8 +47,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const signupPublicKey = document.getElementById('signupPublicKey');
   const signupPrivateKeyEncrypted = document.getElementById('signupPrivateKeyEncrypted');
   const signupProfilePictureInput = document.getElementById('signupProfilePictureInput');
+  const signupSubmit = document.getElementById('signupSubmit');
   const signupStatus = document.getElementById('signupStatus');
   const verificationFlash = document.getElementById('verificationFlash');
+  const verificationNextStep = document.getElementById('verificationNextStep');
   const resendForm = document.getElementById('resendForm');
   const resendUsername = document.getElementById('resendUsername');
   const resendStatus = document.getElementById('resendStatus');
@@ -85,6 +88,29 @@ document.addEventListener('DOMContentLoaded', function () {
       ? requiredHint
       : 'Optional when EMAIL_VERIFICATION_MODE=off. Used for account and verification emails.';
     signupEmailLabel.classList.remove('email-lock-hint');
+  }
+
+  function syncVerificationVisibility() {
+    if (resendForm) {
+      resendForm.hidden = !state.emailVerificationEnabled;
+    }
+    if (verificationNextStep) {
+      verificationNextStep.hidden = !state.emailVerificationEnabled;
+    }
+    if (!state.emailVerificationEnabled && resendStatus) {
+      resendStatus.textContent = '';
+      resendStatus.dataset.type = 'info';
+    }
+    if (signupDescription) {
+      signupDescription.textContent = state.emailVerificationEnabled
+        ? 'Register with username + email + password. Verification is sent to your account email.'
+        : 'Register with username + password. Email verification is disabled on this server.';
+    }
+    if (signupSubmit) {
+      signupSubmit.textContent = state.emailVerificationEnabled
+        ? 'Register & Send Verification'
+        : 'Register';
+    }
   }
 
   function normalizeVersionLabel(version) {
@@ -125,9 +151,11 @@ document.addEventListener('DOMContentLoaded', function () {
         state.nip05Domain = metadata.nip05_domain.trim().toLowerCase();
       }
       syncSignupEmailLockState();
+      syncVerificationVisibility();
     } catch {
       // Non-blocking: keep placeholder when metadata is unavailable.
       syncSignupEmailLockState();
+      syncVerificationVisibility();
     }
   }
 
@@ -140,6 +168,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   syncSignupEmailLockState();
+  syncVerificationVisibility();
   loadNoasVersion();
 
   function setStatus(el, message, type = 'info') {
