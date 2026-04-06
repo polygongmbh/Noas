@@ -140,13 +140,8 @@ document.addEventListener('DOMContentLoaded', function () {
       const modeFromMetadata = String(metadata.email_verification_mode || '').trim().toLowerCase();
       if (modeFromMetadata === 'off' || modeFromMetadata === 'required' || modeFromMetadata === 'required_nip05_domains') {
         state.emailVerificationMode = modeFromMetadata;
-      } else if (typeof metadata.email_verification_enabled === 'boolean') {
-        state.emailVerificationMode = metadata.email_verification_enabled ? 'required_nip05_domains' : 'off';
       }
       state.emailVerificationEnabled = state.emailVerificationMode !== 'off';
-      if (Number.isFinite(Number(metadata.resend_cooldown_minutes))) {
-        state.resendCooldownMinutes = Math.max(1, Number(metadata.resend_cooldown_minutes) || 1);
-      }
       if (typeof metadata.nip05_domain === 'string' && metadata.nip05_domain.trim()) {
         state.nip05Domain = metadata.nip05_domain.trim().toLowerCase();
       }

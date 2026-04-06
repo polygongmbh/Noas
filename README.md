@@ -353,7 +353,7 @@ NIP-05 verification endpoint.
 }
 ```
 
-When called without `name`, returns Noas instance metadata (version, public URL, API base, and NIP-05 domain) for client discovery. If `NOAS_PUBLIC_URL` is configured, it takes precedence for `api_base`; otherwise the URL is derived from request headers.
+When called without `name`, returns Noas instance metadata (version, public URL, API base, NIP-05 domain, and `email_verification_mode`) for client discovery. If `NOAS_PUBLIC_URL` is configured, it takes precedence for `api_base`; otherwise the URL is derived from request headers.
 
 ## Security Notes
 

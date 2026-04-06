@@ -1089,10 +1089,6 @@ router.get('/.well-known/nostr.json', async (req, res) => {
           base_path: config.noasBasePath || '/',
           api_base: tenant.apiBase,
           email_verification_mode: config.emailVerificationMode,
-          email_verification_enabled: config.emailVerificationEnabled,
-          email_verification_locks_to_nip05_domain: config.emailVerificationLocksToNip05Domain,
-          resend_cooldown_minutes: config.resendCooldownMinutes,
-          trusted_redirect_origins: config.allowedOrigins,
         },
       });
     }

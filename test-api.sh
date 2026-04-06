@@ -479,8 +479,39 @@ else
   fail_step "Health check failed" "$HEALTH_RESPONSE"
 fi
 
+start_test "NIP-05 Metadata"
+NOSTR_METADATA_RESPONSE=$(curl -s "$BASE_URL/.well-known/nostr.json")
+print_response "$NOSTR_METADATA_RESPONSE"
+if echo "$NOSTR_METADATA_RESPONSE" | jq -e '
+  if (.noas | type) == "object" then
+    (.noas
+      | has("version")
+      and (.version | type == "string")
+      and has("nip05_domain")
+      and (.nip05_domain | type == "string")
+      and has("public_url")
+      and (.public_url | type == "string")
+      and has("base_path")
+      and (.base_path | type == "string")
+      and has("api_base")
+      and (.api_base | type == "string")
+      and has("email_verification_mode")
+      and (.email_verification_mode | type == "string")
+      and (has("email_verification_enabled") | not)
+      and (has("email_verification_locks_to_nip05_domain") | not)
+      and (has("resend_cooldown_minutes") | not)
+      and (has("trusted_redirect_origins") | not))
+  else
+    false
+  end
+' >/dev/null 2>&1; then
+  pass_step "NIP-05 metadata returns only email verification mode"
+else
+  fail_step "NIP-05 metadata fields unexpected" "$NOSTR_METADATA_RESPONSE"
+fi
+
 printf "%s🌐 Resolving API base%s\n" "$COLOR_BOLD$COLOR_CYAN" "$COLOR_RESET"
-DISCOVERED_API_URL=$(curl -s "$BASE_URL/.well-known/nostr.json" | jq -r '.noas.api_base // empty' || true)
+DISCOVERED_API_URL=$(jq -r '.noas.api_base // empty' <<<"$NOSTR_METADATA_RESPONSE" || true)
 API_URL=${NOAS_TEST_API_URL:-$DISCOVERED_API_URL}
 if [ -z "$API_URL" ]; then
   API_URL="$BASE_URL/api/v1"
