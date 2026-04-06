@@ -184,6 +184,7 @@ function resolveDomain({ domainEnv, noasPublicUrl, nip05Domain, port }) {
 
 const configuredPort = parseInt(process.env.PORT || '3000', 10);
 const configuredNip05Domain = process.env.NIP05_DOMAIN || process.env.NOAS_DOMAIN || '';
+const configuredNoasPublicUrl = (process.env.NOAS_PUBLIC_URL || '').trim();
 const configuredNip05Domains = parseDomainList(configuredNip05Domain);
 const emailVerificationMode = parseEmailVerificationMode();
 
@@ -216,7 +217,8 @@ export const config = {
   nip05DomainsConfigured: configuredNip05Domains.length > 0,
   nip05Domains: configuredNip05Domains,
   nip05Domain: (configuredNip05Domains[0] || process.env.DOMAIN || '').trim(),
-  noasPublicUrl: (process.env.NOAS_PUBLIC_URL || '').trim(),
+  noasPublicUrl: configuredNoasPublicUrl,
+  noasPublicUrlConfigured: Boolean(configuredNoasPublicUrl),
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,

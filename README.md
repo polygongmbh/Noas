@@ -78,9 +78,6 @@ NOAS_BASE_PATH=/noas
 ALLOWED_ORIGINS=https://nodex.example.com,https://example.com
 TENANT_DEFAULT_RELAYS=
 DOMAIN_RELAY_MAP=example.com=wss://tasks.example.com
-EMAIL_VERIFICATION_TOKEN_TTL_MINUTES=30
-EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=false
-REQUIRE_EMAIL_DELIVERY=false
 SMTP_URL=
 SMTP_HOST=
 SMTP_PORT=587
@@ -100,9 +97,9 @@ NIP86_TIMEOUT_MS=5000
 Primary domain settings:
 - `NIP05_DOMAIN`: optional NIP-05 domain override.
   - Single domain: `example.com`
-  - Multi-tenant list: `noas.example.org,noas.example.gmbh`
+  - Multi-tenant list: `example.org,example.gmbh` (subdomains like `noas.example.gmbh` map to `example.gmbh`)
   - Empty value: derive tenant domain from request host
-- `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. When set, this always takes precedence over request-derived URLs for `api_base` and verification links.
+- `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. When set, this always takes precedence over request-derived URLs for `api_base` and verification links. Leave empty to derive per request host for multi-tenant setups.
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
 - `NIP86_RELAY_URLS`: comma-separated HTTP(S) relay admin endpoints that receive JSON-RPC `allowpubkey` after verification
@@ -196,7 +193,7 @@ Create account and send verification email.
 - `required` / `required_nip05_domains` -> `unverified_email`
 
 If SMTP is configured, Noas sends a verification link to the resolved registration email.  
-With `EMAIL_VERIFICATION_MODE=required_nip05_domains`, this is always `username@<tenant-domain>` (tenant domain resolved from `NIP05_DOMAIN` or request host when `NIP05_DOMAIN` is empty).  
+With `EMAIL_VERIFICATION_MODE=required_nip05_domains`, this is always `username@<tenant-domain>` (tenant domain resolved from `NIP05_DOMAIN` or the request host when `NIP05_DOMAIN` is empty).  
 In test mode (`NODE_ENV=test`), responses include verification tokens for automated test flows.
 
 Primary auth endpoints (v1.4):

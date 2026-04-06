@@ -122,8 +122,13 @@ function resolveRequestHostLike(req) {
 function resolveRequestNip05RootDomain(req) {
   const requestDomain = rootDomainFromHostLike(resolveRequestHostLike(req));
   if (config.nip05DomainsConfigured) {
-    if (requestDomain && config.nip05Domains.includes(requestDomain)) {
-      return requestDomain;
+    if (requestDomain) {
+      const matchedDomain = config.nip05Domains.find(
+        (domain) => requestDomain === domain || requestDomain.endsWith(`.${domain}`)
+      );
+      if (matchedDomain) {
+        return matchedDomain;
+      }
     }
     return config.nip05Domains[0] || config.nip05RootDomain;
   }
@@ -132,7 +137,7 @@ function resolveRequestNip05RootDomain(req) {
 
 function resolveRequestPublicUrl(req) {
   // If NOAS_PUBLIC_URL is explicitly configured, always use it
-  if (config.noasPublicUrl) {
+  if (config.noasPublicUrlConfigured) {
     return config.noasPublicUrl;
   }
 
