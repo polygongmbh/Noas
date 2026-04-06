@@ -1,0 +1,37 @@
+services:
+  noas-linkenfels-db:
+    image: postgres:16-alpine
+    container_name: noas-linkenfels-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: noas
+      POSTGRES_PASSWORD: noas
+      POSTGRES_DB: noas
+    volumes:
+      - postgres_data_linkenfels:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  noas-linkenfels:
+    build: .
+    container_name: noas-linkenfels
+    restart: unless-stopped
+    depends_on:
+      noas-linkenfels-db:
+        condition: service_healthy
+    command: ["sh", "-lc", "npm run db:migrate && npm start"]
+    env_file:
+      - .env.linkenfels
+    networks:
+      - noas
+      - default
+
+volumes:
+  postgres_data_linkenfels:
+
+networks:
+  noas:
+    external: true

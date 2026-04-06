@@ -17,6 +17,10 @@ up:
 restart:
     docker compose up -d --build noas
 
+# Rebuild and restart Linkenfels stack
+restart-linkenfels:
+    docker compose -f docker-compose.linkenfels.yml up -d --build --force-recreate
+
 # Start PostgreSQL database
 db-start:
     docker compose up -d postgres
