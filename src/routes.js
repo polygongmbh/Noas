@@ -536,12 +536,6 @@ router.post('/api/v1/auth/register', async (req, res) => {
       console.error('Verification email delivery error:', error);
     }
 
-    if (!emailDelivery.sent && config.requireEmailDelivery) {
-      return res.status(502).json({
-        error: 'Failed to send verification email. Check SMTP configuration.',
-      });
-    }
-
     const responseBody = {
       success: true,
       status: 'unverified_email',
@@ -551,7 +545,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       key_source: keyMaterial.keySource,
       message: `Check ${registrationEmail} to verify your account.`,
     };
-    if (config.exposeVerificationTokenInResponse || config.isTest) {
+    if (config.isTest) {
       responseBody.verification_token = verificationToken;
       responseBody.verify_url = verificationLink;
     }
@@ -746,7 +740,7 @@ router.post('/api/v1/auth/resend', async (req, res) => {
       success: true,
       message: 'Verification email resent.',
     };
-    if (config.exposeVerificationTokenInResponse || config.isTest) {
+    if (config.isTest) {
       responseBody.verification_token = verificationToken;
       responseBody.verify_url = verificationLink;
     }

@@ -203,14 +203,8 @@ export const config = {
   emailVerificationLocksToNip05Domain: emailVerificationMode === 'required_nip05_domains',
   tenantDefaultRelays: parseRelayList(process.env.TENANT_DEFAULT_RELAYS),
   domainRelayMap: parseDomainRelayMap(process.env.DOMAIN_RELAY_MAP),
-  exposeVerificationTokenInResponse: process.env.EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE === 'true',
-  emailVerificationTokenTtlMinutes: parseInt(process.env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES || '30', 10),
-  verificationExpiryMinutes: parseInt(
-    process.env.VERIFICATION_EXPIRY_MINUTES || process.env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES || '15',
-    10
-  ),
+  verificationExpiryMinutes: parseInt(process.env.VERIFICATION_EXPIRY_MINUTES || '15', 10),
   resendCooldownMinutes: parseInt(process.env.RESEND_COOLDOWN_MINUTES || '1', 10),
-  requireEmailDelivery: process.env.REQUIRE_EMAIL_DELIVERY === 'true',
   smtpUrl: (process.env.SMTP_URL || '').trim(),
   smtpHost: (process.env.SMTP_HOST || '').trim(),
   smtpPort: parseInt(process.env.SMTP_PORT || '0', 10) || null,

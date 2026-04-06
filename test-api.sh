@@ -447,8 +447,7 @@ start_local_server_if_needed() {
 
   printf "   %s↳ starting isolated local Noas test server on port %s%s\n" "$COLOR_DIM" "$TEST_PORT" "$COLOR_RESET"
   PORT="$TEST_PORT" \
-  REQUIRE_EMAIL_DELIVERY=false \
-  EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true \
+  NODE_ENV=test \
   EMAIL_VERIFICATION_MODE=required_nip05_domains \
   NOAS_LOAD_DOTENV=true \
   node src/index.js >"$startup_log_file" 2>&1 &

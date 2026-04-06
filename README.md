@@ -197,8 +197,7 @@ Create account and send verification email.
 
 If SMTP is configured, Noas sends a verification link to the resolved registration email.  
 With `EMAIL_VERIFICATION_MODE=required_nip05_domains`, this is always `username@<tenant-domain>` (tenant domain resolved from `NIP05_DOMAIN` or request host when `NIP05_DOMAIN` is empty).  
-If SMTP is not configured, verification-only dev mode works with `EXPOSE_VERIFICATION_TOKEN_IN_RESPONSE=true`.  
-Set `REQUIRE_EMAIL_DELIVERY=true` to fail onboarding when mail cannot be delivered.
+In test mode (`NODE_ENV=test`), responses include verification tokens for automated test flows.
 
 Primary auth endpoints (v1.4):
 
