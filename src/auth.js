@@ -6,6 +6,7 @@
  */
 
 import bcrypt from 'bcrypt';
+import { config } from './config.js';
 
 // Number of salt rounds for bcrypt hashing
 const SALT_ROUNDS = 10;
@@ -44,6 +45,9 @@ export function validateUsername(username) {
   }
   if (!/^[a-z0-9._-]+$/.test(username)) {
     return { valid: false, error: 'Username must contain only lowercase letters, numbers, dash, underscore, and dot' };
+  }
+  if (Array.isArray(config.disallowedUsernames) && config.disallowedUsernames.includes(username)) {
+    return { valid: false, error: 'Username is reserved' };
   }
   return { valid: true };
 }

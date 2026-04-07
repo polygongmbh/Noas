@@ -121,6 +121,15 @@ function normalizeBasePath(value) {
   return withLeading.endsWith('/') ? withLeading.slice(0, -1) : withLeading;
 }
 
+function parseUsernameList(value, fallback = []) {
+  const parsed = String(value || '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (parsed.length > 0) return Array.from(new Set(parsed));
+  return Array.from(new Set(fallback.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean)));
+}
+
 function parseEmailVerificationMode() {
   const raw = String(process.env.EMAIL_VERIFICATION_MODE || '').trim().toLowerCase();
   if (raw === 'off' || raw === 'required' || raw === 'required_nip05_domains') {
@@ -202,6 +211,7 @@ export const config = {
   emailVerificationMode,
   emailVerificationEnabled: emailVerificationMode !== 'off',
   emailVerificationLocksToNip05Domain: emailVerificationMode === 'required_nip05_domains',
+  disallowedUsernames: parseUsernameList(process.env.DISALLOWED_USERNAMES),
   tenantDefaultRelays: parseRelayList(process.env.TENANT_DEFAULT_RELAYS),
   domainRelayMap: parseDomainRelayMap(process.env.DOMAIN_RELAY_MAP),
   verificationExpiryMinutes: parseInt(process.env.VERIFICATION_EXPIRY_MINUTES || '15', 10),

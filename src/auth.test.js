@@ -7,13 +7,15 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { 
-  hashPassword, 
-  verifyPassword, 
-  validateUsername, 
+process.env.DISALLOWED_USERNAMES = 'feed,nostr,rnostr,base,tasks,relay';
+
+const {
+  hashPassword,
+  verifyPassword,
+  validateUsername,
   validatePublicKey,
-  validateEncryptedPrivateKey 
-} from './auth.js';
+  validateEncryptedPrivateKey,
+} = await import('./auth.js');
 
 // Test: Password hashing creates a valid bcrypt hash
 test('hashPassword creates a hash', async () => {
@@ -52,6 +54,7 @@ test('validateUsername rejects invalid usernames', () => {
   assert.strictEqual(validateUsername('Alice').valid, false); // uppercase
   assert.strictEqual(validateUsername('alice-bob').valid, true); // hyphen is valid
   assert.strictEqual(validateUsername('alice+bob').valid, false); // plus is invalid
+  assert.strictEqual(validateUsername('nostr').valid, false); // reserved
   assert.strictEqual(validateUsername('').valid, false); // empty
 });
 

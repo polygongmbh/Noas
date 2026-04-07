@@ -92,6 +92,7 @@ NIP46_RELAYS=
 NIP86_RELAY_URLS=
 NIP86_METHOD=allowpubkey
 NIP86_TIMEOUT_MS=5000
+DISALLOWED_USERNAMES=feed,nostr,rnostr,base,tasks,relay
 ```
 
 Primary domain settings:
@@ -105,6 +106,7 @@ Primary domain settings:
 - `NIP86_RELAY_URLS`: comma-separated HTTP(S) relay admin endpoints that receive JSON-RPC `allowpubkey` after verification
 - `NIP86_METHOD`: JSON-RPC method name for relay allow calls (default: `allowpubkey`)
 - `NIP86_TIMEOUT_MS`: timeout per relay allow request (default: `5000`)
+- `DISALLOWED_USERNAMES`: comma-separated usernames that cannot be registered.
 
 Most other domain-related behavior derives from these values.
 Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.
