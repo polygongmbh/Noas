@@ -74,6 +74,7 @@ VERIFICATION_EXPIRY_MINUTES=15
 RESEND_COOLDOWN_MINUTES=1
 NIP05_DOMAIN=example.com
 NOAS_PUBLIC_URL=https://noas.example.com
+NOAS_PUBLIC_URL_MAP=example.com=https://noas.example.com;example.org=https://noas.example.org
 NOAS_BASE_PATH=/noas
 ALLOWED_ORIGINS=https://nodex.example.com,https://example.com
 TENANT_DEFAULT_RELAYS=
@@ -100,7 +101,8 @@ Primary domain settings:
   - Single domain: `example.com`
   - Multi-tenant list: `example.org,example.gmbh` (subdomains like `noas.example.gmbh` map to `example.gmbh`)
   - Empty value: derive tenant domain from request host
-- `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. When set, this always takes precedence over request-derived URLs for `api_base` and verification links. Leave empty to derive per request host for multi-tenant setups.
+- `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. Used when a tenant is not matched in `NOAS_PUBLIC_URL_MAP`. Leave empty to derive per request host for multi-tenant setups.
+- `NOAS_PUBLIC_URL_MAP`: per-tenant public URL override mapping (`domain=https://noas.domain`). When a tenant domain matches, it overrides `NOAS_PUBLIC_URL` and request-derived URLs for `api_base` and verification links. Use semicolons to separate entries.
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
 - `NIP86_RELAY_URLS`: comma-separated HTTP(S) relay admin endpoints that receive JSON-RPC `allowpubkey` after verification
@@ -351,7 +353,7 @@ NIP-05 verification endpoint.
 }
 ```
 
-When called without `name`, returns Noas instance metadata (version, public URL, API base, NIP-05 domain, and `email_verification_mode`) for client discovery. If `NOAS_PUBLIC_URL` is configured, it takes precedence for `api_base`; otherwise the URL is derived from request headers.
+When called without `name`, returns Noas instance metadata (version, public URL, API base, NIP-05 domain, and `email_verification_mode`) for client discovery. If `NOAS_PUBLIC_URL_MAP` has a matching tenant entry, it takes precedence for `api_base`; otherwise `NOAS_PUBLIC_URL` is used, and if neither are set the URL is derived from request headers.
 
 ## Security Notes
 

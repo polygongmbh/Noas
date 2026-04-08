@@ -5,6 +5,7 @@
 set -uo pipefail
 
 BASE_URL="${NOAS_TEST_BASE_URL:-http://localhost:3000}"
+NOAS_TEST_PUBLIC_URL_MAP="${NOAS_TEST_PUBLIC_URL_MAP:-}"
 VERBOSE=false
 EXPECTED_TESTS=21
 TOTAL_TESTS=0
@@ -449,6 +450,7 @@ start_local_server_if_needed() {
   PORT="$TEST_PORT" \
   NODE_ENV=test \
   EMAIL_VERIFICATION_MODE=required_nip05_domains \
+  NOAS_PUBLIC_URL_MAP="$NOAS_TEST_PUBLIC_URL_MAP" \
   NOAS_LOAD_DOTENV=true \
   node src/index.js >"$startup_log_file" 2>&1 &
   SERVER_PID=$!

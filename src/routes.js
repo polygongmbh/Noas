@@ -136,6 +136,11 @@ function resolveRequestNip05RootDomain(req) {
 }
 
 function resolveRequestPublicUrl(req) {
+  const tenantDomain = resolveRequestNip05RootDomain(req);
+  if (tenantDomain && config.noasPublicUrlMap?.[tenantDomain]) {
+    return config.noasPublicUrlMap[tenantDomain];
+  }
+
   // If NOAS_PUBLIC_URL is explicitly configured, always use it
   if (config.noasPublicUrlConfigured) {
     return config.noasPublicUrl;

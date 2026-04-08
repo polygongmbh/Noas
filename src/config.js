@@ -113,6 +113,31 @@ function parseAllowedOrigins(value) {
     .filter(Boolean);
 }
 
+function parsePublicUrlMap(value) {
+  const map = {};
+  const entries = String(value || '')
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const entry of entries) {
+    const separatorIndex = entry.indexOf('=');
+    if (separatorIndex <= 0) continue;
+    const domain = rootDomainFromHostLike(entry.slice(0, separatorIndex));
+    const urlRaw = entry.slice(separatorIndex + 1).trim();
+    if (!domain || !urlRaw) continue;
+    try {
+      const parsed = new URL(urlRaw);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') continue;
+      map[domain] = stripTrailingSlash(parsed.toString());
+    } catch {
+      continue;
+    }
+  }
+
+  return map;
+}
+
 function normalizeBasePath(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -229,6 +254,7 @@ export const config = {
   nip05Domain: (configuredNip05Domains[0] || process.env.DOMAIN || '').trim(),
   noasPublicUrl: configuredNoasPublicUrl,
   noasPublicUrlConfigured: Boolean(configuredNoasPublicUrl),
+  noasPublicUrlMap: parsePublicUrlMap(process.env.NOAS_PUBLIC_URL_MAP),
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,

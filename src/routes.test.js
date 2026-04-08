@@ -15,6 +15,7 @@ process.env.NOAS_LOAD_DOTENV = 'false';
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.NIP05_DOMAIN = 'alpha.test,beta.test';
 process.env.NOAS_PUBLIC_URL = '';
+process.env.NOAS_PUBLIC_URL_MAP = 'alpha.test=https://noas.alpha.test;beta.test=https://noas.beta.test';
 
 let app;
 let query;
@@ -291,6 +292,22 @@ test('GET /.well-known/nostr.json metadata honors forwarded host for multi-tenan
   assert.strictEqual(betaMeta.data?.noas?.nip05_domain, 'beta.test');
   assert.strictEqual(betaMeta.data?.noas?.public_url, 'https://noas.beta.test');
   assert.strictEqual(betaMeta.data?.noas?.api_base, 'https://noas.beta.test/api/v1');
+});
+
+test('GET /.well-known/nostr.json metadata honors NOAS_PUBLIC_URL_MAP', async () => {
+  const mappedMeta = await requestWithHeaders(
+    'GET',
+    '/.well-known/nostr.json',
+    null,
+    {
+      'x-forwarded-host': 'api.alpha.test',
+      'x-forwarded-proto': 'https',
+    }
+  );
+  assert.strictEqual(mappedMeta.status, 200);
+  assert.strictEqual(mappedMeta.data?.noas?.nip05_domain, 'alpha.test');
+  assert.strictEqual(mappedMeta.data?.noas?.public_url, 'https://noas.alpha.test');
+  assert.strictEqual(mappedMeta.data?.noas?.api_base, 'https://noas.alpha.test/api/v1');
 });
 
 // Multi-tenant: registration uses the tenant derived from the request host.
