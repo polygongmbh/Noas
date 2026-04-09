@@ -390,71 +390,89 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  signinForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    setStatus(signinStatus, 'Signing in...');
-    const formData = new FormData(signinForm);
-    const username = formData.get('username');
-    const password = formData.get('password');
+  if (signinForm) {
+    signinForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus(signinStatus, 'Signing in...');
+      const formData = new FormData(signinForm);
+      const username = formData.get('username');
+      const password = formData.get('password');
 
-    try {
-      const passwordHash = await sha256Hex(password);
-      const data = await request('/api/v1/auth/signin', { username, password_hash: passwordHash });
-      state.username = username;
-      state.password = password;
-      state.publicKey = String(data.public_key || '').trim().toLowerCase() || null;
+      try {
+        const passwordHash = await sha256Hex(password);
+        const data = await request('/api/v1/auth/signin', { username, password_hash: passwordHash });
+        state.username = username;
+        state.password = password;
+        state.publicKey = String(data.public_key || '').trim().toLowerCase() || null;
 
-      const normalizedPublicKey = data.public_key || '';
-      setProfilePicture(normalizedPublicKey);
-      publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || '—';
-      encryptedKeyEl.textContent = data.private_key_encrypted || '—';
-      privateKeyEl.textContent = '—';
-      relayListEl.textContent = (data.relays || []).join(', ') || '—';
-      accountPanel.hidden = false;
-      updatePanel.hidden = false;
-      deletePanel.hidden = false;
-      setStatus(signinStatus, 'Signed in successfully.', 'success');
-      const relayTextarea = relayForm?.querySelector('textarea[name="relays"]');
-      if (relayTextarea) {
-        relayTextarea.value = (data.relays || []).join('\n');
+        const normalizedPublicKey = data.public_key || '';
+        setProfilePicture(normalizedPublicKey);
+        if (publicKeyEl) {
+          publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || '—';
+        }
+        if (encryptedKeyEl) {
+          encryptedKeyEl.textContent = data.private_key_encrypted || '—';
+        }
+        if (privateKeyEl) {
+          privateKeyEl.textContent = '—';
+        }
+        if (relayListEl) {
+          relayListEl.textContent = (data.relays || []).join(', ') || '—';
+        }
+        if (accountPanel) accountPanel.hidden = false;
+        if (updatePanel) updatePanel.hidden = false;
+        if (deletePanel) deletePanel.hidden = false;
+        setStatus(signinStatus, 'Signed in successfully.', 'success');
+        const relayTextarea = relayForm?.querySelector('textarea[name="relays"]');
+        if (relayTextarea) {
+          relayTextarea.value = (data.relays || []).join('\n');
+        }
+      } catch (error) {
+        setStatus(signinStatus, error.message, 'error');
       }
-    } catch (error) {
-      setStatus(signinStatus, error.message, 'error');
-    }
-  });
+    });
+  }
 
-  copyEncrypted.addEventListener('click', async () => {
-    const value = encryptedKeyEl.textContent;
-    if (!value || value === '—') return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setStatus(signinStatus, 'Encrypted key copied to clipboard.', 'success');
-    } catch (error) {
-      setStatus(signinStatus, 'Unable to copy key. Copy it manually.', 'error');
-    }
-  });
+  if (copyEncrypted && encryptedKeyEl) {
+    copyEncrypted.addEventListener('click', async () => {
+      const value = encryptedKeyEl.textContent;
+      if (!value || value === '—') return;
+      try {
+        await navigator.clipboard.writeText(value);
+        setStatus(signinStatus, 'Encrypted key copied to clipboard.', 'success');
+      } catch (error) {
+        setStatus(signinStatus, 'Unable to copy key. Copy it manually.', 'error');
+      }
+    });
+  }
 
-  decryptPrivateKeyButton.addEventListener('click', async () => {
-    const encryptedPrivateKey = encryptedKeyEl.textContent;
-    if (!encryptedPrivateKey || encryptedPrivateKey === '—') {
-      setStatus(signinStatus, 'No encrypted key is available to decrypt.', 'error');
-      return;
-    }
-    if (!state.password) {
-      setStatus(signinStatus, 'Sign in again before decrypting your key.', 'error');
-      return;
-    }
+  if (decryptPrivateKeyButton && encryptedKeyEl) {
+    decryptPrivateKeyButton.addEventListener('click', async () => {
+      const encryptedPrivateKey = encryptedKeyEl.textContent;
+      if (!encryptedPrivateKey || encryptedPrivateKey === '—') {
+        setStatus(signinStatus, 'No encrypted key is available to decrypt.', 'error');
+        return;
+      }
+      if (!state.password) {
+        setStatus(signinStatus, 'Sign in again before decrypting your key.', 'error');
+        return;
+      }
 
-    setStatus(signinStatus, 'Decrypting private key locally...', 'info');
-    try {
-      const decrypted = await window.NoasNostr.decryptPrivateKey(encryptedPrivateKey, state.password);
-      privateKeyEl.textContent = decrypted.nsec || decrypted.hex || '—';
-      setStatus(signinStatus, 'Private key decrypted locally in your browser.', 'success');
-    } catch (error) {
-      privateKeyEl.textContent = '—';
-      setStatus(signinStatus, `Unable to decrypt private key: ${error.message}`, 'error');
-    }
-  });
+      setStatus(signinStatus, 'Decrypting private key locally...', 'info');
+      try {
+        const decrypted = await window.NoasNostr.decryptPrivateKey(encryptedPrivateKey, state.password);
+        if (privateKeyEl) {
+          privateKeyEl.textContent = decrypted.nsec || decrypted.hex || '—';
+        }
+        setStatus(signinStatus, 'Private key decrypted locally in your browser.', 'success');
+      } catch (error) {
+        if (privateKeyEl) {
+          privateKeyEl.textContent = '—';
+        }
+        setStatus(signinStatus, `Unable to decrypt private key: ${error.message}`, 'error');
+      }
+    });
+  }
 
   if (profilePicturePreview) {
     profilePicturePreview.addEventListener('error', () => {
@@ -519,9 +537,15 @@ document.addEventListener('DOMContentLoaded', function () {
       });
       state.password = newPassword;
       state.publicKey = resolvedPublicKey;
-      encryptedKeyEl.textContent = encryptedPrivateKey;
-      publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(resolvedPublicKey) || resolvedPublicKey || '—';
-      privateKeyEl.textContent = '—';
+      if (encryptedKeyEl) {
+        encryptedKeyEl.textContent = encryptedPrivateKey;
+      }
+      if (publicKeyEl) {
+        publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(resolvedPublicKey) || resolvedPublicKey || '—';
+      }
+      if (privateKeyEl) {
+        privateKeyEl.textContent = '—';
+      }
       setProfilePicture(resolvedPublicKey);
       setStatus(credentialsStatus, 'Password, public key, and encrypted key updated after local verification.', 'success');
       credentialsForm.reset();
@@ -551,7 +575,9 @@ document.addEventListener('DOMContentLoaded', function () {
         password: state.password,
         updates: { relays },
       });
-      relayListEl.textContent = relays.join(', ');
+      if (relayListEl) {
+        relayListEl.textContent = relays.join(', ');
+      }
       setStatus(relayStatus, 'Relays updated.', 'success');
     } catch (error) {
       setStatus(relayStatus, error.message, 'error');
@@ -610,49 +636,53 @@ document.addEventListener('DOMContentLoaded', function () {
     event.preventDefault();
   });
 
-  deleteForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!state.username || !state.password) {
-      setStatus(deleteStatus, 'Sign in before deleting your account.', 'error');
-      return;
-    }
+  if (deleteForm) {
+    deleteForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.username || !state.password) {
+        setStatus(deleteStatus, 'Sign in before deleting your account.', 'error');
+        return;
+      }
 
-    const formData = new FormData(deleteForm);
-    const savedKey = formData.get('saved_key');
-    const confirmUsername = String(formData.get('confirm_username') || '').trim().toLowerCase();
+      const formData = new FormData(deleteForm);
+      const savedKey = formData.get('saved_key');
+      const confirmUsername = String(formData.get('confirm_username') || '').trim().toLowerCase();
 
-    if (!savedKey) {
-      setStatus(deleteStatus, 'Please confirm you saved your private key.', 'error');
-      return;
-    }
-    if (confirmUsername !== String(state.username || '').trim().toLowerCase()) {
-      setStatus(deleteStatus, 'Type your exact username to confirm account deletion.', 'error');
-      return;
-    }
+      if (!savedKey) {
+        setStatus(deleteStatus, 'Please confirm you saved your private key.', 'error');
+        return;
+      }
+      if (confirmUsername !== String(state.username || '').trim().toLowerCase()) {
+        setStatus(deleteStatus, 'Type your exact username to confirm account deletion.', 'error');
+        return;
+      }
 
-    setStatus(deleteStatus, 'Deleting account...');
-    try {
-      await request('/api/v1/auth/delete', {
-        username: state.username,
-        password: state.password,
-      });
-      setStatus(deleteStatus, 'Account deleted.', 'success');
-      accountPanel.hidden = true;
-      updatePanel.hidden = true;
-      deletePanel.hidden = true;
-      signinForm.reset();
-      credentialsForm?.reset();
-      relayForm?.reset();
-      deleteForm.reset();
-      state.username = null;
-      state.password = null;
-      state.publicKey = null;
-      clearProfilePicture();
-      privateKeyEl.textContent = '—';
-    } catch (error) {
-      setStatus(deleteStatus, error.message, 'error');
-    }
-  });
+      setStatus(deleteStatus, 'Deleting account...');
+      try {
+        await request('/api/v1/auth/delete', {
+          username: state.username,
+          password: state.password,
+        });
+        setStatus(deleteStatus, 'Account deleted.', 'success');
+        if (accountPanel) accountPanel.hidden = true;
+        if (updatePanel) updatePanel.hidden = true;
+        if (deletePanel) deletePanel.hidden = true;
+        signinForm?.reset();
+        credentialsForm?.reset();
+        relayForm?.reset();
+        deleteForm.reset();
+        state.username = null;
+        state.password = null;
+        state.publicKey = null;
+        clearProfilePicture();
+        if (privateKeyEl) {
+          privateKeyEl.textContent = '—';
+        }
+      } catch (error) {
+        setStatus(deleteStatus, error.message, 'error');
+      }
+    });
+  }
 
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('verified') === '1') {

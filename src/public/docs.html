@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Noas API endpoints and example payloads." />
+    <title>Noas | Docs</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "nostr-tools": "/vendor/nostr-tools/esm/index.js",
+          "nostr-tools/": "/vendor/nostr-tools/esm/",
+          "@noble/ciphers/": "/vendor/@noble/ciphers/",
+          "@noble/hashes/": "/vendor/@noble/hashes/",
+          "@noble/curves/": "/vendor/@noble/curves/",
+          "@scure/base": "/vendor/@scure/base/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"></div>
+    <main class="container">
+      <nav class="page-nav" aria-label="Noas pages">
+        <a href="/">Home</a>
+        <a href="/register">Register</a>
+        <a href="/login">Sign in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+
+      <header class="hero">
+        <div class="badge">Noas · Docs · <span id="noasVersion">v—</span></div>
+        <h1>Endpoints and examples.</h1>
+        <p class="lead">Reference routes and example payloads for quick API tests.</p>
+        <div class="actions">
+          <a class="btn" href="/">Home</a>
+          <a class="btn subtle" href="/register">Register</a>
+          <a class="btn subtle" href="/login">Sign in</a>
+        </div>
+      </header>
+
+      <section class="page">
+        <header class="page-header">
+          <div>
+            <span class="page-kicker">API</span>
+            <h2>Endpoints</h2>
+            <p>Use these routes for authentication, updates, pictures, and NIP-05 lookups.</p>
+          </div>
+        </header>
+
+        <div class="grid" id="endpoints">
+          <div class="card">
+            <h2>Register</h2>
+            <p>Create account and send verification email.</p>
+            <div class="endpoint-list">
+              <code>POST /api/v1/auth/register</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Verify (GET/POST)</h2>
+            <p>Preview token and verify using password hash. Verify responses include <code>relay_allow</code> summary for NIP-86 allowpubkey relay sync.</p>
+            <div class="endpoint-list">
+              <code>GET /api/v1/auth/verify</code>
+              <code>POST /api/v1/auth/verify</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Resend</h2>
+            <p>Resend verification link; UI clients apply cooldown locally.</p>
+            <div class="endpoint-list">
+              <code>POST /api/v1/auth/resend</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Sign in</h2>
+            <p>Authenticate with your password hash and retrieve your encrypted key.</p>
+            <div class="endpoint-list">
+              <code>POST /api/v1/auth/signin</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Update</h2>
+            <p>Rotate password, pubkey, and encrypted key together, or update relays separately.</p>
+            <div class="endpoint-list">
+              <code>POST /api/v1/auth/update</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Delete</h2>
+            <p>Remove your account after confirmation.</p>
+            <div class="endpoint-list">
+              <code>POST /api/v1/auth/delete</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Profile Picture</h2>
+            <p>Set a profile image during registration or account update, then fetch it by pubkey or username with Last-Modified caching.</p>
+            <div class="endpoint-list">
+              <code>POST /api/v1/auth/register (optional picture fields)</code>
+              <code>POST /api/v1/auth/update (updates.profile_picture_*)</code>
+              <code>GET /api/v1/picture/:pubkey</code>
+              <code>GET /api/v1/picture/:name</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>NIP-05</h2>
+            <p>Verify usernames with standard NIP-05 lookups.</p>
+            <p>Operator note: set <code>NOAS_PUBLIC_URL_MAP</code> to pin per-tenant <code>api_base</code> and verification links.</p>
+            <div class="endpoint-list">
+              <code>GET /.well-known/nostr.json</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Health</h2>
+            <p>Check service status.</p>
+            <div class="endpoint-list">
+              <code>GET /api/v1/health</code>
+            </div>
+          </div>
+          <div class="card">
+            <h2>NIP-46</h2>
+            <p>Remote signer discovery, connection bootstrap, and encrypted request handling for active accounts.</p>
+            <div class="endpoint-list">
+              <code>GET /api/v1/nip46/info</code>
+              <code>GET /api/v1/nip46/connect/:username</code>
+              <code>POST /api/v1/nip46/request</code>
+              <code>POST /api/v1/nip46/nostrconnect</code>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page">
+        <header class="page-header">
+          <div>
+            <span class="page-kicker">Samples</span>
+            <h2>Example Payloads</h2>
+            <p>Reference payloads for quick API testing.</p>
+          </div>
+        </header>
+
+        <div class="panel">
+          <p>Registration payload (auto-generate keypair):</p>
+          <pre><code>{
+  "username": "alice",
+  "password": "securepassword123",
+  "relays": ["wss://relay.example.com"],
+  "redirect": "https://nodex.example.com"
+}
+</code></pre>
+          <p>Registration payload (client-provided keypair):</p>
+          <pre><code>{
+  "username": "alice",
+  "password_hash": "sha256_hex_of_password",
+  "public_key": "npub1...",
+  "private_key_encrypted": "ncryptsec1...",
+  "relays": ["wss://relay.example.com"],
+  "redirect": "https://nodex.example.com"
+}
+</code></pre>
+          <p>NIP-86 note: when <code>NIP86_RELAY_URLS</code> is configured, verification triggers relay JSON-RPC <code>allowpubkey</code> calls for the verified pubkey.</p>
+          <p>NIP-46 note: remote signing only works for accounts created through signup with a raw password that Noas stored for later key unlock.</p>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="footer-summary">API first · minimal · secure · <span id="noasVersionFooter">v—</span></span>
+      </footer>
+    </main>
+
+    <script src="/nostr.js" defer></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

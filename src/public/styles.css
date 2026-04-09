@@ -141,6 +141,101 @@ h1 {
   font-weight: 600;
 }
 
+.page-nav {
+  margin: 12px 0 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(18, 24, 38, 0.6);
+}
+
+.page-nav a {
+  padding: 8px 14px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform 150ms ease, border-color 150ms ease;
+}
+
+.page-nav a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.page {
+  margin: 36px 0;
+  scroll-margin-top: 18px;
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 520px;
+}
+
+
+.page-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.page-card {
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  text-decoration: none;
+  color: var(--text);
+  display: grid;
+  gap: 8px;
+  min-height: 100%;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.page-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(118, 228, 181, 0.35);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.25);
+}
+
+.page-card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.page-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
 .portal {
   margin: 40px 0;
   display: grid;
@@ -359,6 +454,10 @@ h1 {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .page-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 860px) {
@@ -384,10 +483,15 @@ h1 {
   .split-fields {
     grid-template-columns: 1fr;
   }
+
 }
 
 @media (max-width: 560px) {
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-grid {
     grid-template-columns: 1fr;
   }
 }

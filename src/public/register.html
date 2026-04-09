@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Register a new Noas account and receive a verification email." />
+    <title>Noas | Register</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "nostr-tools": "/vendor/nostr-tools/esm/index.js",
+          "nostr-tools/": "/vendor/nostr-tools/esm/",
+          "@noble/ciphers/": "/vendor/@noble/ciphers/",
+          "@noble/hashes/": "/vendor/@noble/hashes/",
+          "@noble/curves/": "/vendor/@noble/curves/",
+          "@scure/base": "/vendor/@scure/base/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"></div>
+    <main class="container">
+      <nav class="page-nav" aria-label="Noas pages">
+        <a href="/">Home</a>
+        <a href="/register">Register</a>
+        <a href="/login">Sign in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+
+      <header class="hero">
+        <div class="badge">Noas · Register · <span id="noasVersion">v—</span></div>
+        <h1>Create your Noas account.</h1>
+        <p class="lead">Choose a username, secure your keys, and receive a verification link.</p>
+        <div class="actions">
+          <a class="btn" href="/">Home</a>
+          <a class="btn subtle" href="/login">Sign in</a>
+          <a class="btn subtle" href="/docs">Docs</a>
+        </div>
+      </header>
+
+      <section class="page">
+        <header class="page-header">
+          <div>
+            <span class="page-kicker">Register</span>
+            <h2>Create New Account</h2>
+            <p id="signupDescription">Register with username + email + password. Verification is sent to your account email.</p>
+          </div>
+        </header>
+        <div id="verificationFlash" class="status" role="status"></div>
+
+        <div class="panel">
+          <form id="signupStartForm" class="form">
+            <label>
+              Username (3-32 chars, lowercase + dash/underscore/dot)
+              <input type="text" id="signupUsername" placeholder="your_username" required />
+              <small>Choose any available username for your NIP-05 identity</small>
+            </label>
+
+            <label id="signupEmailLabel">
+              Email
+              <input type="email" id="signupEmail" placeholder="your_email@example.com" autocomplete="email" required />
+              <small id="signupEmailHint">Used for account and verification emails.</small>
+            </label>
+
+            <label>
+              Password (minimum 8 characters)
+              <input type="password" id="signupPassword" placeholder="Create a strong password" autocomplete="new-password" required />
+            </label>
+
+            <label>
+              Confirm Password
+              <input type="password" id="signupPasswordConfirm" placeholder="Confirm your password" autocomplete="new-password" required />
+            </label>
+
+            <label>
+              Public Key (optional)
+              <input type="text" id="signupPublicKey" placeholder="npub1... (or 64-char hex)" />
+              <small>Leave blank to auto-generate a Nostr keypair.</small>
+            </label>
+
+            <label>
+              Encrypted Private Key (optional)
+              <input type="text" id="signupPrivateKeyEncrypted" placeholder="ncryptsec1..." />
+              <small>Provide together with Public Key, or leave both blank for auto-generation.</small>
+            </label>
+
+            <label>
+              Profile Picture (optional)
+              <input type="file" id="signupProfilePictureInput" accept="image/*" />
+              <small>Attach an image (JPG, PNG, GIF, or WebP) up to 2MB during registration.</small>
+            </label>
+
+            <button type="submit" class="btn" id="signupSubmit">Register & Send Verification</button>
+            <div id="signupStatus" class="status"></div>
+          </form>
+
+          <form id="resendForm" class="form">
+            <label>
+              Username for resend
+              <input type="text" id="resendUsername" placeholder="your_username" />
+            </label>
+            <button type="submit" class="btn subtle">Resend Verification Email</button>
+            <div id="resendStatus" class="status"></div>
+          </form>
+
+          <div class="result" id="verificationNextStep">
+            <h3>Next Step</h3>
+            <p>Open your verification email and continue at <code>/verify?token=...</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="footer-summary">API first · minimal · secure · <span id="noasVersionFooter">v—</span></span>
+      </footer>
+    </main>
+
+    <script src="/nostr.js" defer></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

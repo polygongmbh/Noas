@@ -22,6 +22,13 @@
   <body>
     <div class="bg" aria-hidden="true"></div>
     <main class="container">
+      <nav class="page-nav" aria-label="Noas pages">
+        <a href="/">Home</a>
+        <a href="/register">Register</a>
+        <a href="/login">Sign in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+
       <header class="hero">
         <div class="badge">Noas · Nostr Account Service · <span id="noasVersion">v—</span></div>
         <h1>Simple account storage for Nostr identities.</h1>
@@ -32,8 +39,8 @@
         </p>
         <div class="actions">
           <a class="btn" href="/health">API status</a>
-          <a class="btn subtle" href="#portal">Account portal</a>
-          <a class="btn subtle" href="#endpoints">Endpoints</a>
+          <a class="btn subtle" href="/register">Register</a>
+          <a class="btn subtle" href="/login">Sign in</a>
         </div>
         <div class="warning">
           Important: Save your private key somewhere safe. Noas only stores your
@@ -41,293 +48,28 @@
         </div>
       </header>
 
-      <section class="panel">
-        <h2>Create New Account</h2>
-        <p id="signupDescription">Register with username + email + password. Verification is sent to your account email.</p>
-        <div id="verificationFlash" class="status" role="status"></div>
-
-        <form id="signupStartForm" class="form">
-          <label>
-            Username (3-32 chars, lowercase + dash/underscore/dot)
-            <input type="text" id="signupUsername" placeholder="your_username" required />
-            <small>Choose any available username for your NIP-05 identity</small>
-          </label>
-
-          <label id="signupEmailLabel">
-            Email
-            <input type="email" id="signupEmail" placeholder="your_email@example.com" autocomplete="email" required />
-            <small id="signupEmailHint">Used for account and verification emails.</small>
-          </label>
-          
-          <label>
-            Password (minimum 8 characters)
-            <input type="password" id="signupPassword" placeholder="Create a strong password" autocomplete="new-password" required />
-          </label>
-          
-          <label>
-            Confirm Password
-            <input type="password" id="signupPasswordConfirm" placeholder="Confirm your password" autocomplete="new-password" required />
-          </label>
-
-          <label>
-            Public Key (optional)
-            <input type="text" id="signupPublicKey" placeholder="npub1... (or 64-char hex)" />
-            <small>Leave blank to auto-generate a Nostr keypair.</small>
-          </label>
-
-          <label>
-            Encrypted Private Key (optional)
-            <input type="text" id="signupPrivateKeyEncrypted" placeholder="ncryptsec1..." />
-            <small>Provide together with Public Key, or leave both blank for auto-generation.</small>
-          </label>
-
-          <label>
-            Profile Picture (optional)
-            <input type="file" id="signupProfilePictureInput" accept="image/*" />
-            <small>Attach an image (JPG, PNG, GIF, or WebP) up to 2MB during registration.</small>
-          </label>
-
-          <button type="submit" class="btn" id="signupSubmit">Register & Send Verification</button>
-          <div id="signupStatus" class="status"></div>
-        </form>
-
-        <form id="resendForm" class="form">
-          <label>
-            Username for resend
-            <input type="text" id="resendUsername" placeholder="your_username" />
-          </label>
-          <button type="submit" class="btn subtle">Resend Verification Email</button>
-          <div id="resendStatus" class="status"></div>
-        </form>
-
-        <div class="result" id="verificationNextStep">
-          <h3>Next Step</h3>
-          <p>Open your verification email and continue at <code>/verify?token=...</code>.</p>
+      <section class="page">
+        <header class="page-header">
+          <div>
+            <span class="page-kicker">Quick start</span>
+            <h2>Choose your path</h2>
+            <p>Register a Nostr identity, sign in to retrieve keys, and manage updates in one place.</p>
+          </div>
+        </header>
+        <div class="page-grid">
+          <a class="page-card" href="/register">
+            <h3>Register</h3>
+            <p>Create a new account and receive a verification link.</p>
+          </a>
+          <a class="page-card" href="/login">
+            <h3>Sign in</h3>
+            <p>Unlock your encrypted private key and relay list.</p>
+          </a>
+          <a class="page-card" href="/docs">
+            <h3>Docs</h3>
+            <p>Endpoints and example payloads in one place.</p>
+          </a>
         </div>
-      </section>
-
-      <section class="portal" id="portal">
-        <div class="panel">
-          <h2>Account Portal</h2>
-          <p>Sign in to retrieve your encrypted key, update relays, or delete your account.</p>
-          <form id="signinForm" class="form">
-            <label>
-              Username
-              <input type="text" name="username" autocomplete="username" required />
-            </label>
-            <label>
-              Password
-              <input type="password" name="password" autocomplete="current-password" required />
-            </label>
-            <button type="submit" class="btn">Sign in</button>
-            <div id="signinStatus" class="status" role="status"></div>
-          </form>
-        </div>
-
-        <div class="panel" id="accountPanel" hidden>
-          <h2>Account Details</h2>
-          <div class="profile-summary" id="profileSummary" hidden>
-            <img id="profilePicturePreview" class="profile-picture" alt="Profile picture preview" hidden />
-            <div class="field">
-              <span>Profile picture</span>
-              <code id="profilePictureStatus">No profile picture uploaded</code>
-            </div>
-          </div>
-          <div class="field">
-            <span>Public key</span>
-            <code id="publicKey">—</code>
-          </div>
-          <div class="field">
-            <span>Encrypted private key</span>
-            <code id="encryptedKey">—</code>
-          </div>
-          <div class="field">
-            <span>Decrypted private key</span>
-            <code id="privateKey">—</code>
-          </div>
-          <div class="field">
-            <span>Relays</span>
-            <code id="relayList">—</code>
-          </div>
-
-          <div class="actions inline">
-            <button id="copyEncrypted" class="btn subtle" type="button">Copy encrypted key</button>
-            <button id="decryptPrivateKey" class="btn subtle" type="button">Decrypt private key</button>
-          </div>
-        </div>
-
-        <div class="panel" id="updatePanel" hidden>
-          <h2>Update Account</h2>
-          <p>Each account update is handled separately.</p>
-
-          <form id="credentialsForm" class="form mini-form">
-            <div class="split-fields">
-              <label>
-                New password
-                <input type="password" name="new_password" autocomplete="new-password" />
-              </label>
-              <label>
-                New private key
-                <input type="text" name="private_key_input" placeholder="ncryptsec..., nsec1..., or 64-char hex" />
-              </label>
-            </div>
-            <button type="submit" class="btn subtle">Update password and key</button>
-            <div id="credentialsStatus" class="status" role="status"></div>
-          </form>
-
-          <form id="relayForm" class="form mini-form">
-            <label>
-              Relays (one per line)
-              <textarea name="relays" rows="4" placeholder="wss://relay.example.com"></textarea>
-            </label>
-            <button type="submit" class="btn subtle">Update relays</button>
-            <div id="relayStatus" class="status" role="status"></div>
-          </form>
-
-          <form id="pictureForm" class="form mini-form">
-            <label>
-              Profile picture
-              <input type="file" id="profilePictureInput" accept="image/*" />
-              <small>Upload a JPG, PNG, GIF, or WebP image up to 2MB.</small>
-            </label>
-            <button type="submit" class="btn subtle">Upload picture</button>
-            <div id="pictureStatus" class="status" role="status"></div>
-          </form>
-        </div>
-
-        <div class="panel danger" id="deletePanel" hidden>
-          <h2>Delete Account</h2>
-          <p>
-            Deleting your account is permanent. Make sure you have saved your private key
-            somewhere safe before continuing.
-          </p>
-          <form id="deleteForm" class="form">
-            <label class="checkline">
-              <input type="checkbox" name="saved_key" required />
-              I have saved my private key and understand deletion is permanent.
-            </label>
-            <label>
-              Type your username to confirm
-              <input
-                type="text"
-                name="confirm_username"
-                placeholder="your_username"
-                autocomplete="off"
-                autocapitalize="off"
-                autocorrect="off"
-                spellcheck="false"
-                required
-              />
-            </label>
-            <button type="submit" class="btn danger">Delete account</button>
-            <div id="deleteStatus" class="status" role="status"></div>
-          </form>
-        </div>
-      </section>
-
-      <section class="grid" id="endpoints">
-        <div class="card">
-          <h2>Register</h2>
-          <p>Create account and send verification email.</p>
-          <div class="endpoint-list">
-            <code>POST /api/v1/auth/register</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Verify (GET/POST)</h2>
-          <p>Preview token and verify using password hash. Verify responses include <code>relay_allow</code> summary for NIP-86 allowpubkey relay sync.</p>
-          <div class="endpoint-list">
-            <code>GET /api/v1/auth/verify</code>
-            <code>POST /api/v1/auth/verify</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Resend</h2>
-          <p>Resend verification link; UI clients apply cooldown locally.</p>
-          <div class="endpoint-list">
-            <code>POST /api/v1/auth/resend</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Sign in</h2>
-          <p>Authenticate with your password hash and retrieve your encrypted key.</p>
-          <div class="endpoint-list">
-            <code>POST /api/v1/auth/signin</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Update</h2>
-          <p>Rotate password, pubkey, and encrypted key together, or update relays separately.</p>
-          <div class="endpoint-list">
-            <code>POST /api/v1/auth/update</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Delete</h2>
-          <p>Remove your account after confirmation.</p>
-          <div class="endpoint-list">
-            <code>POST /api/v1/auth/delete</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Profile Picture</h2>
-          <p>Set a profile image during registration or account update, then fetch it by pubkey or username with Last-Modified caching.</p>
-          <div class="endpoint-list">
-            <code>POST /api/v1/auth/register (optional picture fields)</code>
-            <code>POST /api/v1/auth/update (updates.profile_picture_*)</code>
-            <code>GET /api/v1/picture/:pubkey</code>
-            <code>GET /api/v1/picture/:name</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>NIP-05</h2>
-          <p>Verify usernames with standard NIP-05 lookups.</p>
-          <p>Operator note: set <code>NOAS_PUBLIC_URL_MAP</code> to pin per-tenant <code>api_base</code> and verification links.</p>
-          <div class="endpoint-list">
-            <code>GET /.well-known/nostr.json</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Health</h2>
-          <p>Check service status.</p>
-          <div class="endpoint-list">
-            <code>GET /api/v1/health</code>
-          </div>
-        </div>
-        <div class="card">
-          <h2>NIP-46</h2>
-          <p>Remote signer discovery, connection bootstrap, and encrypted request handling for active accounts.</p>
-          <div class="endpoint-list">
-            <code>GET /api/v1/nip46/info</code>
-            <code>GET /api/v1/nip46/connect/:username</code>
-            <code>POST /api/v1/nip46/request</code>
-            <code>POST /api/v1/nip46/nostrconnect</code>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Example</h2>
-        <p>Registration payload (auto-generate keypair):</p>
-        <pre><code>{
-  "username": "alice",
-  "password": "securepassword123",
-  "relays": ["wss://relay.example.com"],
-  "redirect": "https://nodex.example.com"
-}
-</code></pre>
-        <p>Registration payload (client-provided keypair):</p>
-        <pre><code>{
-  "username": "alice",
-  "password_hash": "sha256_hex_of_password",
-  "public_key": "npub1...",
-  "private_key_encrypted": "ncryptsec1...",
-  "relays": ["wss://relay.example.com"],
-  "redirect": "https://nodex.example.com"
-}
-</code></pre>
-        <p>NIP-86 note: when <code>NIP86_RELAY_URLS</code> is configured, verification triggers relay JSON-RPC <code>allowpubkey</code> calls for the verified pubkey.</p>
-        <p>NIP-46 note: remote signing only works for accounts created through signup with a raw password that Noas stored for later key unlock.</p>
       </section>
 
       <footer class="footer">

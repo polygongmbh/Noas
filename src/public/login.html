@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Sign in to Noas to retrieve encrypted keys and manage your account." />
+    <title>Noas | Sign In</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "nostr-tools": "/vendor/nostr-tools/esm/index.js",
+          "nostr-tools/": "/vendor/nostr-tools/esm/",
+          "@noble/ciphers/": "/vendor/@noble/ciphers/",
+          "@noble/hashes/": "/vendor/@noble/hashes/",
+          "@noble/curves/": "/vendor/@noble/curves/",
+          "@scure/base": "/vendor/@scure/base/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"></div>
+    <main class="container">
+      <nav class="page-nav" aria-label="Noas pages">
+        <a href="/">Home</a>
+        <a href="/register">Register</a>
+        <a href="/login">Sign in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+
+      <header class="hero">
+        <div class="badge">Noas · Sign In · <span id="noasVersion">v—</span></div>
+        <h1>Welcome back.</h1>
+        <p class="lead">Sign in to retrieve your encrypted key, update relays, or manage your account.</p>
+        <div class="actions">
+          <a class="btn" href="/">Home</a>
+          <a class="btn subtle" href="/register">Register</a>
+          <a class="btn subtle" href="/docs">Docs</a>
+        </div>
+      </header>
+
+      <section class="page">
+        <header class="page-header">
+          <div>
+            <span class="page-kicker">Portal</span>
+            <h2>Account Portal</h2>
+            <p>Use your username and password to unlock account tools.</p>
+          </div>
+        </header>
+
+        <div class="portal" id="portal">
+          <div class="panel">
+            <form id="signinForm" class="form">
+              <label>
+                Username
+                <input type="text" name="username" autocomplete="username" required />
+              </label>
+              <label>
+                Password
+                <input type="password" name="password" autocomplete="current-password" required />
+              </label>
+              <button type="submit" class="btn">Sign in</button>
+              <div id="signinStatus" class="status" role="status"></div>
+            </form>
+          </div>
+
+          <div class="panel" id="accountPanel" hidden>
+            <h2>Account Overview</h2>
+            <div class="profile-summary" id="profileSummary" hidden>
+              <img id="profilePicturePreview" class="profile-picture" alt="Profile picture preview" hidden />
+              <div class="field">
+                <span>Profile picture</span>
+                <code id="profilePictureStatus">No profile picture uploaded</code>
+              </div>
+            </div>
+            <div class="field">
+              <span>Public key</span>
+              <code id="publicKey">—</code>
+            </div>
+            <div class="field">
+              <span>Encrypted private key</span>
+              <code id="encryptedKey">—</code>
+            </div>
+            <div class="field">
+              <span>Decrypted private key</span>
+              <code id="privateKey">—</code>
+            </div>
+            <div class="field">
+              <span>Relays</span>
+              <code id="relayList">—</code>
+            </div>
+
+            <div class="actions inline">
+              <button id="copyEncrypted" class="btn subtle" type="button">Copy encrypted key</button>
+              <button id="decryptPrivateKey" class="btn subtle" type="button">Decrypt private key</button>
+            </div>
+          </div>
+
+          <div class="panel" id="updatePanel" hidden>
+            <h2>Update Account</h2>
+            <p>Each account update is handled separately.</p>
+
+            <form id="credentialsForm" class="form mini-form">
+              <div class="split-fields">
+                <label>
+                  New password
+                  <input type="password" name="new_password" autocomplete="new-password" />
+                </label>
+                <label>
+                  New private key
+                  <input type="text" name="private_key_input" placeholder="ncryptsec..., nsec1..., or 64-char hex" />
+                </label>
+              </div>
+              <button type="submit" class="btn subtle">Update password and key</button>
+              <div id="credentialsStatus" class="status" role="status"></div>
+            </form>
+
+            <form id="relayForm" class="form mini-form">
+              <label>
+                Relays (one per line)
+                <textarea name="relays" rows="4" placeholder="wss://relay.example.com"></textarea>
+              </label>
+              <button type="submit" class="btn subtle">Update relays</button>
+              <div id="relayStatus" class="status" role="status"></div>
+            </form>
+
+            <form id="pictureForm" class="form mini-form">
+              <label>
+                Profile picture
+                <input type="file" id="profilePictureInput" accept="image/*" />
+                <small>Upload a JPG, PNG, GIF, or WebP image up to 2MB.</small>
+              </label>
+              <button type="submit" class="btn subtle">Upload picture</button>
+              <div id="pictureStatus" class="status" role="status"></div>
+            </form>
+          </div>
+
+          <div class="panel danger" id="deletePanel" hidden>
+            <h2>Delete Account</h2>
+            <p>
+              Deleting your account is permanent. Make sure you have saved your private key
+              somewhere safe before continuing.
+            </p>
+            <form id="deleteForm" class="form">
+              <label class="checkline">
+                <input type="checkbox" name="saved_key" required />
+                I have saved my private key and understand deletion is permanent.
+              </label>
+              <label>
+                Type your username to confirm
+                <input
+                  type="text"
+                  name="confirm_username"
+                  placeholder="your_username"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+              <button type="submit" class="btn danger">Delete account</button>
+              <div id="deleteStatus" class="status" role="status"></div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="footer-summary">API first · minimal · secure · <span id="noasVersionFooter">v—</span></span>
+      </footer>
+    </main>
+
+    <script src="/nostr.js" defer></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

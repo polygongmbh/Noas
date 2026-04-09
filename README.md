@@ -224,6 +224,8 @@ Primary auth endpoints (v1.4):
 Verification UI behavior:
 - `GET /verify?token=...` shows password confirmation for pending accounts.
 - If a verification link was already used, the page shows `Back to app` (when `redirect` is present) and `Back to Noas` (tenant landing page).
+- The public UI pages are:
+  - `/` (landing), `/register`, `/login`, `/docs` (endpoints + example payloads).
 
 ### POST /api/v1/auth/verify
 
