@@ -94,6 +94,8 @@ NIP86_RELAY_URLS=
 NIP86_METHOD=allowpubkey
 NIP86_TIMEOUT_MS=5000
 DISALLOWED_USERNAMES=feed,nostr,rnostr,base,tasks,relay
+NOAS_ADMIN_USERS=admin_username
+NOAS_MODERATOR_USERS=moderator_username
 ```
 
 Primary domain settings:
@@ -109,6 +111,8 @@ Primary domain settings:
 - `NIP86_METHOD`: JSON-RPC method name for relay allow calls (default: `allowpubkey`)
 - `NIP86_TIMEOUT_MS`: timeout per relay allow request (default: `5000`)
 - `DISALLOWED_USERNAMES`: comma-separated usernames that cannot be registered.
+- `NOAS_ADMIN_USERS`: comma-separated usernames granted the `admin` role at registration time.
+- `NOAS_MODERATOR_USERS`: comma-separated usernames granted the `moderator` role at registration time (ignored if also in admin list).
 
 Most other domain-related behavior derives from these values.
 Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.
@@ -226,6 +230,7 @@ Verification UI behavior:
 - If a verification link was already used, the page shows `Back to app` (when `redirect` is present) and `Back to Noas` (tenant landing page).
 - The public UI pages are:
   - `/` (landing), `/register`, `/login`, `/docs` (endpoints + example payloads).
+  - Admin and moderator users see an additional admin console in `/login` for user list, verification, and role changes.
 
 ### POST /api/v1/auth/verify
 
@@ -303,7 +308,9 @@ Sign in and retrieve encrypted private key (active accounts only).
   "success": true,
   "private_key_encrypted": "ncryptsec1...",
   "public_key": "a0b1c2d3...",
-  "relays": ["wss://relay.example.com"]
+  "relays": ["wss://relay.example.com"],
+  "status": "active",
+  "role": "user"
 }
 ```
 
@@ -328,6 +335,55 @@ Update password hash, public key, encrypted private key, or relays (requires aut
 ```
 
 Credential rotation requires `new_password_hash`/`new_password`, `public_key`, and `private_key_encrypted` together.
+
+### POST /api/v1/admin/users/list
+
+List users for admin/moderator accounts.
+
+```json
+{
+  "username": "admin",
+  "password_hash": "sha256_hex_of_password",
+  "limit": 200
+}
+```
+
+### POST /api/v1/admin/users/verify
+
+Verify a pending account (admin/moderator).
+
+```json
+{
+  "username": "admin",
+  "password_hash": "sha256_hex_of_password",
+  "target_username": "alice"
+}
+```
+
+### POST /api/v1/admin/users/role
+
+Update a user role (admin only).
+
+```json
+{
+  "username": "admin",
+  "password_hash": "sha256_hex_of_password",
+  "target_username": "alice",
+  "new_role": "moderator"
+}
+```
+
+### POST /api/v1/admin/users/delete
+
+Delete a user (admin/moderator).
+
+```json
+{
+  "username": "admin",
+  "password_hash": "sha256_hex_of_password",
+  "target_username": "alice"
+}
+```
 
 ### NIP-46 Endpoints
 

@@ -2,7 +2,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const state = {
     username: null,
     password: null,
+    passwordHash: null,
     publicKey: null,
+    role: null,
     signupUsername: null,
     emailVerificationMode: 'required_nip05_domains',
     emailVerificationEnabled: true,
@@ -23,6 +25,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const accountPanel = document.getElementById('accountPanel');
   const updatePanel = document.getElementById('updatePanel');
   const deletePanel = document.getElementById('deletePanel');
+  const adminPanel = document.getElementById('adminPanel');
+  const adminUsersList = document.getElementById('adminUsersList');
+  const adminStatus = document.getElementById('adminStatus');
+  const refreshAdminUsers = document.getElementById('refreshAdminUsers');
   const profileSummary = document.getElementById('profileSummary');
   const profilePicturePreview = document.getElementById('profilePicturePreview');
   const profilePictureStatus = document.getElementById('profilePictureStatus');
@@ -194,6 +200,17 @@ document.addEventListener('DOMContentLoaded', function () {
     return data;
   }
 
+  async function adminRequest(path, payload) {
+    if (!state.username || !state.passwordHash) {
+      throw new Error('Sign in before using admin tools.');
+    }
+    return request(path, {
+      username: state.username,
+      password_hash: state.passwordHash,
+      ...payload,
+    });
+  }
+
   async function sha256Hex(value) {
     const bytes = new TextEncoder().encode(value);
     const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -226,6 +243,199 @@ document.addEventListener('DOMContentLoaded', function () {
     profilePicturePreview.hidden = true;
     profilePicturePreview.removeAttribute('src');
     profilePictureStatus.textContent = 'No profile picture uploaded';
+  }
+
+  function roleRank(role) {
+    const normalized = String(role || '').trim().toLowerCase();
+    if (normalized === 'admin') return 3;
+    if (normalized === 'moderator') return 2;
+    return 1;
+  }
+
+  function canManageUser(actorRole, targetRole, targetUsername) {
+    if (!actorRole) return false;
+    if (state.username && targetUsername && state.username === targetUsername) return false;
+    return roleRank(actorRole) > roleRank(targetRole);
+  }
+
+  function formatUserIdentifier(user) {
+    if (!user) return '—';
+    const pubkey = String(user.public_key || '').trim();
+    if (!pubkey) return '—';
+    const npub = window.NoasNostr?.npubFromHexPublicKey(pubkey);
+    return npub || pubkey;
+  }
+
+  function renderAdminUsers(users = []) {
+    if (!adminUsersList) return;
+    adminUsersList.innerHTML = '';
+    if (!users.length) {
+      const empty = document.createElement('div');
+      empty.className = 'admin-empty';
+      empty.textContent = 'No users returned.';
+      adminUsersList.appendChild(empty);
+      return;
+    }
+
+    users.forEach((user) => {
+      const card = document.createElement('div');
+      card.className = 'admin-user';
+      card.dataset.username = user.username;
+
+      const main = document.createElement('div');
+      main.className = 'admin-user-main';
+
+      const avatar = document.createElement('img');
+      avatar.className = 'admin-avatar';
+      avatar.alt = `${user.username} avatar`;
+      if (user.picture_url) {
+        avatar.src = user.picture_url;
+      } else {
+        avatar.classList.add('placeholder');
+      }
+      avatar.addEventListener('error', () => {
+        avatar.removeAttribute('src');
+        avatar.classList.add('placeholder');
+      });
+      main.appendChild(avatar);
+
+      const meta = document.createElement('div');
+      meta.className = 'admin-meta';
+
+      const name = document.createElement('div');
+      name.className = 'admin-name';
+      name.textContent = user.username;
+      meta.appendChild(name);
+
+      const email = document.createElement('div');
+      email.className = 'admin-sub';
+      email.textContent = user.registration_email || '—';
+      meta.appendChild(email);
+
+      const pubkey = document.createElement('div');
+      pubkey.className = 'admin-sub';
+      pubkey.textContent = formatUserIdentifier(user);
+      meta.appendChild(pubkey);
+
+      main.appendChild(meta);
+      card.appendChild(main);
+
+      const tags = document.createElement('div');
+      tags.className = 'admin-tags';
+      const roleTag = document.createElement('span');
+      roleTag.className = 'tag';
+      roleTag.textContent = user.role || 'user';
+      const statusTag = document.createElement('span');
+      statusTag.className = `tag status-${user.status || 'unknown'}`;
+      statusTag.textContent = user.status || 'unknown';
+      tags.appendChild(roleTag);
+      tags.appendChild(statusTag);
+      card.appendChild(tags);
+
+      const controls = document.createElement('div');
+      controls.className = 'admin-controls';
+
+      const roleSelect = document.createElement('select');
+      roleSelect.className = 'role-select';
+      ['user', 'moderator', 'admin'].forEach((role) => {
+        const option = document.createElement('option');
+        option.value = role;
+        option.textContent = role;
+        if (role === user.role) option.selected = true;
+        roleSelect.appendChild(option);
+      });
+
+      const canManage = canManageUser(state.role, user.role, user.username);
+      roleSelect.disabled = state.role !== 'admin' || state.username === user.username;
+      if (state.role !== 'admin') {
+        roleSelect.hidden = true;
+      }
+
+      const verifyButton = document.createElement('button');
+      verifyButton.type = 'button';
+      verifyButton.className = 'btn subtle';
+      verifyButton.textContent = 'Verify';
+      verifyButton.disabled = !canManage || user.status !== 'unverified_email';
+      if (user.status !== 'unverified_email') {
+        verifyButton.hidden = true;
+      }
+
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'btn danger';
+      deleteButton.textContent = 'Delete';
+      deleteButton.disabled = !canManage;
+      if (state.role === 'moderator' && user.role === 'admin') {
+        deleteButton.hidden = true;
+      }
+
+      roleSelect.addEventListener('change', async () => {
+        if (state.role !== 'admin') return;
+        const newRole = roleSelect.value;
+        setStatus(adminStatus, `Updating role for ${user.username}...`, 'info');
+        try {
+          await adminRequest('/api/v1/admin/users/role', {
+            target_username: user.username,
+            new_role: newRole,
+          });
+          setStatus(adminStatus, `Updated role for ${user.username}.`, 'success');
+          await loadAdminUsers();
+        } catch (error) {
+          roleSelect.value = user.role || 'user';
+          setStatus(adminStatus, error.message, 'error');
+        }
+      });
+
+      verifyButton.addEventListener('click', async () => {
+        if (!canManage || user.status !== 'unverified_email') return;
+        setStatus(adminStatus, `Verifying ${user.username}...`, 'info');
+        try {
+          await adminRequest('/api/v1/admin/users/verify', {
+            target_username: user.username,
+          });
+          setStatus(adminStatus, `Verified ${user.username}.`, 'success');
+          await loadAdminUsers();
+        } catch (error) {
+          setStatus(adminStatus, error.message, 'error');
+        }
+      });
+
+      deleteButton.addEventListener('click', async () => {
+        if (!canManage) return;
+        const confirmed = window.confirm(`Delete ${user.username}? This cannot be undone.`);
+        if (!confirmed) return;
+        setStatus(adminStatus, `Deleting ${user.username}...`, 'info');
+        try {
+          await adminRequest('/api/v1/admin/users/delete', {
+            target_username: user.username,
+          });
+          setStatus(adminStatus, `Deleted ${user.username}.`, 'success');
+          await loadAdminUsers();
+        } catch (error) {
+          setStatus(adminStatus, error.message, 'error');
+        }
+      });
+
+      controls.appendChild(roleSelect);
+      controls.appendChild(verifyButton);
+      controls.appendChild(deleteButton);
+      card.appendChild(controls);
+
+      adminUsersList.appendChild(card);
+    });
+  }
+
+  async function loadAdminUsers() {
+    if (!adminPanel || !adminUsersList) return;
+    if (!state.role || (state.role !== 'admin' && state.role !== 'moderator')) return;
+    setStatus(adminStatus, 'Loading users...', 'info');
+    try {
+      const data = await adminRequest('/api/v1/admin/users/list', {});
+      renderAdminUsers(data.users || []);
+      setStatus(adminStatus, `Loaded ${data.users?.length || 0} users.`, 'success');
+    } catch (error) {
+      setStatus(adminStatus, error.message, 'error');
+    }
   }
 
   async function fileToBase64(file) {
@@ -403,7 +613,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const data = await request('/api/v1/auth/signin', { username, password_hash: passwordHash });
         state.username = username;
         state.password = password;
+        state.passwordHash = passwordHash;
         state.publicKey = String(data.public_key || '').trim().toLowerCase() || null;
+        state.role = String(data.role || 'user').trim().toLowerCase();
 
         const normalizedPublicKey = data.public_key || '';
         setProfilePicture(normalizedPublicKey);
@@ -422,10 +634,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (accountPanel) accountPanel.hidden = false;
         if (updatePanel) updatePanel.hidden = false;
         if (deletePanel) deletePanel.hidden = false;
+        if (adminPanel) {
+          adminPanel.hidden = !(state.role === 'admin' || state.role === 'moderator');
+        }
         setStatus(signinStatus, 'Signed in successfully.', 'success');
         const relayTextarea = relayForm?.querySelector('textarea[name="relays"]');
         if (relayTextarea) {
           relayTextarea.value = (data.relays || []).join('\n');
+        }
+        if (state.role === 'admin' || state.role === 'moderator') {
+          await loadAdminUsers();
         }
       } catch (error) {
         setStatus(signinStatus, error.message, 'error');
@@ -443,6 +661,12 @@ document.addEventListener('DOMContentLoaded', function () {
       } catch (error) {
         setStatus(signinStatus, 'Unable to copy key. Copy it manually.', 'error');
       }
+    });
+  }
+
+  if (refreshAdminUsers) {
+    refreshAdminUsers.addEventListener('click', async () => {
+      await loadAdminUsers();
     });
   }
 

@@ -424,6 +424,108 @@ h1 {
   background: rgba(8, 12, 20, 0.85);
 }
 
+.admin-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.admin-user {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.admin-user-main {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.admin-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.admin-avatar.placeholder {
+  background: linear-gradient(135deg, rgba(118, 228, 181, 0.25), rgba(255, 216, 107, 0.2));
+}
+
+.admin-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-name {
+  font-weight: 600;
+}
+
+.admin-sub {
+  color: var(--muted);
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.admin-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(118, 228, 181, 0.12);
+  color: var(--accent);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tag.status-unverified_email {
+  background: rgba(255, 216, 107, 0.18);
+  color: var(--accent-2);
+}
+
+.tag.status-active {
+  background: rgba(118, 228, 181, 0.18);
+  color: var(--accent);
+}
+
+.tag.status-disabled {
+  background: rgba(255, 107, 107, 0.2);
+  color: var(--danger);
+}
+
+.admin-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.role-select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(18, 24, 38, 0.8);
+  color: var(--text);
+}
+
+.admin-empty {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+}
+
 .mini-form {
   margin-top: 18px;
   padding-top: 18px;

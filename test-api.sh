@@ -7,7 +7,8 @@ set -uo pipefail
 BASE_URL="${NOAS_TEST_BASE_URL:-http://localhost:3000}"
 NOAS_TEST_PUBLIC_URL_MAP="${NOAS_TEST_PUBLIC_URL_MAP:-}"
 VERBOSE=false
-EXPECTED_TESTS=21
+EXPECTED_TESTS_BASE=21
+EXPECTED_TESTS=$EXPECTED_TESTS_BASE
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -16,6 +17,8 @@ SUMMARY_PRINTED=false
 SERVER_PID=""
 USE_EXISTING_SERVER="${NOAS_TEST_USE_EXISTING_SERVER:-true}"
 TEST_PORT="${NOAS_TEST_PORT:-3002}"
+ADMIN_TESTS_ENABLED=false
+ADMIN_VERIFY_TEST_ENABLED=false
 
 if [ -t 1 ]; then
   COLOR_RESET=$'\033[0m'
@@ -451,6 +454,7 @@ start_local_server_if_needed() {
   NODE_ENV=test \
   EMAIL_VERIFICATION_MODE=required_nip05_domains \
   NOAS_PUBLIC_URL_MAP="$NOAS_TEST_PUBLIC_URL_MAP" \
+  NOAS_ADMIN_USERS="$TEST_USER" \
   NOAS_LOAD_DOTENV=true \
   node src/index.js >"$startup_log_file" 2>&1 &
   SERVER_PID=$!
@@ -549,6 +553,12 @@ if [ -n "$RETURNED_PUBLIC_KEY" ] && [ -n "$RETURNED_PRIVATE_KEY_ENCRYPTED" ]; th
   pass_step "Sign in returned key material"
 else
   fail_step "Sign in failed" "$SIGNIN_RESPONSE"
+fi
+
+SIGNIN_ROLE=$(jq -r '.role // "user"' <<<"$SIGNIN_RESPONSE")
+if [ "$SIGNIN_ROLE" = "admin" ]; then
+  ADMIN_TESTS_ENABLED=true
+  EXPECTED_TESTS=$((EXPECTED_TESTS + 3))
 fi
 
 start_test "Sign In Returns Registered Relays"
@@ -657,6 +667,59 @@ if [ -n "$NIP46_BUNKER_URL" ] && printf '%s' "$NIP46_BUNKER_URL" | grep -q '^bun
   pass_step "NIP-46 connect returned a bunker URL"
 else
   fail_step "NIP-46 connect failed" "$NIP46_CONNECT_RESPONSE"
+fi
+
+if [ "$ADMIN_TESTS_ENABLED" = true ]; then
+  start_test "Admin User List"
+  ADMIN_LIST_RESPONSE=$(post_json "/admin/users/list" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\"}")
+  print_response "$ADMIN_LIST_RESPONSE"
+  if echo "$ADMIN_LIST_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true' && echo "$ADMIN_LIST_RESPONSE" | grep -q "\"$TEST_USER\""; then
+    pass_step "Admin list returned users"
+  else
+    fail_step "Admin list failed" "$ADMIN_LIST_RESPONSE"
+  fi
+
+  start_test "Admin Role Update"
+  ADMIN_ROLE_RESPONSE=$(post_json "/admin/users/role" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$TEST_USER_WITH_KEY\",\"new_role\":\"moderator\"}")
+  print_response "$ADMIN_ROLE_RESPONSE"
+  if echo "$ADMIN_ROLE_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    post_json "/admin/users/role" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$TEST_USER_WITH_KEY\",\"new_role\":\"user\"}" >/dev/null
+    pass_step "Admin updated a user role"
+  else
+    fail_step "Admin role update failed" "$ADMIN_ROLE_RESPONSE"
+  fi
+
+  ADMIN_VERIFY_USER="${TEST_USER}_pending"
+  ADMIN_VERIFY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$ADMIN_VERIFY_USER\",\"password\":\"$TEST_PASS\"}")
+  if ! echo "$ADMIN_VERIFY_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    fail_step "Admin verify setup failed" "$ADMIN_VERIFY_RESPONSE"
+  fi
+  ADMIN_VERIFY_STATUS=$(jq -r '.status // empty' <<<"$ADMIN_VERIFY_RESPONSE")
+  if [ "$ADMIN_VERIFY_STATUS" = "unverified_email" ]; then
+    EXPECTED_TESTS=$((EXPECTED_TESTS + 1))
+    start_test "Admin Verify Pending User"
+    ADMIN_VERIFY_ACTION_RESPONSE=$(post_json "/admin/users/verify" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$ADMIN_VERIFY_USER\"}")
+    print_response "$ADMIN_VERIFY_ACTION_RESPONSE"
+    if echo "$ADMIN_VERIFY_ACTION_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+      pass_step "Admin verified pending user"
+    else
+      fail_step "Admin verify failed" "$ADMIN_VERIFY_ACTION_RESPONSE"
+    fi
+  fi
+
+  start_test "Admin Delete User"
+  ADMIN_DELETE_USER="${TEST_USER}_delete"
+  ADMIN_DELETE_REGISTER=$(post_json "/auth/register" "{\"username\":\"$ADMIN_DELETE_USER\",\"password\":\"$TEST_PASS\"}")
+  if ! echo "$ADMIN_DELETE_REGISTER" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    fail_step "Admin delete setup failed" "$ADMIN_DELETE_REGISTER"
+  fi
+  ADMIN_DELETE_RESPONSE=$(post_json "/admin/users/delete" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$ADMIN_DELETE_USER\"}")
+  print_response "$ADMIN_DELETE_RESPONSE"
+  if echo "$ADMIN_DELETE_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    pass_step "Admin deleted user"
+  else
+    fail_step "Admin delete failed" "$ADMIN_DELETE_RESPONSE"
+  fi
 fi
 
 start_test "NIP-46 Nostrconnect"

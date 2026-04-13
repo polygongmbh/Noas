@@ -15,6 +15,12 @@ const NOSTR_USER_STATUSES = {
   DISABLED: 'disabled',
 };
 
+const NOSTR_USER_ROLES = {
+  ADMIN: 'admin',
+  MODERATOR: 'moderator',
+  USER: 'user',
+};
+
 function normalizeTenantDomain(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -55,6 +61,7 @@ export async function createUser({
     tenantDomain,
     status: NOSTR_USER_STATUSES.ACTIVE,
     verificationToken: null,
+    role: NOSTR_USER_ROLES.USER,
   });
   return mapLegacyUserRow(result);
 }
@@ -263,6 +270,7 @@ export async function createNostrUser({
   tenantDomain = '',
   status = NOSTR_USER_STATUSES.UNVERIFIED_EMAIL,
   verificationToken = null,
+  role = NOSTR_USER_ROLES.USER,
 }) {
   const result = await query(
     `INSERT INTO nostr_users (
@@ -275,9 +283,10 @@ export async function createNostrUser({
       registration_email,
       relays,
       status,
-      verification_token
+      verification_token,
+      role
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING *`,
     [
       normalizeTenantDomain(tenantDomain),
@@ -290,6 +299,7 @@ export async function createNostrUser({
       JSON.stringify(relays),
       status,
       verificationToken,
+      role,
     ]
   );
   return result.rows[0];
@@ -439,6 +449,83 @@ export async function updateNostrUser(username, updates, tenantDomain = null) {
     values
   );
   return result.rows[0];
+}
+
+/**
+ * Update nostr user role.
+ * @param {string} username
+ * @param {string} role
+ * @returns {Promise<Object|undefined>}
+ */
+export async function updateNostrUserRole(username, role, tenantDomain = null) {
+  const values = [role, username];
+  const tenant = normalizeTenantDomain(tenantDomain);
+  let whereClause = 'WHERE username = $2';
+  if (tenant) {
+    values.push(tenant);
+    whereClause += ' AND tenant_domain = $3';
+  }
+  const result = await query(
+    `UPDATE nostr_users
+     SET role = $1
+     ${whereClause}
+     RETURNING *`,
+    values
+  );
+  return result.rows[0];
+}
+
+/**
+ * Update nostr user status.
+ * @param {string} username
+ * @param {string} status
+ * @returns {Promise<Object|undefined>}
+ */
+export async function updateNostrUserStatus(username, status, tenantDomain = null) {
+  const values = [status, username];
+  const tenant = normalizeTenantDomain(tenantDomain);
+  let whereClause = 'WHERE username = $2';
+  if (tenant) {
+    values.push(tenant);
+    whereClause += ' AND tenant_domain = $3';
+  }
+  const result = await query(
+    `UPDATE nostr_users
+     SET status = $1
+     ${whereClause}
+     RETURNING *`,
+    values
+  );
+  return result.rows[0];
+}
+
+/**
+ * List nostr users for admin views.
+ * @param {Object} options
+ * @param {string} options.tenantDomain
+ * @param {number} options.limit
+ * @returns {Promise<Array>}
+ */
+export async function listNostrUsers({ tenantDomain = null, limit = 200 } = {}) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 200));
+  const params = [];
+  let sql = `SELECT username,
+                    registration_email,
+                    public_key,
+                    status,
+                    role,
+                    created_at
+             FROM nostr_users`;
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ` WHERE tenant_domain = $1`;
+  }
+  sql += ' ORDER BY created_at DESC';
+  params.push(safeLimit);
+  sql += ` LIMIT $${params.length}`;
+  const result = await query(sql, params);
+  return result.rows;
 }
 
 /**

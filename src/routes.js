@@ -11,6 +11,10 @@
  * - POST /verify-email - Legacy alias (deprecated)
  * - POST /api/v1/auth/update - Update user password or relays
  * - POST /api/v1/auth/delete - Delete user account
+ * - POST /api/v1/admin/users/list - Admin list of users
+ * - POST /api/v1/admin/users/verify - Admin verify a user
+ * - POST /api/v1/admin/users/role - Admin update role
+ * - POST /api/v1/admin/users/delete - Admin delete a user
  * - GET /api/v1/picture/:identifier - Serve profile picture by pubkey or username
  * - GET /.well-known/nostr.json - NIP-05 verification
  * - GET /api/v1/health - Health check endpoint
@@ -31,6 +35,9 @@ import {
   getActiveNostrUserByUsername,
   updateNostrUser,
   deleteNostrUser,
+  updateNostrUserRole,
+  updateNostrUserStatus,
+  listNostrUsers,
   getNostrUserProfilePictureByPublicKey,
   updateNostrUserProfilePicture,
 } from './db/users.js';
@@ -54,6 +61,16 @@ import { sendAllowPubkeyToRelays } from './nip86.js';
 export const router = express.Router();
 
 const MAX_PROFILE_PICTURE_BYTES = 2 * 1024 * 1024;
+const NOSTR_USER_ROLES = {
+  ADMIN: 'admin',
+  MODERATOR: 'moderator',
+  USER: 'user',
+};
+const ROLE_RANK = {
+  [NOSTR_USER_ROLES.ADMIN]: 3,
+  [NOSTR_USER_ROLES.MODERATOR]: 2,
+  [NOSTR_USER_ROLES.USER]: 1,
+};
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -197,6 +214,53 @@ function resolveRegistrationEmail({ mode, requestedEmail, username, tenantDomain
   }
 
   return { error: 'Invalid EMAIL_VERIFICATION_MODE value' };
+}
+
+function normalizeRole(value) {
+  const role = String(value || '').trim().toLowerCase();
+  if (role === NOSTR_USER_ROLES.ADMIN || role === NOSTR_USER_ROLES.MODERATOR || role === NOSTR_USER_ROLES.USER) {
+    return role;
+  }
+  return NOSTR_USER_ROLES.USER;
+}
+
+function isValidRole(value) {
+  const role = String(value || '').trim().toLowerCase();
+  return role === NOSTR_USER_ROLES.ADMIN || role === NOSTR_USER_ROLES.MODERATOR || role === NOSTR_USER_ROLES.USER;
+}
+
+function resolveInitialRole(username) {
+  const normalized = String(username || '').trim().toLowerCase();
+  if (!normalized) return NOSTR_USER_ROLES.USER;
+  if (config.adminUsernames.includes(normalized)) return NOSTR_USER_ROLES.ADMIN;
+  if (config.moderatorUsernames.includes(normalized)) return NOSTR_USER_ROLES.MODERATOR;
+  return NOSTR_USER_ROLES.USER;
+}
+
+function resolveConfiguredRole(username) {
+  const normalized = String(username || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (config.adminUsernames.includes(normalized)) return NOSTR_USER_ROLES.ADMIN;
+  if (config.moderatorUsernames.includes(normalized)) return NOSTR_USER_ROLES.MODERATOR;
+  return null;
+}
+
+function roleRank(role) {
+  return ROLE_RANK[normalizeRole(role)] || 0;
+}
+
+function canActOnUser(actor, target) {
+  if (!actor || !target) return false;
+  if (actor.username === target.username) return false;
+  return roleRank(actor.role) > roleRank(target.role);
+}
+
+async function maybePromoteConfiguredRole(user, tenantDomain) {
+  const desiredRole = resolveConfiguredRole(user?.username);
+  if (!desiredRole) return user;
+  if (roleRank(desiredRole) <= roleRank(user.role)) return user;
+  const updated = await updateNostrUserRole(user.username, desiredRole, tenantDomain);
+  return updated || user;
 }
 
 function isNostrUserVerificationExpired(user, expiryMinutes) {
@@ -476,6 +540,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         relays: requestedRelays || [],
         status: 'active',
         verificationToken: null,
+        role: resolveInitialRole(normalizedUsername),
       });
       if (profilePicture.hasPicture) {
         const updatedPicture = await updateNostrUserProfilePicture(
@@ -511,6 +576,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       relays: requestedRelays || [],
       status: 'unverified_email',
       verificationToken,
+      role: resolveInitialRole(normalizedUsername),
     });
     if (profilePicture.hasPicture) {
       const updatedPicture = await updateNostrUserProfilePicture(
@@ -802,6 +868,32 @@ function normalizePasswordHashFromSignin(passwordHash, password) {
   return createHash('sha256').update(raw).digest('hex');
 }
 
+async function resolveAdminActor(req) {
+  const tenant = resolveTenantContext(req);
+  const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
+  const normalizedPasswordHash = normalizePasswordHashFromSignin(
+    req.body?.password_hash,
+    req.body?.password
+  );
+  if (!normalizedUsername || !normalizedPasswordHash) {
+    return { error: { status: 400, message: 'Username and password are required' } };
+  }
+
+  const user = await getNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
+  if (!user || user.password_sha256 !== normalizedPasswordHash) {
+    return { error: { status: 401, message: 'Invalid credentials' } };
+  }
+  const elevatedUser = await maybePromoteConfiguredRole(user, tenant.nip05RootDomain);
+  if (elevatedUser.status !== 'active') {
+    return { error: { status: 403, message: 'Account is not active.' } };
+  }
+  if (![NOSTR_USER_ROLES.ADMIN, NOSTR_USER_ROLES.MODERATOR].includes(elevatedUser.role)) {
+    return { error: { status: 403, message: 'Admin access required' } };
+  }
+
+  return { actor: elevatedUser, tenant };
+}
+
 const handleSignin = async (req, res) => {
   try {
     const tenant = resolveTenantContext(req);
@@ -814,7 +906,7 @@ const handleSignin = async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
+    let user = await getNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -828,6 +920,8 @@ const handleSignin = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    user = await maybePromoteConfiguredRole(user, tenant.nip05RootDomain);
+
     const derivedEmail = normalizeEmail(buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain));
     res.json({
       success: true,
@@ -835,6 +929,7 @@ const handleSignin = async (req, res) => {
       public_key: user.public_key || null,
       relays: getDomainScopedRelays(derivedEmail, user.relays || []),
       status: user.status,
+      role: user.role || NOSTR_USER_ROLES.USER,
     });
   } catch (error) {
     console.error('Signin error:', error);
@@ -998,6 +1093,196 @@ const handleDelete = async (req, res) => {
   } catch (error) {
     console.error('Delete error:', error);
     res.status(500).json({ error: 'Account deletion failed' });
+  }
+};
+
+/**
+ * POST /api/v1/admin/users/list
+ * List users for admin and moderator accounts.
+ */
+const handleAdminUserList = async (req, res) => {
+  try {
+    const auth = await resolveAdminActor(req);
+    if (auth.error) {
+      return res.status(auth.error.status).json({ error: auth.error.message });
+    }
+    const { actor, tenant } = auth;
+    const limit = Math.max(1, Math.min(500, Number(req.body?.limit) || 200));
+    const users = await listNostrUsers({ tenantDomain: tenant.nip05RootDomain, limit });
+    const pictureBase = `${tenant.noasPublicUrl}${config.noasBasePath}/api/v1/picture/`;
+
+    const responseUsers = users.map((user) => ({
+      username: user.username,
+      registration_email: user.registration_email || null,
+      public_key: user.public_key || null,
+      status: user.status,
+      role: user.role || NOSTR_USER_ROLES.USER,
+      picture_url: user.public_key ? `${pictureBase}${user.public_key}` : null,
+      created_at: user.created_at,
+      can_manage: canActOnUser(actor, user),
+    }));
+
+    return res.json({
+      success: true,
+      users: responseUsers,
+      limit,
+    });
+  } catch (error) {
+    console.error('Admin list error:', error);
+    return res.status(500).json({ error: 'Admin list failed' });
+  }
+};
+
+/**
+ * POST /api/v1/admin/users/verify
+ * Verify a pending account (admin/moderator).
+ */
+const handleAdminUserVerify = async (req, res) => {
+  try {
+    const auth = await resolveAdminActor(req);
+    if (auth.error) {
+      return res.status(auth.error.status).json({ error: auth.error.message });
+    }
+    const { actor, tenant } = auth;
+    const targetUsername = String(req.body?.target_username || '').trim().toLowerCase();
+    const usernameCheck = validateUsername(targetUsername);
+    if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
+
+    const target = await getNostrUserByUsername(targetUsername, tenant.nip05RootDomain);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (!canActOnUser(actor, target)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    if (target.status === 'active') {
+      return res.status(409).json({ error: 'User already active' });
+    }
+    if (target.status === 'disabled') {
+      return res.status(409).json({ error: 'User is disabled' });
+    }
+
+    const updated = await updateNostrUserStatus(targetUsername, 'active', tenant.nip05RootDomain);
+
+    let relayAllow = {
+      attempted: false,
+      relays_total: config.nip86RelayUrls.length,
+      relays_success: 0,
+      relays_failed: 0,
+    };
+    if (config.nip86RelayUrls.length > 0 && updated?.public_key) {
+      const relayResults = await sendAllowPubkeyToRelays({
+        pubkey: updated.public_key,
+        relayUrls: config.nip86RelayUrls,
+        method: config.nip86Method,
+        timeoutMs: config.nip86TimeoutMs,
+      });
+      const relaysSuccess = relayResults.filter((result) => result.success).length;
+      relayAllow = {
+        attempted: true,
+        relays_total: relayResults.length,
+        relays_success: relaysSuccess,
+        relays_failed: relayResults.length - relaysSuccess,
+      };
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        username: updated.username,
+        status: updated.status,
+        role: updated.role || NOSTR_USER_ROLES.USER,
+      },
+      relay_allow: relayAllow,
+    });
+  } catch (error) {
+    console.error('Admin verify error:', error);
+    return res.status(500).json({ error: 'Admin verify failed' });
+  }
+};
+
+/**
+ * POST /api/v1/admin/users/role
+ * Update a user's role (admin only).
+ */
+const handleAdminUserRole = async (req, res) => {
+  try {
+    const auth = await resolveAdminActor(req);
+    if (auth.error) {
+      return res.status(auth.error.status).json({ error: auth.error.message });
+    }
+    const { actor, tenant } = auth;
+    if (actor.role !== NOSTR_USER_ROLES.ADMIN) {
+      return res.status(403).json({ error: 'Admin role required' });
+    }
+    const targetUsername = String(req.body?.target_username || '').trim().toLowerCase();
+    const rawRole = String(req.body?.new_role || '').trim().toLowerCase();
+    const usernameCheck = validateUsername(targetUsername);
+    if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
+    if (!rawRole) return res.status(400).json({ error: 'new_role is required' });
+    if (!isValidRole(rawRole)) {
+      return res.status(400).json({ error: 'new_role must be admin, moderator, or user' });
+    }
+    const requestedRole = normalizeRole(rawRole);
+
+    const target = await getNostrUserByUsername(targetUsername, tenant.nip05RootDomain);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (actor.username === target.username) {
+      return res.status(403).json({ error: 'Cannot change your own role' });
+    }
+
+    const updated = await updateNostrUserRole(targetUsername, requestedRole, tenant.nip05RootDomain);
+    return res.json({
+      success: true,
+      user: {
+        username: updated.username,
+        role: updated.role,
+        status: updated.status,
+      },
+    });
+  } catch (error) {
+    console.error('Admin role error:', error);
+    return res.status(500).json({ error: 'Admin role update failed' });
+  }
+};
+
+/**
+ * POST /api/v1/admin/users/delete
+ * Delete a user (admin/moderator).
+ */
+const handleAdminUserDelete = async (req, res) => {
+  try {
+    const auth = await resolveAdminActor(req);
+    if (auth.error) {
+      return res.status(auth.error.status).json({ error: auth.error.message });
+    }
+    const { actor, tenant } = auth;
+    const targetUsername = String(req.body?.target_username || '').trim().toLowerCase();
+    const usernameCheck = validateUsername(targetUsername);
+    if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
+
+    const target = await getNostrUserByUsername(targetUsername, tenant.nip05RootDomain);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (!canActOnUser(actor, target)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const deleted = await deleteNostrUser(targetUsername, tenant.nip05RootDomain);
+    return res.json({
+      success: true,
+      user: {
+        username: deleted.username,
+        role: deleted.role || NOSTR_USER_ROLES.USER,
+        status: deleted.status,
+      },
+    });
+  } catch (error) {
+    console.error('Admin delete error:', error);
+    return res.status(500).json({ error: 'Admin delete failed' });
   }
 };
 
@@ -1296,6 +1581,11 @@ router.post('/update', handleUpdate);
 
 router.post('/api/v1/auth/delete', handleDelete);
 router.post('/delete', handleDelete);
+
+router.post('/api/v1/admin/users/list', handleAdminUserList);
+router.post('/api/v1/admin/users/verify', handleAdminUserVerify);
+router.post('/api/v1/admin/users/role', handleAdminUserRole);
+router.post('/api/v1/admin/users/delete', handleAdminUserDelete);
 
 router.get('/api/v1/picture/:identifier', handlePictureFetch);
 router.get('/picture/:identifier', handlePictureFetch);
