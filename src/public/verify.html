@@ -7,26 +7,56 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="container">
-      <section class="panel">
-        <h1>Verify your identity</h1>
-        <p id="verifyMessage">Checking verification link...</p>
-        <p id="verifyNip05"></p>
-        <p id="verifyPublicKeyHex"></p>
-        <p id="verifyPublicKeyNpub"></p>
-        <p id="verifyExpiry"></p>
-        <form id="verifyForm" class="form" hidden>
-          <label>
-            Password
-            <input id="verifyPassword" type="password" autocomplete="current-password" required />
-          </label>
-          <button type="submit" class="btn">Verify</button>
-          <div id="verifyStatus" class="status"></div>
-        </form>
-        <button id="backToApp" class="btn" hidden>Back to app</button>
-        <button id="backToNoas" class="btn subtle" hidden>Back to Noas</button>
-      </section>
-    </main>
+    <div class="site-shell">
+      <header class="site-header">
+        <div class="site-header-inner">
+          <a class="logo-link" href="/">
+            <span class="logo-mark" aria-hidden="true">N</span>
+            <span class="logo-word">noas</span>
+          </a>
+        </div>
+      </header>
+
+      <main class="site-main main-centered">
+        <div class="auth-wrap">
+          <section class="card noas-glow noas-border-glow" id="verifyCard">
+            <header class="card-header">
+              <div style="display:flex;align-items:center;gap:0.5rem">
+                <h1 class="card-title">Verify account</h1>
+                <span id="verifyBadge" class="badge badge-outline">pending</span>
+              </div>
+              <p class="card-description" id="verifyMessage">Checking verification link...</p>
+            </header>
+
+            <div class="card-content stack-3">
+              <p id="verifyNip05" class="font-mono-key muted" style="margin:0"></p>
+              <p id="verifyPublicKeyHex" class="font-mono-key muted" style="margin:0"></p>
+              <p id="verifyPublicKeyNpub" class="font-mono-key muted" style="margin:0"></p>
+              <p id="verifyExpiry" class="muted" style="margin:0"></p>
+
+              <form id="verifyForm" class="form" hidden>
+                <label>
+                  Password
+                  <input id="verifyPassword" type="password" autocomplete="current-password" placeholder="••••••••" required />
+                </label>
+                <button type="submit" class="btn w-full">Verify & activate</button>
+                <div id="verifyStatus" class="status"></div>
+              </form>
+
+              <button id="backToApp" class="btn w-full" hidden>Back to app</button>
+              <button id="backToNoas" class="btn subtle w-full" hidden>Back to noas</button>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer-inner">
+          <span>noas · nostr authentication server</span>
+          <a href="/docs">API docs</a>
+        </div>
+      </footer>
+    </div>
 
     <script src="/nostr.js"></script>
     <script>
@@ -41,6 +71,7 @@
       const verifyPublicKeyHex = document.getElementById('verifyPublicKeyHex');
       const verifyPublicKeyNpub = document.getElementById('verifyPublicKeyNpub');
       const verifyExpiry = document.getElementById('verifyExpiry');
+      const verifyBadge = document.getElementById('verifyBadge');
       const backToApp = document.getElementById('backToApp');
       const backToNoas = document.getElementById('backToNoas');
       let verifiedNip05 = '';
@@ -139,6 +170,12 @@
         verifyStatus.dataset.type = type;
       }
 
+      function setVerifiedState(active) {
+        if (!verifyBadge) return;
+        verifyBadge.className = active ? 'badge badge-success' : 'badge badge-outline';
+        verifyBadge.textContent = active ? 'active' : 'pending';
+      }
+
       async function sha256Hex(text) {
         const bytes = new TextEncoder().encode(text);
         const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -156,10 +193,11 @@
         verifyPublicKeyHex.textContent = '';
         verifyPublicKeyNpub.textContent = '';
         verifyExpiry.textContent = '';
+        setVerifiedState(false);
       }
 
       function renderPreview(data) {
-        verifyMessage.textContent = 'Enter your password to activate this account.';
+        verifyMessage.textContent = 'Enter your password to activate your account.';
         verifiedNip05 = String(data.nip05 || '').trim();
         verifiedEmail = String(data.registration_email || '').trim();
         verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
@@ -175,6 +213,7 @@
           verifyExpiry.textContent = `Expires in about ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}.`;
         }
         verifyForm.hidden = false;
+        setVerifiedState(false);
       }
 
       async function loadPreview() {
@@ -220,6 +259,8 @@
             throw new Error(data.error || 'Verification failed.');
           }
           setStatus('Account verified. You can now sign in.', 'success');
+          verifyMessage.textContent = 'Your NIP-05 identity is live.';
+          setVerifiedState(true);
           if (redirect && !isTrustedRedirect(redirect)) {
             backToApp.hidden = false;
             backToApp.textContent = 'Continue to destination';

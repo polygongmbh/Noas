@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
+  const AUTH_SESSION_KEY = 'noas_auth_session_v1';
   const state = {
     username: null,
     password: null,
@@ -14,6 +15,9 @@ document.addEventListener('DOMContentLoaded', function () {
   };
 
   const signinForm = document.getElementById('signinForm');
+  const portalIdentity = document.getElementById('portalIdentity');
+  const portalStatusBadge = document.getElementById('portalStatusBadge');
+  const portalTabs = document.getElementById('portalTabs');
   const credentialsForm = document.getElementById('credentialsForm');
   const relayForm = document.getElementById('relayForm');
   const deleteForm = document.getElementById('deleteForm');
@@ -41,6 +45,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const pictureForm = document.getElementById('pictureForm');
   const profilePictureInput = document.getElementById('profilePictureInput');
   const deleteConfirmUsernameInput = deleteForm?.querySelector('input[name="confirm_username"]');
+  const deleteSavedKeyInput = deleteForm?.querySelector('input[name="saved_key"]');
+  const deleteSubmitButton = document.getElementById('deleteSubmitButton');
+  const deleteUsernamePrompt = document.getElementById('deleteUsernamePrompt');
 
   const signupStartForm = document.getElementById('signupStartForm');
   const signupUsername = document.getElementById('signupUsername');
@@ -62,6 +69,63 @@ document.addEventListener('DOMContentLoaded', function () {
   const resendStatus = document.getElementById('resendStatus');
   const noasVersion = document.getElementById('noasVersion');
   const noasVersionFooter = document.getElementById('noasVersionFooter');
+  const signOutLink = document.getElementById('signOutLink');
+  const homeAuthSignIn = document.getElementById('homeAuthSignIn');
+  const homeAuthRegister = document.getElementById('homeAuthRegister');
+  const homeShowRegister = document.getElementById('homeShowRegister');
+  const homeShowSignIn = document.getElementById('homeShowSignIn');
+  const homeAdvancedToggle = document.getElementById('homeAdvancedToggle');
+  const homeAdvancedPanel = document.getElementById('homeAdvancedPanel');
+  const registerAdvancedToggle = document.getElementById('registerAdvancedToggle');
+  const registerAdvancedPanel = document.getElementById('registerAdvancedPanel');
+
+  function updateDeleteGuardState() {
+    if (!deleteSubmitButton || !deleteForm) return;
+    const confirmUsername = String(deleteConfirmUsernameInput?.value || '').trim().toLowerCase();
+    const expectedUsername = String(state.username || '').trim().toLowerCase();
+    const savedKeyConfirmed = Boolean(deleteSavedKeyInput?.checked);
+    deleteSubmitButton.disabled = !(savedKeyConfirmed && confirmUsername && confirmUsername === expectedUsername);
+  }
+
+  function persistAuthSession() {
+    if (!state.username || !state.passwordHash) return;
+    try {
+      window.sessionStorage.setItem(
+        AUTH_SESSION_KEY,
+        JSON.stringify({
+          username: state.username,
+          password: state.password,
+          password_hash: state.passwordHash,
+        })
+      );
+    } catch {
+      // Non-blocking fallback.
+    }
+  }
+
+  function readAuthSession() {
+    try {
+      const raw = window.sessionStorage.getItem(AUTH_SESSION_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return {
+        username: String(parsed.username || '').trim().toLowerCase(),
+        password: String(parsed.password || ''),
+        password_hash: String(parsed.password_hash || '').trim().toLowerCase(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function clearAuthSession() {
+    try {
+      window.sessionStorage.removeItem(AUTH_SESSION_KEY);
+    } catch {
+      // Non-blocking fallback.
+    }
+  }
 
   function getDerivedSignupEmail(usernameRaw) {
     const username = String(usernameRaw || '').trim().toLowerCase();
@@ -171,6 +235,54 @@ document.addEventListener('DOMContentLoaded', function () {
   syncSignupEmailLockState();
   syncVerificationVisibility();
   loadNoasVersion();
+
+  if (homeShowRegister && homeAuthSignIn && homeAuthRegister) {
+    homeShowRegister.addEventListener('click', () => {
+      homeAuthSignIn.hidden = true;
+      homeAuthRegister.hidden = false;
+    });
+  }
+
+  if (homeShowSignIn && homeAuthSignIn && homeAuthRegister) {
+    homeShowSignIn.addEventListener('click', () => {
+      homeAuthRegister.hidden = true;
+      homeAuthSignIn.hidden = false;
+    });
+  }
+
+  if (homeAdvancedToggle && homeAdvancedPanel) {
+    homeAdvancedToggle.addEventListener('click', () => {
+      const opening = homeAdvancedPanel.hidden;
+      homeAdvancedPanel.hidden = !opening;
+      homeAdvancedToggle.textContent = opening ? '▾ Hide advanced options' : '▸ Show advanced options';
+    });
+  }
+
+  if (registerAdvancedToggle && registerAdvancedPanel) {
+    registerAdvancedToggle.addEventListener('click', () => {
+      const opening = registerAdvancedPanel.hidden;
+      registerAdvancedPanel.hidden = !opening;
+      registerAdvancedToggle.textContent = opening ? '▾ Hide advanced options' : '▸ Show advanced options';
+    });
+  }
+
+  if (portalTabs) {
+    const tabTriggers = Array.from(portalTabs.querySelectorAll('[data-tab-target]'));
+    const tabPanels = Array.from(portalTabs.querySelectorAll('[data-tab-panel]'));
+    const activateTab = (target) => {
+      tabTriggers.forEach((trigger) => {
+        const active = trigger.dataset.tabTarget === target;
+        trigger.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      tabPanels.forEach((panel) => {
+        panel.hidden = panel.dataset.tabPanel !== target;
+      });
+    };
+    tabTriggers.forEach((trigger) => {
+      trigger.addEventListener('click', () => activateTab(trigger.dataset.tabTarget));
+    });
+    activateTab('overview');
+  }
 
   function setStatus(el, message, type = 'info') {
     if (!el) return;
@@ -438,6 +550,58 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  async function applySignedInState({ username, password, passwordHash, data }) {
+    state.username = username;
+    state.password = password;
+    state.passwordHash = passwordHash;
+    state.publicKey = String(data.public_key || '').trim().toLowerCase() || null;
+    state.role = String(data.role || 'user').trim().toLowerCase();
+
+    if (portalIdentity) {
+      const nip05Domain = String(state.nip05Domain || window.location.hostname || '').trim();
+      portalIdentity.textContent = state.username && nip05Domain
+        ? `${state.username}@${nip05Domain}`
+        : String(state.username || '');
+    }
+    if (portalStatusBadge) {
+      portalStatusBadge.className = 'badge badge-success';
+      portalStatusBadge.textContent = 'verified';
+    }
+    if (deleteUsernamePrompt && state.username) {
+      deleteUsernamePrompt.textContent = state.username;
+    }
+    updateDeleteGuardState();
+
+    const normalizedPublicKey = data.public_key || '';
+    setProfilePicture(normalizedPublicKey);
+    if (publicKeyEl) {
+      publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || '—';
+    }
+    if (encryptedKeyEl) {
+      encryptedKeyEl.textContent = data.private_key_encrypted || '—';
+    }
+    if (privateKeyEl) {
+      privateKeyEl.textContent = '—';
+    }
+    if (relayListEl) {
+      relayListEl.textContent = (data.relays || []).join(', ') || '—';
+    }
+    if (accountPanel) accountPanel.hidden = false;
+    if (updatePanel) updatePanel.hidden = false;
+    if (deletePanel) deletePanel.hidden = false;
+    if (adminPanel) {
+      adminPanel.hidden = !(state.role === 'admin' || state.role === 'moderator');
+    }
+    const relayTextarea = relayForm?.querySelector('textarea[name="relays"]');
+    if (relayTextarea) {
+      relayTextarea.value = (data.relays || []).join('\n');
+    }
+    persistAuthSession();
+    if (state.role === 'admin' || state.role === 'moderator') {
+      await loadAdminUsers();
+    }
+  }
+
   async function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -605,51 +769,61 @@ document.addEventListener('DOMContentLoaded', function () {
       event.preventDefault();
       setStatus(signinStatus, 'Signing in...');
       const formData = new FormData(signinForm);
-      const username = formData.get('username');
-      const password = formData.get('password');
+      const username = String(formData.get('username') || '').trim().toLowerCase();
+      const password = String(formData.get('password') || '');
 
       try {
         const passwordHash = await sha256Hex(password);
         const data = await request('/api/v1/auth/signin', { username, password_hash: passwordHash });
-        state.username = username;
-        state.password = password;
-        state.passwordHash = passwordHash;
-        state.publicKey = String(data.public_key || '').trim().toLowerCase() || null;
-        state.role = String(data.role || 'user').trim().toLowerCase();
-
-        const normalizedPublicKey = data.public_key || '';
-        setProfilePicture(normalizedPublicKey);
-        if (publicKeyEl) {
-          publicKeyEl.textContent = window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || '—';
-        }
-        if (encryptedKeyEl) {
-          encryptedKeyEl.textContent = data.private_key_encrypted || '—';
-        }
-        if (privateKeyEl) {
-          privateKeyEl.textContent = '—';
-        }
-        if (relayListEl) {
-          relayListEl.textContent = (data.relays || []).join(', ') || '—';
-        }
-        if (accountPanel) accountPanel.hidden = false;
-        if (updatePanel) updatePanel.hidden = false;
-        if (deletePanel) deletePanel.hidden = false;
-        if (adminPanel) {
-          adminPanel.hidden = !(state.role === 'admin' || state.role === 'moderator');
+        await applySignedInState({ username, password, passwordHash, data });
+        const isHomePage = window.location.pathname === '/' || window.location.pathname === '/index.html';
+        if (isHomePage && !accountPanel) {
+          window.location.assign('/portal');
+          return;
         }
         setStatus(signinStatus, 'Signed in successfully.', 'success');
-        const relayTextarea = relayForm?.querySelector('textarea[name="relays"]');
-        if (relayTextarea) {
-          relayTextarea.value = (data.relays || []).join('\n');
-        }
-        if (state.role === 'admin' || state.role === 'moderator') {
-          await loadAdminUsers();
-        }
       } catch (error) {
         setStatus(signinStatus, error.message, 'error');
       }
     });
   }
+
+  async function bootstrapPortalSession() {
+    if (!accountPanel) return;
+    if (signinForm) return;
+    const session = readAuthSession();
+    if (!session?.username || !session?.password_hash) {
+      const homeUrl = new URL('/', window.location.origin);
+      homeUrl.searchParams.set('signin_required', '1');
+      window.location.assign(homeUrl.toString());
+      return;
+    }
+    try {
+      const data = await request('/api/v1/auth/signin', {
+        username: session.username,
+        password_hash: session.password_hash,
+      });
+      await applySignedInState({
+        username: session.username,
+        password: session.password || '',
+        passwordHash: session.password_hash,
+        data,
+      });
+    } catch {
+      clearAuthSession();
+      const homeUrl = new URL('/', window.location.origin);
+      homeUrl.searchParams.set('signin_required', '1');
+      window.location.assign(homeUrl.toString());
+    }
+  }
+
+  if (signOutLink) {
+    signOutLink.addEventListener('click', () => {
+      clearAuthSession();
+    });
+  }
+
+  bootstrapPortalSession();
 
   if (copyEncrypted && encryptedKeyEl) {
     copyEncrypted.addEventListener('click', async () => {
@@ -859,6 +1033,8 @@ document.addEventListener('DOMContentLoaded', function () {
   deleteConfirmUsernameInput?.addEventListener('drop', (event) => {
     event.preventDefault();
   });
+  deleteConfirmUsernameInput?.addEventListener('input', updateDeleteGuardState);
+  deleteSavedKeyInput?.addEventListener('change', updateDeleteGuardState);
 
   if (deleteForm) {
     deleteForm.addEventListener('submit', async (event) => {
@@ -898,10 +1074,21 @@ document.addEventListener('DOMContentLoaded', function () {
         state.username = null;
         state.password = null;
         state.publicKey = null;
+        state.passwordHash = null;
+        state.role = null;
+        clearAuthSession();
+        if (portalIdentity) {
+          portalIdentity.textContent = 'Loading account…';
+        }
+        if (portalStatusBadge) {
+          portalStatusBadge.className = 'badge badge-outline';
+          portalStatusBadge.textContent = 'pending';
+        }
         clearProfilePicture();
         if (privateKeyEl) {
           privateKeyEl.textContent = '—';
         }
+        updateDeleteGuardState();
       } catch (error) {
         setStatus(deleteStatus, error.message, 'error');
       }
@@ -909,6 +1096,12 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('signin_required') === '1') {
+    setStatus(signinStatus, 'Please sign in to open your account portal.', 'info');
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('signin_required');
+    window.history.replaceState({}, '', cleanUrl.toString());
+  }
   if (urlParams.get('verified') === '1') {
     const nip05 = (urlParams.get('nip05') || '').trim();
     const email = (urlParams.get('email') || '').trim();

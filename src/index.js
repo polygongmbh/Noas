@@ -54,6 +54,17 @@ app.get('/verify', (req, res) => {
 // Mount all API routes
 app.use(router);
 
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/.well-known/')) {
+    return next();
+  }
+  return res.status(404).sendFile(join(__dirname, 'public', '404.html'));
+});
+
+app.use((req, res) => {
+  return res.status(404).json({ error: 'Not found' });
+});
+
 // Start server if not in test mode
 if (!config.isTest) {
   const server = app.listen(config.port, () => {

@@ -20,62 +20,91 @@
     </script>
   </head>
   <body>
-    <div class="bg" aria-hidden="true"></div>
-    <main class="container">
-      <nav class="page-nav" aria-label="Noas pages">
-        <a href="/">Home</a>
-        <a href="/register">Register</a>
-        <a href="/login">Sign in</a>
-        <a href="/docs">Docs</a>
-      </nav>
-
-      <header class="hero">
-        <div class="badge">Noas · Nostr Account Service · <span id="noasVersion">v—</span></div>
-        <h1>Simple account storage for Nostr identities.</h1>
-        <p class="lead">
-          Noas is primarily an API that stores NIP-49 encrypted keys, relay lists,
-          and profile images. Keep your private key safe and encrypted, retrieve it
-          when you need it, and manage your account in one place.
-        </p>
-        <div class="actions">
-          <a class="btn" href="/health">API status</a>
-          <a class="btn subtle" href="/register">Register</a>
-          <a class="btn subtle" href="/login">Sign in</a>
-        </div>
-        <div class="warning">
-          Important: Save your private key somewhere safe. Noas only stores your
-          encrypted key and cannot recover a lost private key.
+    <div class="site-shell">
+      <header class="site-header">
+        <div class="site-header-inner">
+          <a class="logo-link" href="/">
+            <span class="logo-mark" aria-hidden="true">N</span>
+            <span class="logo-word">noas</span>
+          </a>
         </div>
       </header>
 
-      <section class="page">
-        <header class="page-header">
-          <div>
-            <span class="page-kicker">Quick start</span>
-            <h2>Choose your path</h2>
-            <p>Register a Nostr identity, sign in to retrieve keys, and manage updates in one place.</p>
-          </div>
-        </header>
-        <div class="page-grid">
-          <a class="page-card" href="/register">
-            <h3>Register</h3>
-            <p>Create a new account and receive a verification link.</p>
-          </a>
-          <a class="page-card" href="/login">
-            <h3>Sign in</h3>
-            <p>Unlock your encrypted private key and relay list.</p>
-          </a>
-          <a class="page-card" href="/docs">
-            <h3>Docs</h3>
-            <p>Endpoints and example payloads in one place.</p>
-          </a>
+      <main class="site-main main-centered">
+        <div class="page-title-wrap">
+          <h1 class="page-title">noas</h1>
+          <p class="page-subtitle">
+            Secure, API-first Nostr account service.<br />
+            NIP-05 verification · encrypted key storage · relay management.
+          </p>
         </div>
-      </section>
 
-      <footer class="footer">
-        <span class="footer-summary">API first · minimal · secure · <span id="noasVersionFooter">v—</span></span>
+        <div class="auth-wrap">
+          <section class="card noas-glow noas-border-glow" id="homeAuthSignIn">
+            <header class="card-header">
+              <h2 class="card-title">Sign in</h2>
+              <p class="card-description">Access your Nostr account</p>
+            </header>
+            <form id="signinForm" class="card-content form">
+              <label class="field">
+                <span class="label">Username</span>
+                <input type="text" name="username" autocomplete="username" placeholder="satoshi" required />
+              </label>
+              <label class="field">
+                <span class="label">Password</span>
+                <input type="password" name="password" autocomplete="current-password" placeholder="••••••••" required />
+              </label>
+              <button type="submit" class="btn w-full">Sign in</button>
+              <div id="signinStatus" class="status" role="status"></div>
+              <p class="auth-toggle">No account? <button id="homeShowRegister" class="advanced-toggle" type="button">Register</button></p>
+            </form>
+          </section>
+
+          <section class="card noas-glow noas-border-glow" id="homeAuthRegister" hidden>
+            <header class="card-header">
+              <h2 class="card-title">Register</h2>
+              <p class="card-description">Create your Nostr identity</p>
+            </header>
+            <div class="card-content">
+              <label class="field">
+                <span class="label">Username</span>
+                <input type="text" placeholder="satoshi" />
+              </label>
+              <label class="field">
+                <span class="label">Email</span>
+                <input type="email" placeholder="you@example.com" />
+              </label>
+              <label class="field">
+                <span class="label">Password</span>
+                <input type="password" placeholder="••••••••" />
+              </label>
+              <button type="button" id="homeAdvancedToggle" class="advanced-toggle">▸ Show advanced options</button>
+              <div class="advanced-panel" id="homeAdvancedPanel" hidden>
+                <label class="field">
+                  <span class="label small-label">Public key (npub)</span>
+                  <input type="text" class="form-mono" placeholder="npub1..." />
+                </label>
+                <label class="field">
+                  <span class="label small-label">Encrypted private key (NIP-49)</span>
+                  <input type="text" class="form-mono" placeholder="ncryptsec1..." />
+                </label>
+                <p class="hint">Leave blank to let noas generate a keypair for you.</p>
+              </div>
+              <div class="warning-banner">⚠ Your private key is encrypted with your password. If you lose your password, your key is irrecoverable.</div>
+              <a class="btn w-full" href="/register">Create account</a>
+              <p class="auth-toggle">Already registered? <button id="homeShowSignIn" class="advanced-toggle" type="button">Sign in</button></p>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer-inner">
+          <span>noas · nostr authentication server</span>
+          <a href="/docs">API docs</a>
+        </div>
       </footer>
-    </main>
+    </div>
 
     <script src="/nostr.js" defer></script>
     <script src="/app.js" defer></script>
