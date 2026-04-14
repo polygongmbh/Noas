@@ -221,6 +221,7 @@ a {
 .stack-4 {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .stack-3 {
@@ -233,6 +234,7 @@ a {
   gap: 0.4rem;
   color: var(--secondary-foreground);
   font-size: 0.875rem;
+  min-width: 0;
 }
 
 .field label,
@@ -382,6 +384,9 @@ button:disabled {
   min-height: 1rem;
   font-size: 0.8rem;
   color: var(--muted-foreground);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .status[data-type="success"] {

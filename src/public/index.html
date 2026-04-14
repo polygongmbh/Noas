@@ -65,35 +65,45 @@
               <h2 class="card-title">Register</h2>
               <p class="card-description">Create your Nostr identity</p>
             </header>
-            <div class="card-content">
+            <form id="signupStartForm" class="card-content form">
               <label class="field">
                 <span class="label">Username</span>
-                <input type="text" placeholder="satoshi" />
+                <input type="text" id="signupUsername" placeholder="satoshi" required />
               </label>
-              <label class="field">
+              <label class="field" id="signupEmailLabel">
                 <span class="label">Email</span>
-                <input type="email" placeholder="you@example.com" />
+                <input type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email" />
+                <small id="signupEmailHint">Used for account and verification emails.</small>
               </label>
               <label class="field">
                 <span class="label">Password</span>
-                <input type="password" placeholder="••••••••" />
+                <input type="password" id="signupPassword" placeholder="••••••••" autocomplete="new-password" required />
               </label>
-              <button type="button" id="homeAdvancedToggle" class="advanced-toggle">▸ Show advanced options</button>
-              <div class="advanced-panel" id="homeAdvancedPanel" hidden>
+              <label class="field">
+                <span class="label">Confirm password</span>
+                <input type="password" id="signupPasswordConfirm" placeholder="••••••••" autocomplete="new-password" required />
+              </label>
+              <button type="button" id="registerAdvancedToggle" class="advanced-toggle">▸ Show advanced options</button>
+              <div class="advanced-panel" id="registerAdvancedPanel" hidden>
                 <label class="field">
                   <span class="label small-label">Public key (npub)</span>
-                  <input type="text" class="form-mono" placeholder="npub1..." />
+                  <input type="text" id="signupPublicKey" class="form-mono" placeholder="npub1..." />
                 </label>
                 <label class="field">
                   <span class="label small-label">Encrypted private key (NIP-49)</span>
-                  <input type="text" class="form-mono" placeholder="ncryptsec1..." />
+                  <input type="text" id="signupPrivateKeyEncrypted" class="form-mono" placeholder="ncryptsec1..." />
+                </label>
+                <label class="field">
+                  <span class="label small-label">Profile picture (optional)</span>
+                  <input type="file" id="signupProfilePictureInput" accept="image/*" />
                 </label>
                 <p class="hint">Leave blank to let noas generate a keypair for you.</p>
               </div>
               <div class="warning-banner">⚠ Your private key is encrypted with your password. If you lose your password, your key is irrecoverable.</div>
-              <a class="btn w-full" href="/register">Create account</a>
+              <button type="submit" class="btn w-full" id="signupSubmit">Create account</button>
+              <div id="signupStatus" class="status" role="status"></div>
               <p class="auth-toggle">Already registered? <button id="homeShowSignIn" class="advanced-toggle" type="button">Sign in</button></p>
-            </div>
+            </form>
           </section>
         </div>
       </main>
