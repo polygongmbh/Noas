@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', function () {
   };
 
   const signinForm = document.getElementById('signinForm');
+  const homeUnifiedAuthForm = document.getElementById('homeUnifiedAuthForm');
   const portalIdentity = document.getElementById('portalIdentity');
   const portalStatusBadge = document.getElementById('portalStatusBadge');
   const portalTabs = document.getElementById('portalTabs');
@@ -70,14 +71,18 @@ document.addEventListener('DOMContentLoaded', function () {
   const noasVersion = document.getElementById('noasVersion');
   const noasVersionFooter = document.getElementById('noasVersionFooter');
   const signOutLink = document.getElementById('signOutLink');
-  const homeAuthSignIn = document.getElementById('homeAuthSignIn');
-  const homeAuthRegister = document.getElementById('homeAuthRegister');
+  const homeAuthTitle = document.getElementById('homeAuthTitle');
+  const homeAuthDescription = document.getElementById('homeAuthDescription');
+  const homeAuthSubmit = document.getElementById('homeAuthSubmit');
+  const homeAuthToggleSignIn = document.getElementById('homeAuthToggleSignIn');
+  const homeAuthToggleRegister = document.getElementById('homeAuthToggleRegister');
+  const homeConfirmPasswordField = document.getElementById('homeConfirmPasswordField');
+  const homeRegisterWarning = document.getElementById('homeRegisterWarning');
   const homeShowRegister = document.getElementById('homeShowRegister');
   const homeShowSignIn = document.getElementById('homeShowSignIn');
-  const homeAdvancedToggle = document.getElementById('homeAdvancedToggle');
-  const homeAdvancedPanel = document.getElementById('homeAdvancedPanel');
   const registerAdvancedToggle = document.getElementById('registerAdvancedToggle');
   const registerAdvancedPanel = document.getElementById('registerAdvancedPanel');
+  const isUnifiedHomeAuth = Boolean(homeUnifiedAuthForm);
 
   function updateDeleteGuardState() {
     if (!deleteSubmitButton || !deleteForm) return;
@@ -127,6 +132,58 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  function isUnifiedHomeMode(mode) {
+    if (!homeUnifiedAuthForm) return false;
+    return String(homeUnifiedAuthForm.dataset.authMode || 'signin').trim().toLowerCase() === mode;
+  }
+
+  function setUnifiedHomeMode(mode) {
+    if (!homeUnifiedAuthForm) return;
+    const normalizedMode = mode === 'register' ? 'register' : 'signin';
+    homeUnifiedAuthForm.dataset.authMode = normalizedMode;
+
+    const isRegisterMode = normalizedMode === 'register';
+    if (homeAuthTitle) homeAuthTitle.textContent = isRegisterMode ? 'Register' : 'Sign in';
+    if (homeAuthDescription) {
+      homeAuthDescription.textContent = isRegisterMode
+        ? 'Create your Nostr identity'
+        : 'Access your Nostr account';
+    }
+    if (homeAuthSubmit) {
+      homeAuthSubmit.textContent = isRegisterMode
+        ? (state.emailVerificationEnabled ? 'Register & Send Verification' : 'Register')
+        : 'Sign in';
+    }
+    if (homeAuthToggleSignIn) homeAuthToggleSignIn.hidden = isRegisterMode;
+    if (homeAuthToggleRegister) homeAuthToggleRegister.hidden = !isRegisterMode;
+    if (signupEmailLabel) signupEmailLabel.hidden = !isRegisterMode;
+    if (homeConfirmPasswordField) homeConfirmPasswordField.hidden = !isRegisterMode;
+    if (registerAdvancedToggle) registerAdvancedToggle.hidden = !isRegisterMode;
+    if (homeRegisterWarning) homeRegisterWarning.hidden = !isRegisterMode;
+    if (signupStatus) signupStatus.hidden = !isRegisterMode;
+    if (signinStatus) signinStatus.hidden = isRegisterMode;
+    if (signupPassword) {
+      signupPassword.setAttribute('autocomplete', isRegisterMode ? 'new-password' : 'current-password');
+    }
+    if (signupEmail) signupEmail.disabled = !isRegisterMode;
+    if (signupPasswordConfirm) {
+      signupPasswordConfirm.disabled = !isRegisterMode;
+      signupPasswordConfirm.required = isRegisterMode;
+    }
+    if (signupPublicKey) signupPublicKey.disabled = !isRegisterMode;
+    if (signupPrivateKeyEncrypted) signupPrivateKeyEncrypted.disabled = !isRegisterMode;
+    if (signupProfilePictureInput) signupProfilePictureInput.disabled = !isRegisterMode;
+    if (!isRegisterMode && registerAdvancedPanel) {
+      registerAdvancedPanel.hidden = true;
+    }
+    if (!isRegisterMode && registerAdvancedToggle) {
+      registerAdvancedToggle.textContent = '▸ Show advanced options';
+    }
+    setStatus(signupStatus, '', 'info');
+    setStatus(signinStatus, '', 'info');
+    syncSignupEmailLockState();
+  }
+
   function getDerivedSignupEmail(usernameRaw) {
     const username = String(usernameRaw || '').trim().toLowerCase();
     const domain = String(state.nip05Domain || '').trim().toLowerCase();
@@ -136,6 +193,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function syncSignupEmailLockState() {
     if (!signupEmail || !signupEmailLabel || !signupEmailHint) return;
+    if (isUnifiedHomeAuth && !isUnifiedHomeMode('register')) {
+      signupEmail.readOnly = false;
+      signupEmail.required = false;
+      signupEmail.dataset.locked = 'false';
+      signupEmail.removeAttribute('title');
+      signupEmailHint.textContent = 'Used for account and verification emails.';
+      signupEmailLabel.classList.remove('email-lock-hint');
+      return;
+    }
     const verificationMode = String(state.emailVerificationMode || 'off').trim().toLowerCase();
     const lockEmail = verificationMode === 'required_nip05_domains';
     const requireEmail = verificationMode === 'required' || lockEmail;
@@ -178,6 +244,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     if (signupSubmit) {
       signupSubmit.textContent = state.emailVerificationEnabled
+        ? 'Register & Send Verification'
+        : 'Register';
+    }
+    if (homeUnifiedAuthForm && homeAuthSubmit && isUnifiedHomeMode('register')) {
+      homeAuthSubmit.textContent = state.emailVerificationEnabled
         ? 'Register & Send Verification'
         : 'Register';
     }
@@ -236,25 +307,19 @@ document.addEventListener('DOMContentLoaded', function () {
   syncVerificationVisibility();
   loadNoasVersion();
 
-  if (homeShowRegister && homeAuthSignIn && homeAuthRegister) {
+  if (homeUnifiedAuthForm) {
+    setUnifiedHomeMode('signin');
+  }
+
+  if (homeShowRegister && homeUnifiedAuthForm) {
     homeShowRegister.addEventListener('click', () => {
-      homeAuthSignIn.hidden = true;
-      homeAuthRegister.hidden = false;
+      setUnifiedHomeMode('register');
     });
   }
 
-  if (homeShowSignIn && homeAuthSignIn && homeAuthRegister) {
+  if (homeShowSignIn && homeUnifiedAuthForm) {
     homeShowSignIn.addEventListener('click', () => {
-      homeAuthRegister.hidden = true;
-      homeAuthSignIn.hidden = false;
-    });
-  }
-
-  if (homeAdvancedToggle && homeAdvancedPanel) {
-    homeAdvancedToggle.addEventListener('click', () => {
-      const opening = homeAdvancedPanel.hidden;
-      homeAdvancedPanel.hidden = !opening;
-      homeAdvancedToggle.textContent = opening ? '▾ Hide advanced options' : '▸ Show advanced options';
+      setUnifiedHomeMode('signin');
     });
   }
 
@@ -602,6 +667,33 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  async function autoSigninAndRedirectToPortal({ username, password, statusElement, prefixMessage = '' }) {
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const rawPassword = String(password || '');
+    if (!normalizedUsername || !rawPassword) return false;
+    try {
+      const passwordHash = await sha256Hex(rawPassword);
+      const data = await request('/api/v1/auth/signin', {
+        username: normalizedUsername,
+        password_hash: passwordHash,
+      });
+      await applySignedInState({
+        username: normalizedUsername,
+        password: rawPassword,
+        passwordHash,
+        data,
+      });
+      window.location.assign('/portal');
+      return true;
+    } catch (error) {
+      if (statusElement) {
+        const prefix = prefixMessage ? `${prefixMessage} ` : '';
+        setStatus(statusElement, `${prefix}${error.message}`, 'error');
+      }
+      return false;
+    }
+  }
+
   async function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -687,7 +779,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return true;
   }
 
-  if (signupStartForm) {
+  if (signupStartForm && !isUnifiedHomeAuth) {
     signupStartForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!validateSignupStartForm()) return;
@@ -721,6 +813,17 @@ document.addEventListener('DOMContentLoaded', function () {
         state.signupUsername = username;
         if (resendUsername && !resendUsername.value) {
           resendUsername.value = username;
+        }
+        const isActiveNow = String(data.status || '').trim().toLowerCase() === 'active' || !state.emailVerificationEnabled;
+        if (isActiveNow) {
+          setStatus(signupStatus, 'Account is active. Signing you in...', 'info');
+          const signedIn = await autoSigninAndRedirectToPortal({
+            username,
+            password,
+            statusElement: signupStatus,
+            prefixMessage: 'Registration succeeded but auto sign-in failed.',
+          });
+          if (signedIn) return;
         }
         const verificationHint = data.verify_url
           ? ` Verification link: ${data.verify_url}`
@@ -764,7 +867,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  if (signinForm) {
+  if (signinForm && !isUnifiedHomeAuth) {
     signinForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       setStatus(signinStatus, 'Signing in...');
@@ -784,6 +887,82 @@ document.addEventListener('DOMContentLoaded', function () {
         setStatus(signinStatus, 'Signed in successfully.', 'success');
       } catch (error) {
         setStatus(signinStatus, error.message, 'error');
+      }
+    });
+  }
+
+  if (homeUnifiedAuthForm) {
+    homeUnifiedAuthForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const registerMode = isUnifiedHomeMode('register');
+
+      if (!registerMode) {
+        setStatus(signinStatus, 'Signing in...', 'info');
+        setStatus(signupStatus, '', 'info');
+        const username = String(signupUsername?.value || '').trim().toLowerCase();
+        const password = String(signupPassword?.value || '');
+
+        try {
+          const passwordHash = await sha256Hex(password);
+          const data = await request('/api/v1/auth/signin', { username, password_hash: passwordHash });
+          await applySignedInState({ username, password, passwordHash, data });
+          window.location.assign('/portal');
+        } catch (error) {
+          setStatus(signinStatus, error.message, 'error');
+        }
+        return;
+      }
+
+      if (!validateSignupStartForm()) return;
+      setStatus(signupStatus, 'Sending verification email...', 'info');
+      setStatus(signinStatus, '', 'info');
+
+      try {
+        const username = signupUsername.value.trim().toLowerCase();
+        const email = signupEmail?.value.trim().toLowerCase() || '';
+        const password = signupPassword.value;
+        const publicKey = signupPublicKey?.value.trim() || '';
+        const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
+        const signupProfilePicture = signupProfilePictureInput?.files?.[0] || null;
+
+        const requestBody = {
+          username,
+          email: email || undefined,
+          public_key: publicKey || undefined,
+          private_key_encrypted: privateKeyEncrypted || undefined,
+        };
+        if (signupProfilePicture) {
+          requestBody.profile_picture_data = await fileToBase64(signupProfilePicture);
+          requestBody.profile_picture_content_type = signupProfilePicture.type || 'application/octet-stream';
+        }
+        if (publicKey || privateKeyEncrypted) {
+          requestBody.password_hash = await sha256Hex(password);
+        } else {
+          requestBody.password = password;
+        }
+        const data = await request('/api/v1/auth/register', requestBody);
+
+        state.signupUsername = username;
+        const isActiveNow = String(data.status || '').trim().toLowerCase() === 'active' || !state.emailVerificationEnabled;
+        if (isActiveNow) {
+          setStatus(signupStatus, 'Account is active. Signing you in...', 'info');
+          const signedIn = await autoSigninAndRedirectToPortal({
+            username,
+            password,
+            statusElement: signupStatus,
+            prefixMessage: 'Registration succeeded but auto sign-in failed.',
+          });
+          if (signedIn) return;
+        }
+        const verificationHint = data.verify_url
+          ? ` Verification link: ${data.verify_url}`
+          : '';
+        const keyHint = data.key_source === 'generated'
+          ? ` A Nostr keypair was generated automatically (pubkey: ${window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || 'unknown'}).`
+          : '';
+        setStatus(signupStatus, `${data.message || 'Verification sent.'}${keyHint}${verificationHint}`, 'success');
+      } catch (error) {
+        setStatus(signupStatus, `Registration start failed: ${error.message}`, 'error');
       }
     });
   }

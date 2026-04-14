@@ -40,50 +40,30 @@
         </div>
 
         <div class="auth-wrap">
-          <section class="card noas-glow noas-border-glow" id="homeAuthSignIn">
+          <section class="card noas-glow noas-border-glow" id="homeAuthCard">
             <header class="card-header">
-              <h2 class="card-title">Sign in</h2>
-              <p class="card-description">Access your Nostr account</p>
+              <h2 class="card-title" id="homeAuthTitle">Sign in</h2>
+              <p class="card-description" id="homeAuthDescription">Access your Nostr account</p>
             </header>
-            <form id="signinForm" class="card-content form">
+            <form id="homeUnifiedAuthForm" class="card-content form" data-auth-mode="signin">
               <label class="field">
                 <span class="label">Username</span>
-                <input type="text" name="username" autocomplete="username" placeholder="satoshi" required />
+                <input type="text" id="signupUsername" name="username" autocomplete="username" placeholder="satoshi" required />
               </label>
-              <label class="field">
-                <span class="label">Password</span>
-                <input type="password" name="password" autocomplete="current-password" placeholder="••••••••" required />
-              </label>
-              <button type="submit" class="btn w-full">Sign in</button>
-              <div id="signinStatus" class="status" role="status"></div>
-              <p class="auth-toggle">No account? <button id="homeShowRegister" class="advanced-toggle" type="button">Register</button></p>
-            </form>
-          </section>
-
-          <section class="card noas-glow noas-border-glow" id="homeAuthRegister" hidden>
-            <header class="card-header">
-              <h2 class="card-title">Register</h2>
-              <p class="card-description">Create your Nostr identity</p>
-            </header>
-            <form id="signupStartForm" class="card-content form">
-              <label class="field">
-                <span class="label">Username</span>
-                <input type="text" id="signupUsername" placeholder="satoshi" required />
-              </label>
-              <label class="field" id="signupEmailLabel">
+              <label class="field" id="signupEmailLabel" hidden>
                 <span class="label">Email</span>
                 <input type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email" />
                 <small id="signupEmailHint">Used for account and verification emails.</small>
               </label>
               <label class="field">
                 <span class="label">Password</span>
-                <input type="password" id="signupPassword" placeholder="••••••••" autocomplete="new-password" required />
+                <input type="password" id="signupPassword" name="password" autocomplete="current-password" placeholder="••••••••" required />
               </label>
-              <label class="field">
+              <label class="field" id="homeConfirmPasswordField" hidden>
                 <span class="label">Confirm password</span>
                 <input type="password" id="signupPasswordConfirm" placeholder="••••••••" autocomplete="new-password" required />
               </label>
-              <button type="button" id="registerAdvancedToggle" class="advanced-toggle">▸ Show advanced options</button>
+              <button type="button" id="registerAdvancedToggle" class="advanced-toggle" hidden>▸ Show advanced options</button>
               <div class="advanced-panel" id="registerAdvancedPanel" hidden>
                 <label class="field">
                   <span class="label small-label">Public key (npub)</span>
@@ -99,10 +79,12 @@
                 </label>
                 <p class="hint">Leave blank to let noas generate a keypair for you.</p>
               </div>
-              <div class="warning-banner">⚠ Your private key is encrypted with your password. If you lose your password, your key is irrecoverable.</div>
-              <button type="submit" class="btn w-full" id="signupSubmit">Create account</button>
-              <div id="signupStatus" class="status" role="status"></div>
-              <p class="auth-toggle">Already registered? <button id="homeShowSignIn" class="advanced-toggle" type="button">Sign in</button></p>
+              <div class="warning-banner" id="homeRegisterWarning" hidden>⚠ Your private key is encrypted with your password. If you lose your password, your key is irrecoverable.</div>
+              <button type="submit" class="btn w-full" id="homeAuthSubmit">Sign in</button>
+              <div id="signupStatus" class="status" role="status" hidden></div>
+              <div id="signinStatus" class="status" role="status"></div>
+              <p class="auth-toggle" id="homeAuthToggleSignIn">No account? <button id="homeShowRegister" class="advanced-toggle" type="button">Register</button></p>
+              <p class="auth-toggle" id="homeAuthToggleRegister" hidden>Already registered? <button id="homeShowSignIn" class="advanced-toggle" type="button">Sign in</button></p>
             </form>
           </section>
         </div>
