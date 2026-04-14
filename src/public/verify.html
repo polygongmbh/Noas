@@ -74,8 +74,10 @@
       const verifyBadge = document.getElementById('verifyBadge');
       const backToApp = document.getElementById('backToApp');
       const backToNoas = document.getElementById('backToNoas');
+      const AUTH_SESSION_KEY = 'noas_auth_session_v1';
       let verifiedNip05 = '';
       let verifiedEmail = '';
+      let verifiedUsername = '';
       let trustedNip05Domain = '';
 
       function tryDecodeURIComponent(value) {
@@ -170,6 +172,42 @@
         verifyStatus.dataset.type = type;
       }
 
+      function persistAuthSession({ username, password, passwordHash }) {
+        try {
+          window.sessionStorage.setItem(
+            AUTH_SESSION_KEY,
+            JSON.stringify({
+              username: String(username || '').trim().toLowerCase(),
+              password: String(password || ''),
+              password_hash: String(passwordHash || '').trim().toLowerCase(),
+            })
+          );
+        } catch {
+          // Non-blocking fallback.
+        }
+      }
+
+      async function signinAfterVerification({ password, passwordHash }) {
+        const username = String(verifiedUsername || '').trim().toLowerCase();
+        if (!username || !passwordHash) return false;
+        try {
+          const response = await fetch('/api/v1/auth/signin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username,
+              password_hash: passwordHash,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.success) return false;
+          persistAuthSession({ username, password, passwordHash });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
       function setVerifiedState(active) {
         if (!verifyBadge) return;
         verifyBadge.className = active ? 'badge badge-success' : 'badge badge-outline';
@@ -198,6 +236,7 @@
 
       function renderPreview(data) {
         verifyMessage.textContent = 'Enter your password to activate your account.';
+        verifiedUsername = String(data.username || '').trim().toLowerCase();
         verifiedNip05 = String(data.nip05 || '').trim();
         verifiedEmail = String(data.registration_email || '').trim();
         verifyNip05.textContent = verifiedNip05 ? `NIP-05: ${verifiedNip05}` : '';
@@ -258,9 +297,10 @@
           if (!response.ok) {
             throw new Error(data.error || 'Verification failed.');
           }
-          setStatus('Account verified. You can now sign in.', 'success');
+          setStatus('Account verified. Signing you in...', 'success');
           verifyMessage.textContent = 'Your NIP-05 identity is live.';
           setVerifiedState(true);
+          const signedIn = await signinAfterVerification({ password, passwordHash });
           if (redirect && !isTrustedRedirect(redirect)) {
             backToApp.hidden = false;
             backToApp.textContent = 'Continue to destination';
@@ -277,7 +317,7 @@
           } else if (verifiedNip05) {
             homeUrl.searchParams.set('nip05', verifiedNip05);
           }
-          const destination = redirect || homeUrl.toString();
+          const destination = redirect || (signedIn ? '/portal' : homeUrl.toString());
           setTimeout(() => {
             window.location.assign(destination);
           }, 700);
