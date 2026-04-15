@@ -689,6 +689,24 @@ if [ "$ADMIN_TESTS_ENABLED" = true ]; then
     fail_step "Admin role update failed" "$ADMIN_ROLE_RESPONSE"
   fi
 
+  start_test "Admin Self Role Downgrade"
+  ADMIN_SELF_DOWNGRADE_RESPONSE=$(post_json "/admin/users/role" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$TEST_USER\",\"new_role\":\"moderator\"}")
+  print_response "$ADMIN_SELF_DOWNGRADE_RESPONSE"
+  if echo "$ADMIN_SELF_DOWNGRADE_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    pass_step "Admin downgraded their own role"
+  else
+    fail_step "Admin self role downgrade failed" "$ADMIN_SELF_DOWNGRADE_RESPONSE"
+  fi
+
+  start_test "Moderator Cannot Update Roles"
+  MODERATOR_ROLE_UPDATE_RESPONSE=$(post_json "/admin/users/role" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$TEST_USER_WITH_KEY\",\"new_role\":\"user\"}")
+  print_response "$MODERATOR_ROLE_UPDATE_RESPONSE"
+  if echo "$MODERATOR_ROLE_UPDATE_RESPONSE" | grep -q '"error"[[:space:]]*:[[:space:]]*"Admin role required"'; then
+    pass_step "Self-downgraded moderator lost admin-only role update access"
+  else
+    fail_step "Moderator was still able to use admin role update endpoint" "$MODERATOR_ROLE_UPDATE_RESPONSE"
+  fi
+
   ADMIN_VERIFY_USER="${TEST_USER}_pending"
   ADMIN_VERIFY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$ADMIN_VERIFY_USER\",\"password\":\"$TEST_PASS\"}")
   if ! echo "$ADMIN_VERIFY_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then

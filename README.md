@@ -230,7 +230,8 @@ Verification UI behavior:
 - If a verification link was already used, the page shows `Back to app` (when `redirect` is present) and `Back to Noas` (tenant landing page).
 - The public UI pages are:
   - `/` (landing), `/register`, `/login`, `/docs` (endpoints + example payloads).
-  - Admin and moderator users see an additional admin console in `/login` for user list, verification, and role changes.
+  - Admin and moderator users see an additional admin console in `/login` for user list and verification.
+  - Role changes are admin-only. If an admin downgrades their own role, admin-only controls are removed immediately.
 
 ### POST /api/v1/auth/verify
 
@@ -362,7 +363,7 @@ Verify a pending account (admin/moderator).
 
 ### POST /api/v1/admin/users/role
 
-Update a user role (admin only).
+Update a user role (admin only). Admins can downgrade their own role, and that downgrade applies immediately.
 
 ```json
 {

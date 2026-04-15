@@ -514,16 +514,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const roleSelect = document.createElement('select');
       roleSelect.className = 'role-select';
+      const isSelf = Boolean(state.username && user.username && state.username === user.username);
+      const actorRank = roleRank(state.role);
+
       ['user', 'moderator', 'admin'].forEach((role) => {
         const option = document.createElement('option');
         option.value = role;
         option.textContent = role;
+        if (isSelf && roleRank(role) >= actorRank) {
+          option.disabled = true;
+        }
         if (role === user.role) option.selected = true;
         roleSelect.appendChild(option);
       });
 
       const canManage = canManageUser(state.role, user.role, user.username);
-      roleSelect.disabled = state.role !== 'admin' || state.username === user.username;
+      roleSelect.disabled = state.role !== 'admin';
       if (state.role !== 'admin') {
         roleSelect.hidden = true;
       }
@@ -551,10 +557,16 @@ document.addEventListener('DOMContentLoaded', function () {
         const newRole = roleSelect.value;
         setStatus(adminStatus, `Updating role for ${user.username}...`, 'info');
         try {
-          await adminRequest('/api/v1/admin/users/role', {
+          const response = await adminRequest('/api/v1/admin/users/role', {
             target_username: user.username,
             new_role: newRole,
           });
+          if (state.username && user.username && state.username === user.username) {
+            state.role = String(response?.user?.role || newRole).trim().toLowerCase();
+            if (adminPanel) {
+              adminPanel.hidden = !(state.role === 'admin' || state.role === 'moderator');
+            }
+          }
           setStatus(adminStatus, `Updated role for ${user.username}.`, 'success');
           await loadAdminUsers();
         } catch (error) {

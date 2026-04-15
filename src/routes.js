@@ -237,14 +237,6 @@ function resolveInitialRole(username) {
   return NOSTR_USER_ROLES.USER;
 }
 
-function resolveConfiguredRole(username) {
-  const normalized = String(username || '').trim().toLowerCase();
-  if (!normalized) return null;
-  if (config.adminUsernames.includes(normalized)) return NOSTR_USER_ROLES.ADMIN;
-  if (config.moderatorUsernames.includes(normalized)) return NOSTR_USER_ROLES.MODERATOR;
-  return null;
-}
-
 function roleRank(role) {
   return ROLE_RANK[normalizeRole(role)] || 0;
 }
@@ -253,14 +245,6 @@ function canActOnUser(actor, target) {
   if (!actor || !target) return false;
   if (actor.username === target.username) return false;
   return roleRank(actor.role) > roleRank(target.role);
-}
-
-async function maybePromoteConfiguredRole(user, tenantDomain) {
-  const desiredRole = resolveConfiguredRole(user?.username);
-  if (!desiredRole) return user;
-  if (roleRank(desiredRole) <= roleRank(user.role)) return user;
-  const updated = await updateNostrUserRole(user.username, desiredRole, tenantDomain);
-  return updated || user;
 }
 
 function isNostrUserVerificationExpired(user, expiryMinutes) {
@@ -883,15 +867,14 @@ async function resolveAdminActor(req) {
   if (!user || user.password_sha256 !== normalizedPasswordHash) {
     return { error: { status: 401, message: 'Invalid credentials' } };
   }
-  const elevatedUser = await maybePromoteConfiguredRole(user, tenant.nip05RootDomain);
-  if (elevatedUser.status !== 'active') {
+  if (user.status !== 'active') {
     return { error: { status: 403, message: 'Account is not active.' } };
   }
-  if (![NOSTR_USER_ROLES.ADMIN, NOSTR_USER_ROLES.MODERATOR].includes(elevatedUser.role)) {
+  if (![NOSTR_USER_ROLES.ADMIN, NOSTR_USER_ROLES.MODERATOR].includes(user.role)) {
     return { error: { status: 403, message: 'Admin access required' } };
   }
 
-  return { actor: elevatedUser, tenant };
+  return { actor: user, tenant };
 }
 
 const handleSignin = async (req, res) => {
@@ -919,8 +902,6 @@ const handleSignin = async (req, res) => {
     if (user.password_sha256 !== normalizedPasswordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    user = await maybePromoteConfiguredRole(user, tenant.nip05RootDomain);
 
     const derivedEmail = normalizeEmail(buildNip05Identifier(normalizedUsername, tenant.nip05RootDomain));
     res.json({
@@ -1229,8 +1210,8 @@ const handleAdminUserRole = async (req, res) => {
     if (!target) {
       return res.status(404).json({ error: 'User not found' });
     }
-    if (actor.username === target.username) {
-      return res.status(403).json({ error: 'Cannot change your own role' });
+    if (actor.username === target.username && roleRank(requestedRole) >= roleRank(actor.role)) {
+      return res.status(403).json({ error: 'You may only downgrade your own role' });
     }
 
     const updated = await updateNostrUserRole(targetUsername, requestedRole, tenant.nip05RootDomain);
