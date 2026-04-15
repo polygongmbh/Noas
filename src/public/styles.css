@@ -271,7 +271,8 @@ textarea::placeholder {
   color: oklch(0.55 0.01 260);
 }
 
-input[readonly][data-locked="true"] {
+input[readonly][data-locked="true"],
+input:disabled[data-locked="true"] {
   background: oklch(0.24 0.01 260 / 0.55);
   border-color: oklch(0.75 0.15 75 / 0.5);
   color: var(--warning);
@@ -279,15 +280,17 @@ input[readonly][data-locked="true"] {
 }
 
 .email-lock-hint small {
+  display: block;
   max-height: 0;
   opacity: 0;
   overflow: hidden;
+  overflow-wrap: anywhere;
   transition: max-height 140ms ease, opacity 140ms ease;
 }
 
 .email-lock-hint:hover small,
 .email-lock-hint:focus-within small {
-  max-height: 40px;
+  max-height: 96px;
   opacity: 1;
 }
 

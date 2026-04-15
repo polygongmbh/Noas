@@ -194,6 +194,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function syncSignupEmailLockState() {
     if (!signupEmail || !signupEmailLabel || !signupEmailHint) return;
     if (isUnifiedHomeAuth && !isUnifiedHomeMode('register')) {
+      signupEmail.disabled = true;
       signupEmail.readOnly = false;
       signupEmail.required = false;
       signupEmail.dataset.locked = 'false';
@@ -207,7 +208,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const requireEmail = verificationMode === 'required' || lockEmail;
     const lockHint = 'Because EMAIL_VERIFICATION_MODE=required_nip05_domains, email must be username@NIP05_DOMAIN.';
     const requiredHint = 'Email verification is required. Enter the email that should receive verification links.';
-    signupEmail.readOnly = lockEmail;
+    signupEmail.disabled = lockEmail;
+    signupEmail.readOnly = false;
     signupEmail.required = requireEmail;
     signupEmail.dataset.locked = lockEmail ? 'true' : 'false';
 
@@ -749,7 +751,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const requireEmail = verificationMode === 'required' || verificationMode === 'required_nip05_domains';
     if (requireEmail && !email) {
       setStatus(signupStatus, 'Email is required', 'error');
-      signupEmail?.focus();
+      if (signupEmail?.disabled) {
+        signupUsername?.focus();
+      } else {
+        signupEmail?.focus();
+      }
       return false;
     }
     if (!passwordConfirm) {
@@ -778,7 +784,11 @@ document.addEventListener('DOMContentLoaded', function () {
       if (email !== expectedEmail) {
         signupEmail.value = expectedEmail;
         setStatus(signupStatus, 'Email must follow username@NIP05_DOMAIN when verification mode is required_nip05_domains', 'error');
-        signupEmail?.focus();
+        if (signupEmail?.disabled) {
+          signupUsername?.focus();
+        } else {
+          signupEmail?.focus();
+        }
         return false;
       }
     }
