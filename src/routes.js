@@ -1260,8 +1260,12 @@ const handleAdminUserDelete = async (req, res) => {
     }
     const { actor, tenant } = auth;
     const targetUsername = String(req.body?.target_username || '').trim().toLowerCase();
+    const confirmUsername = String(req.body?.confirm_username || '').trim().toLowerCase();
     const usernameCheck = validateUsername(targetUsername);
     if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
+    if (confirmUsername !== targetUsername) {
+      return res.status(400).json({ error: 'confirm_username must match target_username' });
+    }
 
     const target = await getNostrUserByUsername(targetUsername, tenant.nip05RootDomain);
     if (!target) {

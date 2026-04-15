@@ -579,12 +579,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
       deleteButton.addEventListener('click', async () => {
         if (!canManage) return;
-        const confirmed = window.confirm(`Delete ${user.username}? This cannot be undone.`);
-        if (!confirmed) return;
+        const confirmationInput = window.prompt(
+          `Type ${user.username} to confirm deletion. This cannot be undone.`
+        );
+        if (confirmationInput === null) return;
+        const confirmedUsername = String(confirmationInput || '').trim().toLowerCase();
+        const expectedUsername = String(user.username || '').trim().toLowerCase();
+        if (confirmedUsername !== expectedUsername) {
+          setStatus(adminStatus, `Confirmation failed for ${user.username}. Deletion cancelled.`, 'error');
+          return;
+        }
         setStatus(adminStatus, `Deleting ${user.username}...`, 'info');
         try {
           await adminRequest('/api/v1/admin/users/delete', {
             target_username: user.username,
+            confirm_username: confirmedUsername,
           });
           setStatus(adminStatus, `Deleted ${user.username}.`, 'success');
           await loadAdminUsers();

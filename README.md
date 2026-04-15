@@ -381,9 +381,12 @@ Delete a user (admin/moderator).
 {
   "username": "admin",
   "password_hash": "sha256_hex_of_password",
-  "target_username": "alice"
+  "target_username": "alice",
+  "confirm_username": "alice"
 }
 ```
+
+`confirm_username` must exactly match `target_username`.
 
 ### NIP-46 Endpoints
 

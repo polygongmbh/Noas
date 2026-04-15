@@ -713,7 +713,7 @@ if [ "$ADMIN_TESTS_ENABLED" = true ]; then
   if ! echo "$ADMIN_DELETE_REGISTER" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
     fail_step "Admin delete setup failed" "$ADMIN_DELETE_REGISTER"
   fi
-  ADMIN_DELETE_RESPONSE=$(post_json "/admin/users/delete" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$ADMIN_DELETE_USER\"}")
+  ADMIN_DELETE_RESPONSE=$(post_json "/admin/users/delete" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"target_username\":\"$ADMIN_DELETE_USER\",\"confirm_username\":\"$ADMIN_DELETE_USER\"}")
   print_response "$ADMIN_DELETE_RESPONSE"
   if echo "$ADMIN_DELETE_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
     pass_step "Admin deleted user"
