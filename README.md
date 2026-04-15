@@ -8,6 +8,7 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 - Password-hash-based account auth (`password_hash` is SHA-256 hex)
 - NIP-49 encrypted private key storage
 - NIP-05 verification endpoint
+- Minimal health endpoint (`/health`, `/api/v1/health`) that returns status only
 - NIP-46 remote signer endpoints for active accounts
 - Update password and relays
 - Test coverage

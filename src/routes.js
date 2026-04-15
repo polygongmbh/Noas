@@ -1393,10 +1393,10 @@ router.get('/.well-known/nostr.json', async (req, res) => {
  * GET /health
  * Health check endpoint
  * 
- * Returns server status and configuration info.
+ * Returns only server status.
  */
 const handleHealth = (req, res) => {
-  res.json({ status: 'ok', domain: config.domain });
+  res.json({ status: 'ok' });
 };
 
 /**

@@ -350,7 +350,7 @@ test('GET /health returns server status', async () => {
 
   assert.strictEqual(response.status, 200);
   assert.strictEqual(data.status, 'ok');
-  assert.ok(data.domain);
+  assert.strictEqual(data.domain, undefined);
 });
 
 // Profile picture: upload via /api/v1/auth/update and fetch by pubkey.

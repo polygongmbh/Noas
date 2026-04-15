@@ -478,8 +478,11 @@ print_banner
 start_test "Health Check"
 start_local_server_if_needed
 print_response "$HEALTH_RESPONSE"
-if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
-  pass_step "Server is healthy"
+if echo "$HEALTH_RESPONSE" | jq -e '
+  (.status == "ok")
+  and (has("domain") | not)
+' >/dev/null 2>&1; then
+  pass_step "Server is healthy and does not expose domain configuration"
 else
   fail_step "Health check failed" "$HEALTH_RESPONSE"
 fi
