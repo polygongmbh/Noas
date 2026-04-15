@@ -1268,6 +1268,9 @@ document.addEventListener('DOMContentLoaded', function () {
           privateKeyEl.textContent = '—';
         }
         updateDeleteGuardState();
+        window.setTimeout(() => {
+          window.location.assign('/');
+        }, 250);
       } catch (error) {
         setStatus(deleteStatus, error.message, 'error');
       }
