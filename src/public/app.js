@@ -92,6 +92,18 @@ document.addEventListener('DOMContentLoaded', function () {
     deleteSubmitButton.disabled = !(savedKeyConfirmed && confirmUsername && confirmUsername === expectedUsername);
   }
 
+  function renderPortalIdentity() {
+    if (!portalIdentity) return;
+    if (!state.username) {
+      portalIdentity.textContent = 'Loading account…';
+      return;
+    }
+    const nip05Domain = String(state.nip05Domain || window.location.hostname || '').trim();
+    portalIdentity.textContent = nip05Domain
+      ? `${state.username}@${nip05Domain}`
+      : String(state.username || '');
+  }
+
   function persistAuthSession() {
     if (!state.username || !state.passwordHash) return;
     try {
@@ -287,6 +299,7 @@ document.addEventListener('DOMContentLoaded', function () {
       state.emailVerificationEnabled = state.emailVerificationMode !== 'off';
       if (typeof metadata.nip05_domain === 'string' && metadata.nip05_domain.trim()) {
         state.nip05Domain = metadata.nip05_domain.trim().toLowerCase();
+        renderPortalIdentity();
       }
       syncSignupEmailLockState();
       syncVerificationVisibility();
@@ -645,12 +658,7 @@ document.addEventListener('DOMContentLoaded', function () {
     state.publicKey = String(data.public_key || '').trim().toLowerCase() || null;
     state.role = String(data.role || 'user').trim().toLowerCase();
 
-    if (portalIdentity) {
-      const nip05Domain = String(state.nip05Domain || window.location.hostname || '').trim();
-      portalIdentity.textContent = state.username && nip05Domain
-        ? `${state.username}@${nip05Domain}`
-        : String(state.username || '');
-    }
+    renderPortalIdentity();
     if (portalStatusBadge) {
       portalStatusBadge.className = 'badge badge-success';
       portalStatusBadge.textContent = 'verified';
@@ -1287,9 +1295,7 @@ document.addEventListener('DOMContentLoaded', function () {
         state.passwordHash = null;
         state.role = null;
         clearAuthSession();
-        if (portalIdentity) {
-          portalIdentity.textContent = 'Loading account…';
-        }
+        renderPortalIdentity();
         if (portalStatusBadge) {
           portalStatusBadge.className = 'badge badge-outline';
           portalStatusBadge.textContent = 'pending';
