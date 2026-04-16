@@ -266,6 +266,40 @@ select {
   font-size: 0.9rem;
 }
 
+input[type="file"] {
+  padding: 0.45rem 0.7rem;
+  color: var(--secondary-foreground);
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 0.65rem;
+  border: 1px solid oklch(0.75 0.15 185 / 0.35);
+  border-radius: calc(var(--radius) - 0.15rem);
+  background: oklch(0.75 0.15 185 / 0.18);
+  color: var(--foreground);
+  padding: 0.36rem 0.58rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+input[type="file"]::-webkit-file-upload-button {
+  margin-right: 0.65rem;
+  border: 1px solid oklch(0.75 0.15 185 / 0.35);
+  border-radius: calc(var(--radius) - 0.15rem);
+  background: oklch(0.75 0.15 185 / 0.18);
+  color: var(--foreground);
+  padding: 0.36rem 0.58rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+input[type="file"]:hover::file-selector-button,
+input[type="file"]:hover::-webkit-file-upload-button {
+  background: oklch(0.75 0.15 185 / 0.24);
+}
+
 input::placeholder,
 textarea::placeholder {
   color: oklch(0.55 0.01 260);
