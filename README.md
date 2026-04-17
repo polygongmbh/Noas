@@ -95,8 +95,7 @@ NIP86_RELAY_URLS=
 NIP86_METHOD=allowpubkey
 NIP86_TIMEOUT_MS=5000
 DISALLOWED_USERNAMES=feed,nostr,rnostr,base,tasks,relay
-NOAS_ADMIN_USERS=admin_username
-NOAS_MODERATOR_USERS=moderator_username
+NOAS_ADMIN_USERS=admin_username,64_char_hex_pubkey
 ```
 
 Primary domain settings:
@@ -112,8 +111,7 @@ Primary domain settings:
 - `NIP86_METHOD`: JSON-RPC method name for relay allow calls (default: `allowpubkey`)
 - `NIP86_TIMEOUT_MS`: timeout per relay allow request (default: `5000`)
 - `DISALLOWED_USERNAMES`: comma-separated usernames that cannot be registered.
-- `NOAS_ADMIN_USERS`: comma-separated usernames granted the `admin` role at registration time.
-- `NOAS_MODERATOR_USERS`: comma-separated usernames granted the `moderator` role at registration time (ignored if also in admin list).
+- `NOAS_ADMIN_USERS`: comma-separated initial admin identifiers applied at registration time. Each entry may be a username or a 64-character hex public key.
 
 Most other domain-related behavior derives from these values.
 Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.

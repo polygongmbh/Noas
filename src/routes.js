@@ -229,11 +229,15 @@ function isValidRole(value) {
   return role === NOSTR_USER_ROLES.ADMIN || role === NOSTR_USER_ROLES.MODERATOR || role === NOSTR_USER_ROLES.USER;
 }
 
-function resolveInitialRole(username) {
-  const normalized = String(username || '').trim().toLowerCase();
-  if (!normalized) return NOSTR_USER_ROLES.USER;
-  if (config.adminUsernames.includes(normalized)) return NOSTR_USER_ROLES.ADMIN;
-  if (config.moderatorUsernames.includes(normalized)) return NOSTR_USER_ROLES.MODERATOR;
+function resolveInitialRole(username, publicKey) {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  const normalizedPublicKey = String(publicKey || '').trim().toLowerCase();
+  if (normalizedUsername && config.adminUsernames.includes(normalizedUsername)) {
+    return NOSTR_USER_ROLES.ADMIN;
+  }
+  if (normalizedPublicKey && config.adminPublicKeys.includes(normalizedPublicKey)) {
+    return NOSTR_USER_ROLES.ADMIN;
+  }
   return NOSTR_USER_ROLES.USER;
 }
 
@@ -524,7 +528,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
         relays: requestedRelays || [],
         status: 'active',
         verificationToken: null,
-        role: resolveInitialRole(normalizedUsername),
+        role: resolveInitialRole(normalizedUsername, keyMaterial.publicKey),
       });
       if (profilePicture.hasPicture) {
         const updatedPicture = await updateNostrUserProfilePicture(
@@ -560,7 +564,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       relays: requestedRelays || [],
       status: 'unverified_email',
       verificationToken,
-      role: resolveInitialRole(normalizedUsername),
+      role: resolveInitialRole(normalizedUsername, keyMaterial.publicKey),
     });
     if (profilePicture.hasPicture) {
       const updatedPicture = await updateNostrUserProfilePicture(

@@ -155,6 +155,24 @@ function parseUsernameList(value, fallback = []) {
   return Array.from(new Set(fallback.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean)));
 }
 
+function parseAdminSeedList(value) {
+  const usernames = new Set();
+  const publicKeys = new Set();
+  for (const entry of String(value || '').split(',')) {
+    const normalized = entry.trim().toLowerCase();
+    if (!normalized) continue;
+    if (/^[a-f0-9]{64}$/.test(normalized)) {
+      publicKeys.add(normalized);
+      continue;
+    }
+    usernames.add(normalized);
+  }
+  return {
+    usernames: Array.from(usernames),
+    publicKeys: Array.from(publicKeys),
+  };
+}
+
 function parseEmailVerificationMode() {
   const raw = String(process.env.EMAIL_VERIFICATION_MODE || '').trim().toLowerCase();
   if (raw === 'off' || raw === 'required' || raw === 'required_nip05_domains') {
@@ -221,8 +239,7 @@ const configuredNip05Domain = process.env.NIP05_DOMAIN || process.env.NOAS_DOMAI
 const configuredNoasPublicUrl = (process.env.NOAS_PUBLIC_URL || '').trim();
 const configuredNip05Domains = parseDomainList(configuredNip05Domain);
 const emailVerificationMode = parseEmailVerificationMode();
-const configuredAdminUsers = parseUsernameList(process.env.NOAS_ADMIN_USERS);
-const configuredModeratorUsers = parseUsernameList(process.env.NOAS_MODERATOR_USERS);
+const configuredAdminSeeds = parseAdminSeedList(process.env.NOAS_ADMIN_USERS);
 
 // Export configuration object with all app settings
 export const config = {
@@ -239,8 +256,8 @@ export const config = {
   emailVerificationEnabled: emailVerificationMode !== 'off',
   emailVerificationLocksToNip05Domain: emailVerificationMode === 'required_nip05_domains',
   disallowedUsernames: parseUsernameList(process.env.DISALLOWED_USERNAMES),
-  adminUsernames: configuredAdminUsers,
-  moderatorUsernames: configuredModeratorUsers.filter((username) => !configuredAdminUsers.includes(username)),
+  adminUsernames: configuredAdminSeeds.usernames,
+  adminPublicKeys: configuredAdminSeeds.publicKeys,
   tenantDefaultRelays: parseRelayList(process.env.TENANT_DEFAULT_RELAYS),
   domainRelayMap: parseDomainRelayMap(process.env.DOMAIN_RELAY_MAP),
   verificationExpiryMinutes: parseInt(process.env.VERIFICATION_EXPIRY_MINUTES || '15', 10),
