@@ -14,6 +14,7 @@ import { decrypt, encrypt } from 'nostr-tools/nip49';
 process.env.NOAS_LOAD_DOTENV = 'false';
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.NIP05_DOMAIN = 'alpha.test,beta.test';
+process.env.DOMAIN_RELAY_MAP = 'alpha.test=wss://tasks.polygon.gmbh';
 process.env.NOAS_PUBLIC_URL = '';
 process.env.NOAS_PUBLIC_URL_MAP = 'alpha.test=https://noas.alpha.test;beta.test=https://noas.beta.test';
 
@@ -252,6 +253,8 @@ test('GET /.well-known/nostr.json returns user public key', async () => {
   assert.strictEqual(response.status, 200);
   assert.ok(data.names);
   assert.strictEqual(data.names.apitestuser, apitestUserPubkey);
+  assert.ok(data.relays);
+  assert.deepStrictEqual(data.relays.apitestuser, ['wss://tasks.polygon.gmbh']);
 });
 
 // NIP-05: lookup returns 404 for unknown users.

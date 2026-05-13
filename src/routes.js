@@ -1386,6 +1386,12 @@ router.get('/.well-known/nostr.json', async (req, res) => {
       names: {
         [user.username]: user.public_key,
       },
+      relays: {
+        [user.username]: getDomainScopedRelays(
+          normalizeEmail(buildNip05Identifier(user.username, tenant.nip05RootDomain)),
+          user.relays || []
+        ),
+      },
     });
   } catch (error) {
     console.error('NIP-05 error:', error);

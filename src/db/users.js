@@ -353,7 +353,7 @@ export async function updateNostrUserResendToken(username, verificationToken, te
  */
 export async function getActiveNostrUserForNip05(username, tenantDomain = null) {
   const params = [username, NOSTR_USER_STATUSES.ACTIVE];
-  let sql = `SELECT username, public_key
+  let sql = `SELECT username, public_key, relays
              FROM nostr_users
              WHERE username = $1
                AND status = $2`;
