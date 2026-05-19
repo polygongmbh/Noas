@@ -83,9 +83,9 @@ describe('NIP-46 API Routes', () => {
     }
   });
 
-  describe('GET /nip46/info', () => {
+  describe('GET /api/v1/nip46/info', () => {
     it('returns signer information', async () => {
-      const response = await request('GET', '/nip46/info');
+      const response = await request('GET', '/api/v1/nip46/info');
 
       assert.equal(response.status, 200);
       assert.equal(response.body.pubkey, signerPubkey);
@@ -96,9 +96,9 @@ describe('NIP-46 API Routes', () => {
     });
   });
 
-  describe('GET /nip46/connect/:username', () => {
+  describe('GET /api/v1/nip46/connect/:username', () => {
     it('generates connection token for valid user', async () => {
-      const response = await request('GET', `/nip46/connect/${testUser.username}`);
+      const response = await request('GET', `/api/v1/nip46/connect/${testUser.username}`);
 
       assert.equal(response.status, 200);
       assert(response.body.bunker_url.startsWith('bunker://'));
@@ -108,14 +108,14 @@ describe('NIP-46 API Routes', () => {
     });
 
     it('returns 404 for non-existent user', async () => {
-      const response = await request('GET', '/nip46/connect/nonexistentuser');
+      const response = await request('GET', '/api/v1/nip46/connect/nonexistentuser');
 
       assert.equal(response.status, 404);
       assert.equal(response.body.error, 'User not found');
     });
   });
 
-  describe('POST /nip46/request', () => {
+  describe('POST /api/v1/nip46/request', () => {
     it('rejects invalid event kind', async () => {
       const invalidEvent = {
         kind: 1, // Wrong kind, should be 24133
@@ -124,7 +124,7 @@ describe('NIP-46 API Routes', () => {
         tags: []
       };
 
-      const response = await request('POST', '/nip46/request', {
+      const response = await request('POST', '/api/v1/nip46/request', {
         event: invalidEvent,
         username: testUser.username
       });
@@ -141,7 +141,7 @@ describe('NIP-46 API Routes', () => {
         tags: [['p', signerPubkey]]
       };
 
-      const response = await request('POST', '/nip46/request', {
+      const response = await request('POST', '/api/v1/nip46/request', {
         event: validEvent
         // missing username
       });
@@ -158,7 +158,7 @@ describe('NIP-46 API Routes', () => {
         tags: [['p', signerPubkey]]
       };
 
-      const response = await request('POST', '/nip46/request', {
+      const response = await request('POST', '/api/v1/nip46/request', {
         event: validEvent,
         username: testUser.username
       });
@@ -168,12 +168,12 @@ describe('NIP-46 API Routes', () => {
     });
   });
 
-  describe('POST /nip46/nostrconnect', () => {
+  describe('POST /api/v1/nip46/nostrconnect', () => {
     it('processes valid nostrconnect URL', async () => {
       const clientPubkey = 'c'.repeat(64);
       const nostrconnectUrl = `nostrconnect://${clientPubkey}?relay=wss://relay.example.com&secret=test123&perms=sign_event,get_public_key`;
 
-      const response = await request('POST', '/nip46/nostrconnect', {
+      const response = await request('POST', '/api/v1/nip46/nostrconnect', {
         nostrconnect_url: nostrconnectUrl,
         username: testUser.username
       });
@@ -186,7 +186,7 @@ describe('NIP-46 API Routes', () => {
     });
 
     it('rejects invalid nostrconnect URL', async () => {
-      const response = await request('POST', '/nip46/nostrconnect', {
+      const response = await request('POST', '/api/v1/nip46/nostrconnect', {
         nostrconnect_url: 'invalid://url',
         username: testUser.username
       });
@@ -199,7 +199,7 @@ describe('NIP-46 API Routes', () => {
       const clientPubkey = 'c'.repeat(64);
       const nostrconnectUrl = `nostrconnect://${clientPubkey}?relay=wss://relay.example.com&secret=test123`;
 
-      const response = await request('POST', '/nip46/nostrconnect', {
+      const response = await request('POST', '/api/v1/nip46/nostrconnect', {
         nostrconnect_url: nostrconnectUrl
         // missing username
       });
@@ -212,7 +212,7 @@ describe('NIP-46 API Routes', () => {
       const clientPubkey = 'c'.repeat(64);
       const nostrconnectUrl = `nostrconnect://${clientPubkey}?relay=wss://relay.example.com&secret=test123`;
 
-      const response = await request('POST', '/nip46/nostrconnect', {
+      const response = await request('POST', '/api/v1/nip46/nostrconnect', {
         nostrconnect_url: nostrconnectUrl,
         username: 'nonexistentuser'
       });
@@ -225,7 +225,7 @@ describe('NIP-46 API Routes', () => {
       const invalidPubkey = 'invalid-pubkey';
       const nostrconnectUrl = `nostrconnect://${invalidPubkey}?relay=wss://relay.example.com&secret=test123`;
 
-      const response = await request('POST', '/nip46/nostrconnect', {
+      const response = await request('POST', '/api/v1/nip46/nostrconnect', {
         nostrconnect_url: nostrconnectUrl,
         username: testUser.username
       });
@@ -237,7 +237,7 @@ describe('NIP-46 API Routes', () => {
 
   describe('Error Handling', () => {
     it('handles malformed JSON gracefully', async () => {
-      const response = await fetch(`${baseUrl}/nip46/request`, {
+      const response = await fetch(`${baseUrl}/api/v1/nip46/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: 'invalid json'

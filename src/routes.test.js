@@ -190,7 +190,7 @@ test('POST /api/v1/auth/signin rejects non-existent user', async () => {
 });
 
 // Auth: update rotates password hash + key material in a single request.
-test('POST /update rotates password hash and encrypted key together', async () => {
+test('POST /api/v1/auth/update rotates password hash and encrypted key together', async () => {
   const register = await request('POST', '/api/v1/auth/register', {
     username: 'rotatinguser',
     password: 'rotatepassword123',
@@ -347,8 +347,8 @@ test('Registration uses tenant domain from request host', async () => {
 });
 
 // Health: returns service status payload.
-test('GET /health returns server status', async () => {
-  const response = await fetch(`${baseURL}/health`);
+test('GET /api/v1/health returns server status', async () => {
+  const response = await fetch(`${baseURL}/api/v1/health`);
   const data = await response.json();
 
   assert.strictEqual(response.status, 200);

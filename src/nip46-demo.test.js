@@ -108,9 +108,9 @@ describe('NIP-46 Integration Demo', () => {
     
     // The routes include:
     console.log('Available NIP-46 endpoints:');
-    console.log('  GET  /nip46/info - Signer information');
-    console.log('  GET  /nip46/connect/:username - Generate connection token');
-    console.log('  POST /nip46/request - Handle encrypted NIP-46 requests');
-    console.log('  POST /nip46/nostrconnect - Handle nostrconnect:// URLs');
+    console.log('  GET  /api/v1/nip46/info - Signer information');
+    console.log('  GET  /api/v1/nip46/connect/:username - Generate connection token');
+    console.log('  POST /api/v1/nip46/request - Handle encrypted NIP-46 requests');
+    console.log('  POST /api/v1/nip46/nostrconnect - Handle nostrconnect:// URLs');
   });
 });

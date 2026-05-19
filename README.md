@@ -8,7 +8,7 @@ Simple username-password authentication server for Nostr with NIP-05 verificatio
 - Password-hash-based account auth (`password_hash` is SHA-256 hex)
 - NIP-49 encrypted private key storage
 - NIP-05 verification endpoint
-- Minimal health endpoint (`/health`, `/api/v1/health`) that returns status only
+- Minimal health endpoint (`/api/v1/health`) that returns status only
 - NIP-46 remote signer endpoints for active accounts
 - Update password and relays
 - Test coverage
@@ -286,11 +286,7 @@ Cache behavior:
 - Returns `Last-Modified` based on the stored picture update time.
 - Honors `If-Modified-Since` and returns `304 Not Modified` when appropriate.
 
-### POST /register
-
-Deprecated legacy endpoint. Returns `410 Gone`. Use `POST /api/v1/auth/register`.
-
-### POST /signin
+### POST /api/v1/auth/signin
 
 Sign in and retrieve encrypted private key (active accounts only).
 

@@ -216,7 +216,8 @@
               <code class="endpoint-path">Legacy aliases and removed routes</code>
             </div>
             <p class="endpoint-desc">
-              Supported aliases: `/signin`, `/update`, `/delete`, `/picture/:identifier`, `/health`, `/nip46/*`.
+              Use versioned routes only: `/api/v1/auth/*`, `/api/v1/admin/*`, `/api/v1/picture/:identifier`,
+              `/api/v1/health`, `/api/v1/nip46/*`.
               Removed with `410`: `/register`, `/onboarding/start`, `/onboarding/complete`, `/verify-email` (POST).
               `/verify-email` (GET) redirects to `/verify`.
             </p>

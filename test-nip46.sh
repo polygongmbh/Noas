@@ -30,8 +30,8 @@ echo "=============================================="
 
 # Test 1: Get NIP-46 signer info
 echo ""
-echo -e "${BLUE}Test 1: GET /nip46/info${NC}"
-RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" "$BASE_URL/nip46/info")
+echo -e "${BLUE}Test 1: GET /api/v1/nip46/info${NC}"
+RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" "$BASE_URL/api/v1/nip46/info")
 HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
 BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
 
@@ -45,8 +45,8 @@ fi
 
 # Test 2: Generate connection token for existing user
 echo ""
-echo -e "${BLUE}Test 2: GET /nip46/connect/testnip46user${NC}" 
-RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" "$BASE_URL/nip46/connect/testnip46user")
+echo -e "${BLUE}Test 2: GET /api/v1/nip46/connect/testnip46user${NC}" 
+RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" "$BASE_URL/api/v1/nip46/connect/testnip46user")
 HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
 BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
 
@@ -60,8 +60,8 @@ fi
 
 # Test 3: Try to generate token for non-existent user
 echo ""
-echo -e "${BLUE}Test 3: GET /nip46/connect/nonexistent${NC}"
-RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" "$BASE_URL/nip46/connect/nonexistent")
+echo -e "${BLUE}Test 3: GET /api/v1/nip46/connect/nonexistent${NC}"
+RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" "$BASE_URL/api/v1/nip46/connect/nonexistent")
 HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
 BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
 
@@ -74,7 +74,7 @@ fi
 
 # Test 4: Test NIP-46 request endpoint structure
 echo ""
-echo -e "${BLUE}Test 4: POST /nip46/request (structure test)${NC}"
+echo -e "${BLUE}Test 4: POST /api/v1/nip46/request (structure test)${NC}"
 REQUEST_DATA='{
   "event": {
     "kind": 24133,
@@ -89,7 +89,7 @@ RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
     -d "$REQUEST_DATA" \
-    "$BASE_URL/nip46/request")
+    "$BASE_URL/api/v1/nip46/request")
 HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
 BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
 
@@ -103,7 +103,7 @@ fi
 
 # Test 5: Test nostrconnect endpoint
 echo ""
-echo -e "${BLUE}Test 5: POST /nip46/nostrconnect${NC}"
+echo -e "${BLUE}Test 5: POST /api/v1/nip46/nostrconnect${NC}"
 NOSTRCONNECT_DATA='{
   "nostrconnect_url": "nostrconnect://cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc?relay=wss://relay.example.com&secret=test123&perms=sign_event",
   "username": "testuser"
@@ -113,7 +113,7 @@ RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
     -d "$NOSTRCONNECT_DATA" \
-    "$BASE_URL/nip46/nostrconnect")
+    "$BASE_URL/api/v1/nip46/nostrconnect")
 HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
 BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
 
@@ -142,5 +142,5 @@ echo "✓ Method routing (connect, ping, sign_event, get_public_key)"
 echo "✓ Error handling and validation"
 echo ""
 echo "The NIP-46 remote signer is ready for use!"
-echo "Clients can connect using the /nip46/connect/:username endpoint"
-echo "and communicate via the /nip46/request endpoint."
+echo "Clients can connect using the /api/v1/nip46/connect/:username endpoint"
+echo "and communicate via the /api/v1/nip46/request endpoint."

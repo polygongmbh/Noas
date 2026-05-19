@@ -429,7 +429,7 @@ wait_for_health() {
   local target_url="${1:-$BASE_URL}"
   local attempts=0
   while [ $attempts -lt 30 ]; do
-    HEALTH_RESPONSE=$(curl -s "$target_url/health" || true)
+    HEALTH_RESPONSE=$(curl -s "$target_url/api/v1/health" || true)
     if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
       return 0
     fi
@@ -766,14 +766,14 @@ else
   fail_step "Profile picture from registration failed" "status=$PICTURE_REG_STATUS content_type=$PICTURE_REG_CONTENT_TYPE"
 fi
 
-start_test "Update Profile Picture Via /auth/update"
+start_test "Update Profile Picture Via /api/v1/auth/update"
 PICTURE_UPLOAD_RESPONSE=$(post_json "/auth/update" "{\"username\":\"$TEST_USER\",\"password_hash\":\"$TEST_PASS_HASH\",\"updates\":{\"profile_picture_data\":\"$TEST_PICTURE_UPDATED_BASE64\",\"profile_picture_content_type\":\"$TEST_PICTURE_UPDATED_CONTENT_TYPE\"}}")
 print_response "$PICTURE_UPLOAD_RESPONSE"
 PICTURE_URL=$(jq -r '.picture_url // empty' <<<"$PICTURE_UPLOAD_RESPONSE")
 if echo "$PICTURE_UPLOAD_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true' && [ -n "$PICTURE_URL" ]; then
-  pass_step "Profile picture updated through /auth/update"
+  pass_step "Profile picture updated through /api/v1/auth/update"
 else
-  fail_step "Profile picture update through /auth/update failed" "$PICTURE_UPLOAD_RESPONSE"
+  fail_step "Profile picture update through /api/v1/auth/update failed" "$PICTURE_UPLOAD_RESPONSE"
 fi
 
 start_test "POST /picture Is Not Available"
