@@ -356,6 +356,31 @@ test('GET /api/v1/health returns server status', async () => {
   assert.strictEqual(data.domain, undefined);
 });
 
+test('Legacy aliases return 410 with migration guidance', async () => {
+  const legacyEndpoints = [
+    { method: 'POST', path: '/signin' },
+    { method: 'POST', path: '/update' },
+    { method: 'POST', path: '/delete' },
+    { method: 'GET', path: '/health' },
+    { method: 'GET', path: '/picture/apitestuser' },
+    { method: 'GET', path: '/nip46/info' },
+    { method: 'GET', path: '/nip46/connect/apitestuser' },
+    { method: 'POST', path: '/nip46/request' },
+    { method: 'POST', path: '/nip46/nostrconnect' },
+  ];
+
+  for (const endpoint of legacyEndpoints) {
+    const response = await fetch(`${baseURL}${endpoint.path}`, {
+      method: endpoint.method,
+      headers: endpoint.method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
+      body: endpoint.method === 'POST' ? '{}' : undefined,
+    });
+    const data = await response.json();
+    assert.strictEqual(response.status, 410, `${endpoint.method} ${endpoint.path} should return 410`);
+    assert.ok(data.error?.includes('Legacy endpoint removed'), `${endpoint.method} ${endpoint.path} should include migration error`);
+  }
+});
+
 // Profile picture: upload via /api/v1/auth/update and fetch by pubkey.
 test('POST /api/v1/auth/update uploads and GET /api/v1/picture/:pubkey serves image', async () => {
   const imageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2S+0sAAAAASUVORK5CYII=';

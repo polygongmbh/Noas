@@ -1569,13 +1569,10 @@ const handleNip46Nostrconnect = async (req, res) => {
 };
 
 router.post('/api/v1/auth/signin', handleSignin);
-router.post('/signin', handleSignin);
 
 router.post('/api/v1/auth/update', handleUpdate);
-router.post('/update', handleUpdate);
 
 router.post('/api/v1/auth/delete', handleDelete);
-router.post('/delete', handleDelete);
 
 router.post('/api/v1/admin/users/list', handleAdminUserList);
 router.post('/api/v1/admin/users/verify', handleAdminUserVerify);
@@ -1583,19 +1580,29 @@ router.post('/api/v1/admin/users/role', handleAdminUserRole);
 router.post('/api/v1/admin/users/delete', handleAdminUserDelete);
 
 router.get('/api/v1/picture/:identifier', handlePictureFetch);
-router.get('/picture/:identifier', handlePictureFetch);
 
 router.get('/api/v1/health', handleHealth);
-router.get('/health', handleHealth);
 
 router.get('/api/v1/nip46/info', handleNip46Info);
-router.get('/nip46/info', handleNip46Info);
 
 router.get('/api/v1/nip46/connect/:username', handleNip46Connect);
-router.get('/nip46/connect/:username', handleNip46Connect);
 
 router.post('/api/v1/nip46/request', handleNip46Request);
-router.post('/nip46/request', handleNip46Request);
 
 router.post('/api/v1/nip46/nostrconnect', handleNip46Nostrconnect);
-router.post('/nip46/nostrconnect', handleNip46Nostrconnect);
+
+function legacyRouteRemoved(res, method, replacementPath) {
+  return res.status(410).json({
+    error: `Legacy endpoint removed. Use ${method} ${replacementPath}.`,
+  });
+}
+
+router.post('/signin', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/auth/signin'));
+router.post('/update', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/auth/update'));
+router.post('/delete', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/auth/delete'));
+router.get('/picture/:identifier', (_req, res) => legacyRouteRemoved(res, 'GET', '/api/v1/picture/:identifier'));
+router.get('/health', (_req, res) => legacyRouteRemoved(res, 'GET', '/api/v1/health'));
+router.get('/nip46/info', (_req, res) => legacyRouteRemoved(res, 'GET', '/api/v1/nip46/info'));
+router.get('/nip46/connect/:username', (_req, res) => legacyRouteRemoved(res, 'GET', '/api/v1/nip46/connect/:username'));
+router.post('/nip46/request', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/nip46/request'));
+router.post('/nip46/nostrconnect', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/nip46/nostrconnect'));
