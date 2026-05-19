@@ -410,6 +410,9 @@ NIP-05 verification endpoint.
 {
   "names": {
     "alice": "a0b1c2d3..."
+  },
+  "relays": {
+    "a0b1c2d3...": ["wss://relay.example.com"]
   }
 }
 ```

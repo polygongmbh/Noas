@@ -1387,7 +1387,7 @@ router.get('/.well-known/nostr.json', async (req, res) => {
         [user.username]: user.public_key,
       },
       relays: {
-        [user.username]: getDomainScopedRelays(
+        [user.public_key]: getDomainScopedRelays(
           normalizeEmail(buildNip05Identifier(user.username, tenant.nip05RootDomain)),
           user.relays || []
         ),
