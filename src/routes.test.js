@@ -29,6 +29,7 @@ let apitestUserPubkey = '';
 const APITEST_PASSWORD = 'testpassword123';
 const MULTITENANT_USER_ALPHA = `multitenant_${Date.now()}_a`;
 const MULTITENANT_USER_BETA = `multitenant_${Date.now()}_b`;
+const RELAY_USER_BETA = `relayuser_${Date.now()}_b`;
 
 /**
  * Helper function to make HTTP requests to the test server
@@ -102,12 +103,12 @@ before(async () => {
   // Clean up test data first
   try {
     await query(
-      'DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username IN ($1, $2, $3, $4))',
-      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA]
+      'DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username IN ($1, $2, $3, $4, $5))',
+      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA, RELAY_USER_BETA]
     );
     await query(
-      'DELETE FROM nostr_users WHERE username IN ($1, $2, $3, $4)',
-      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA]
+      'DELETE FROM nostr_users WHERE username IN ($1, $2, $3, $4, $5)',
+      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA, RELAY_USER_BETA]
     );
   } catch (e) {
     // Ignore if table doesn't exist yet
@@ -133,12 +134,12 @@ after(async () => {
   // Clean up test data
   try {
     await query(
-      'DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username IN ($1, $2, $3, $4))',
-      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA]
+      'DELETE FROM profile_pictures WHERE account_id IN (SELECT id FROM nostr_users WHERE username IN ($1, $2, $3, $4, $5))',
+      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA, RELAY_USER_BETA]
     );
     await query(
-      'DELETE FROM nostr_users WHERE username IN ($1, $2, $3, $4)',
-      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA]
+      'DELETE FROM nostr_users WHERE username IN ($1, $2, $3, $4, $5)',
+      ['apitestuser', 'rotatinguser', MULTITENANT_USER_ALPHA, MULTITENANT_USER_BETA, RELAY_USER_BETA]
     );
   } catch (e) {
     // Ignore cleanup errors
@@ -403,4 +404,74 @@ test('POST /api/v1/auth/update uploads and GET /api/v1/picture/:pubkey serves im
 
   const buffer = Buffer.from(await pictureResponse.arrayBuffer());
   assert.deepStrictEqual(buffer, Buffer.from(imageBase64, 'base64'));
+});
+
+test('POST /api/v1/relays creates relay with default policy and enqueue metadata', async () => {
+  await registerAndVerify(RELAY_USER_BETA, APITEST_PASSWORD, {
+    'x-forwarded-host': 'noas.beta.test',
+    'x-forwarded-proto': 'https',
+  });
+
+  const create = await requestWithHeaders(
+    'POST',
+    '/api/v1/relays',
+    {
+      username: RELAY_USER_BETA,
+      password_hash: sha256Hex(APITEST_PASSWORD),
+      relay_url: 'wss://relay.example.com',
+    },
+    {
+      'x-forwarded-host': 'noas.beta.test',
+      'x-forwarded-proto': 'https',
+    }
+  );
+
+  assert.strictEqual(create.status, 201);
+  assert.strictEqual(create.data.success, true);
+  assert.strictEqual(create.data.inserted, true);
+  assert.strictEqual(create.data.relay?.url, 'wss://relay.example.com');
+  assert.deepStrictEqual(create.data.relay?.policy, { read: true, write: true });
+  assert.deepStrictEqual(create.data.default_policy, { read: true, write: true });
+  assert.strictEqual(create.data.job?.enqueued, true);
+  assert.ok(Array.isArray(create.data.relays));
+  assert.ok(create.data.relays.includes('wss://relay.example.com'));
+});
+
+test('POST /api/v1/relays is idempotent for duplicate relay URLs', async () => {
+  const createAgain = await requestWithHeaders(
+    'POST',
+    '/api/v1/relays',
+    {
+      username: RELAY_USER_BETA,
+      password_hash: sha256Hex(APITEST_PASSWORD),
+      relay_url: 'wss://relay.example.com',
+    },
+    {
+      'x-forwarded-host': 'noas.beta.test',
+      'x-forwarded-proto': 'https',
+    }
+  );
+
+  assert.strictEqual(createAgain.status, 200);
+  assert.strictEqual(createAgain.data.success, true);
+  assert.strictEqual(createAgain.data.inserted, false);
+  assert.strictEqual(createAgain.data.job?.enqueued, false);
+});
+
+test('POST /api/v1/relays rejects create when relays are domain-managed', async () => {
+  const blocked = await requestWithHeaders(
+    'POST',
+    '/api/v1/relays',
+    {
+      username: 'apitestuser',
+      password_hash: sha256Hex(APITEST_PASSWORD),
+      relay_url: 'wss://relay.denied.example',
+    },
+    {
+      'x-forwarded-host': 'noas.alpha.test',
+      'x-forwarded-proto': 'https',
+    }
+  );
+  assert.strictEqual(blocked.status, 403);
+  assert.strictEqual(blocked.data.error, 'Relay list is managed by domain policy for this account');
 });

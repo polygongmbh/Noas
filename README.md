@@ -332,6 +332,55 @@ Update password hash, public key, encrypted private key, or relays (requires aut
 
 Credential rotation requires `new_password_hash`/`new_password`, `public_key`, and `private_key_encrypted` together.
 
+### POST /api/v1/relays
+
+Create (append) a relay URL for an authenticated account. This is additive and idempotent for duplicate relay URLs.
+
+**Request:**
+```json
+{
+  "username": "alice",
+  "password_hash": "sha256_hex_of_password",
+  "relay_url": "wss://relay.example.com",
+  "policy": {
+    "read": true,
+    "write": true
+  }
+}
+```
+
+Notes:
+- `username` is normalized to lowercase before validation.
+- Reserved usernames are rejected using the same validation rules as registration.
+- `relay_url` must be a valid `wss://` URL.
+- If tenant relay mapping is configured (`DOMAIN_RELAY_MAP`), manual relay creation is rejected for that tenant.
+- Relay insertion is transaction-backed and duplicate URLs do not create duplicate entries.
+- Successful inserts enqueue an async relay allow job (non-blocking response path).
+
+**Response (inserted):**
+```json
+{
+  "success": true,
+  "relay": {
+    "url": "wss://relay.example.com",
+    "policy": {
+      "read": true,
+      "write": true
+    }
+  },
+  "inserted": true,
+  "default_policy": {
+    "read": true,
+    "write": true
+  },
+  "job": {
+    "enqueued": true,
+    "id": "..."
+  },
+  "relays": ["wss://relay.example.com"]
+}
+```
+
 ### POST /api/v1/admin/users/list
 
 List users for admin/moderator accounts.

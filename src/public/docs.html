@@ -125,6 +125,24 @@
           <article class="endpoint-card">
             <div class="endpoint-head">
               <span class="endpoint-method method-post">POST</span>
+              <code class="endpoint-path">/api/v1/relays</code>
+            </div>
+            <p class="endpoint-desc">Add a relay URL for an authenticated account. Duplicate URLs are idempotent and domain-managed tenants reject manual edits.</p>
+            <p class="endpoint-label">Request body</p>
+            <pre class="endpoint-pre"><code>{
+  "username": "alice",
+  "password_hash": "sha256_hex",
+  "relay_url": "wss://relay.example.com",
+  "policy": {
+    "read": true,
+    "write": true
+  }
+}</code></pre>
+          </article>
+
+          <article class="endpoint-card">
+            <div class="endpoint-head">
+              <span class="endpoint-method method-post">POST</span>
               <code class="endpoint-path">/api/v1/admin/users/list</code>
             </div>
             <p class="endpoint-desc">Admin/moderator user listing.</p>

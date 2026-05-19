@@ -8,6 +8,7 @@
  */
 
 import { query } from './pool.js';
+import { pool } from './pool.js';
 
 const NOSTR_USER_STATUSES = {
   UNVERIFIED_EMAIL: 'unverified_email',
@@ -449,6 +450,68 @@ export async function updateNostrUser(username, updates, tenantDomain = null) {
     values
   );
   return result.rows[0];
+}
+
+/**
+ * Add a relay URL to an active user's relay list in a transaction.
+ * Returns the updated user and whether a new relay was inserted.
+ * @param {Object} params
+ * @param {string} params.username
+ * @param {string} params.relayUrl
+ * @param {string|null} params.tenantDomain
+ * @returns {Promise<{ user: Object|undefined, inserted: boolean }>}
+ */
+export async function addRelayToNostrUser({ username, relayUrl, tenantDomain = null }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const params = [username, NOSTR_USER_STATUSES.ACTIVE];
+    const tenant = normalizeTenantDomain(tenantDomain);
+    let selectSql = `SELECT *
+                     FROM nostr_users
+                     WHERE username = $1
+                       AND status = $2`;
+    if (tenant) {
+      params.push(tenant);
+      selectSql += ' AND tenant_domain = $3';
+    }
+    selectSql += ' FOR UPDATE';
+    const selected = await client.query(selectSql, params);
+    const user = selected.rows[0];
+    if (!user) {
+      await client.query('ROLLBACK');
+      return { user: undefined, inserted: false };
+    }
+
+    const existingRelays = Array.isArray(user.relays) ? user.relays : [];
+    if (existingRelays.includes(relayUrl)) {
+      await client.query('COMMIT');
+      return { user, inserted: false };
+    }
+
+    const mergedRelays = [...existingRelays, relayUrl];
+    const updateParams = [JSON.stringify(mergedRelays), username];
+    let updateSql = `UPDATE nostr_users
+                     SET relays = $1
+                     WHERE username = $2`;
+    if (tenant) {
+      updateParams.push(tenant);
+      updateSql += ' AND tenant_domain = $3';
+    }
+    updateSql += ' RETURNING *';
+    const updated = await client.query(updateSql, updateParams);
+    await client.query('COMMIT');
+    return { user: updated.rows[0], inserted: true };
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // noop
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**

@@ -40,6 +40,7 @@ import {
   listNostrUsers,
   getNostrUserProfilePictureByPublicKey,
   updateNostrUserProfilePicture,
+  addRelayToNostrUser,
 } from './db/users.js';
 import { 
   validateUsername, 
@@ -57,6 +58,7 @@ import { sendVerificationEmail } from './email.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
 import { randomUUID, createHash } from 'crypto';
 import { sendAllowPubkeyToRelays } from './nip86.js';
+import { enqueueRelayAllowJob } from './relay-jobs.js';
 
 export const router = express.Router();
 
@@ -1081,6 +1083,100 @@ const handleDelete = async (req, res) => {
   }
 };
 
+function isValidRelayUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'wss:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * POST /api/v1/relays
+ * Add a relay URL to an authenticated user's relay list.
+ *
+ * This endpoint is additive and preserves existing /api/v1/auth/update behavior.
+ */
+const handleRelayCreate = async (req, res) => {
+  try {
+    const tenant = resolveTenantContext(req);
+    const { username, password, password_hash: passwordHashInput, relay_url: relayUrlRaw, policy } = req.body || {};
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
+    const normalizedRelayUrl = String(relayUrlRaw || '').trim();
+
+    const usernameCheck = validateUsername(normalizedUsername);
+    if (!usernameCheck.valid) {
+      return res.status(400).json({ error: usernameCheck.error });
+    }
+    if (!normalizedPasswordHash) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    if (!isValidRelayUrl(normalizedRelayUrl)) {
+      return res.status(400).json({ error: 'relay_url must be a valid wss:// URL' });
+    }
+
+    const mappedRelays = config.domainRelayMap[tenant.nip05RootDomain];
+    if (Array.isArray(mappedRelays) && mappedRelays.length > 0) {
+      return res.status(403).json({
+        error: 'Relay list is managed by domain policy for this account',
+      });
+    }
+
+    const user = await getActiveNostrUserByUsername(normalizedUsername, tenant.nip05RootDomain);
+    if (!user || user.password_sha256 !== normalizedPasswordHash) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const defaultPolicy = {
+      read: true,
+      write: true,
+    };
+    const requestedPolicy = policy && typeof policy === 'object' ? policy : null;
+    const effectivePolicy = {
+      read: requestedPolicy?.read === false ? false : true,
+      write: requestedPolicy?.write === false ? false : true,
+    };
+
+    const { user: updated, inserted } = await addRelayToNostrUser({
+      username: normalizedUsername,
+      relayUrl: normalizedRelayUrl,
+      tenantDomain: tenant.nip05RootDomain,
+    });
+    if (!updated) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const jobId = inserted && updated.public_key
+      ? enqueueRelayAllowJob({
+          pubkey: updated.public_key,
+          relayUrl: normalizedRelayUrl,
+        })
+      : null;
+
+    return res.status(inserted ? 201 : 200).json({
+      success: true,
+      relay: {
+        url: normalizedRelayUrl,
+        policy: effectivePolicy,
+      },
+      inserted,
+      default_policy: defaultPolicy,
+      job: {
+        enqueued: Boolean(jobId),
+        id: jobId,
+      },
+      relays: Array.isArray(updated.relays) ? updated.relays : [],
+    });
+  } catch (error) {
+    console.error('Relay create error:', error);
+    return res.status(500).json({ error: 'Relay create failed' });
+  }
+};
+
 /**
  * POST /api/v1/admin/users/list
  * List users for admin and moderator accounts.
@@ -1573,6 +1669,7 @@ router.post('/api/v1/auth/signin', handleSignin);
 router.post('/api/v1/auth/update', handleUpdate);
 
 router.post('/api/v1/auth/delete', handleDelete);
+router.post('/api/v1/relays', handleRelayCreate);
 
 router.post('/api/v1/admin/users/list', handleAdminUserList);
 router.post('/api/v1/admin/users/verify', handleAdminUserVerify);
@@ -1600,6 +1697,7 @@ function legacyRouteRemoved(res, method, replacementPath) {
 router.post('/signin', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/auth/signin'));
 router.post('/update', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/auth/update'));
 router.post('/delete', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/auth/delete'));
+router.post('/relays', (_req, res) => legacyRouteRemoved(res, 'POST', '/api/v1/relays'));
 router.get('/picture/:identifier', (_req, res) => legacyRouteRemoved(res, 'GET', '/api/v1/picture/:identifier'));
 router.get('/health', (_req, res) => legacyRouteRemoved(res, 'GET', '/api/v1/health'));
 router.get('/nip46/info', (_req, res) => legacyRouteRemoved(res, 'GET', '/api/v1/nip46/info'));
