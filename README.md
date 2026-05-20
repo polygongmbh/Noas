@@ -92,8 +92,15 @@ SMTP_REJECT_UNAUTHORIZED=true
 NIP46_SIGNER_PRIVATE_KEY=
 NIP46_RELAYS=
 NIP86_RELAY_URLS=
+DOMAIN_NIP86_RELAY_MAP=
 NIP86_METHOD=allowpubkey
 NIP86_TIMEOUT_MS=5000
+RELAY_ALLOW_WORKER_ENABLED=true
+RELAY_ALLOW_WORKER_INTERVAL_MS=2000
+RELAY_ALLOW_WORKER_BATCH_SIZE=20
+RELAY_ALLOW_MAX_ATTEMPTS=5
+RELAY_ALLOW_RETRY_BASE_SECONDS=15
+RELAY_ALLOW_RETRY_MAX_SECONDS=300
 DISALLOWED_USERNAMES=feed,nostr,rnostr,base,tasks,relay
 NOAS_ADMIN_USERS=admin_username,64_char_hex_pubkey
 ```
@@ -108,8 +115,10 @@ Primary domain settings:
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
 - `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
 - `NIP86_RELAY_URLS`: comma-separated HTTP(S) relay admin endpoints that receive JSON-RPC `allowpubkey` after verification
+- `DOMAIN_NIP86_RELAY_MAP`: optional per-domain HTTP(S) relay admin endpoint mapping (`domain=https://relay-admin.domain`), semicolon separated
 - `NIP86_METHOD`: JSON-RPC method name for relay allow calls (default: `allowpubkey`)
 - `NIP86_TIMEOUT_MS`: timeout per relay allow request (default: `5000`)
+- `RELAY_ALLOW_*`: controls durable provisioning worker behavior (enablement, interval, retries, backoff)
 - `DISALLOWED_USERNAMES`: comma-separated usernames that cannot be registered.
 - `NOAS_ADMIN_USERS`: comma-separated initial admin identifiers applied at registration time. Each entry may be a username or a 64-character hex public key.
 
@@ -252,9 +261,10 @@ Activate account by confirming token + password hash.
   "nip05": "alice@example.com",
   "relay_allow": {
     "attempted": true,
+    "mode": "queued",
     "relays_total": 2,
-    "relays_success": 2,
-    "relays_failed": 0
+    "relays_enqueued": 2,
+    "relays_not_enqueued": 0
   }
 }
 ```
@@ -479,12 +489,13 @@ When called without `name`, returns Noas instance metadata (version, public URL,
 
 ## Relay Access Model (NIP-86 Allowpubkey)
 
-Noas can push relay allowlist updates through NIP-86 JSON-RPC after account verification:
+Noas can queue durable relay allowlist updates through NIP-86 JSON-RPC after account verification:
 
 - On successful `POST /api/v1/auth/verify`, Noas activates the account first.
-- If `NIP86_RELAY_URLS` is configured, Noas sends one JSON-RPC request per configured relay URL.
+- If `DOMAIN_NIP86_RELAY_MAP` contains the tenant domain, those endpoints are used. Otherwise `NIP86_RELAY_URLS` is used.
+- Jobs are persisted in PostgreSQL, processed by the relay-allow worker, and retried with exponential backoff.
 - Default request method is `allowpubkey`, with params `[<hex_pubkey>]`.
-- Verification still succeeds even if one or more relay calls fail; Noas logs failures and returns `relay_allow` summary in the verify response.
+- Verification still succeeds even if calls fail later; Noas returns queue summary in the verify response.
 
 Example request body sent by Noas:
 
