@@ -282,11 +282,11 @@ assert_registration_and_activate() {
     relay_allow_attempted=$(jq -r 'if .relay_allow | has("attempted") then .relay_allow.attempted else empty end' <<<"$verify_response")
     local relay_allow_total
     relay_allow_total=$(jq -r '.relay_allow.relays_total // empty' <<<"$verify_response")
-    local relay_allow_success
-    relay_allow_success=$(jq -r '.relay_allow.relays_success // empty' <<<"$verify_response")
-    local relay_allow_failed
-    relay_allow_failed=$(jq -r '.relay_allow.relays_failed // empty' <<<"$verify_response")
-    if [ -z "$relay_allow_attempted" ] || [ -z "$relay_allow_total" ] || [ -z "$relay_allow_success" ] || [ -z "$relay_allow_failed" ]; then
+    local relay_allow_enqueued
+    relay_allow_enqueued=$(jq -r '.relay_allow.relays_enqueued // empty' <<<"$verify_response")
+    local relay_allow_not_enqueued
+    relay_allow_not_enqueued=$(jq -r '.relay_allow.relays_not_enqueued // empty' <<<"$verify_response")
+    if [ -z "$relay_allow_attempted" ] || [ -z "$relay_allow_total" ] || [ -z "$relay_allow_enqueued" ] || [ -z "$relay_allow_not_enqueued" ]; then
       fail_step "$label" "Verification response missing relay_allow summary: $verify_response"
     fi
 

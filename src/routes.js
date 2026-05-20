@@ -57,8 +57,7 @@ import {
 import { sendVerificationEmail } from './email.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
 import { randomUUID, createHash } from 'crypto';
-import { sendAllowPubkeyToRelays } from './nip86.js';
-import { enqueueRelayAllowJob } from './relay-jobs.js';
+import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs } from './relay-provisioner.js';
 
 export const router = express.Router();
 
@@ -703,34 +702,18 @@ router.post('/api/v1/auth/verify', async (req, res) => {
 
     await activateNostrUserByUsername(user.username, tenant.nip05RootDomain);
 
-    let relayAllow = {
-      attempted: false,
-      relays_total: config.nip86RelayUrls.length,
-      relays_success: 0,
-      relays_failed: 0,
+    const provisioning = await enqueueTenantRelayAllowJobs({
+      tenantDomain: tenant.nip05RootDomain,
+      username: user.username,
+      pubkey: user.public_key,
+    });
+    const relayAllow = {
+      attempted: provisioning.total_targets > 0 && Boolean(user.public_key),
+      mode: 'queued',
+      relays_total: provisioning.total_targets,
+      relays_enqueued: provisioning.enqueued,
+      relays_not_enqueued: Math.max(0, provisioning.total_targets - provisioning.enqueued),
     };
-    if (config.nip86RelayUrls.length > 0 && user.public_key) {
-      const relayResults = await sendAllowPubkeyToRelays({
-        pubkey: user.public_key,
-        relayUrls: config.nip86RelayUrls,
-        method: config.nip86Method,
-        timeoutMs: config.nip86TimeoutMs,
-      });
-      const relaysSuccess = relayResults.filter((result) => result.success).length;
-      relayAllow = {
-        attempted: true,
-        relays_total: relayResults.length,
-        relays_success: relaysSuccess,
-        relays_failed: relayResults.length - relaysSuccess,
-      };
-      if (relayAllow.relays_failed > 0) {
-        console.warn('NIP-86 allowpubkey failed on one or more relays', {
-          username: user.username,
-          tenant_domain: tenant.nip05RootDomain,
-          relay_results: relayResults,
-        });
-      }
-    }
 
     res.json({
       success: true,
@@ -1150,12 +1133,14 @@ const handleRelayCreate = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const jobId = inserted && updated.public_key
-      ? enqueueRelayAllowJob({
+    const provisioning = inserted && updated.public_key
+      ? await enqueueRelayAllowJobForRelayUrl({
+          tenantDomain: tenant.nip05RootDomain,
+          username: updated.username,
           pubkey: updated.public_key,
           relayUrl: normalizedRelayUrl,
         })
-      : null;
+      : { enqueued: false, job_id: null };
 
     return res.status(inserted ? 201 : 200).json({
       success: true,
@@ -1166,8 +1151,8 @@ const handleRelayCreate = async (req, res) => {
       inserted,
       default_policy: defaultPolicy,
       job: {
-        enqueued: Boolean(jobId),
-        id: jobId,
+        enqueued: Boolean(provisioning.enqueued),
+        id: provisioning.job_id,
       },
       relays: Array.isArray(updated.relays) ? updated.relays : [],
     });
@@ -1245,27 +1230,18 @@ const handleAdminUserVerify = async (req, res) => {
 
     const updated = await updateNostrUserStatus(targetUsername, 'active', tenant.nip05RootDomain);
 
-    let relayAllow = {
-      attempted: false,
-      relays_total: config.nip86RelayUrls.length,
-      relays_success: 0,
-      relays_failed: 0,
+    const provisioning = await enqueueTenantRelayAllowJobs({
+      tenantDomain: tenant.nip05RootDomain,
+      username: updated?.username,
+      pubkey: updated?.public_key,
+    });
+    const relayAllow = {
+      attempted: provisioning.total_targets > 0 && Boolean(updated?.public_key),
+      mode: 'queued',
+      relays_total: provisioning.total_targets,
+      relays_enqueued: provisioning.enqueued,
+      relays_not_enqueued: Math.max(0, provisioning.total_targets - provisioning.enqueued),
     };
-    if (config.nip86RelayUrls.length > 0 && updated?.public_key) {
-      const relayResults = await sendAllowPubkeyToRelays({
-        pubkey: updated.public_key,
-        relayUrls: config.nip86RelayUrls,
-        method: config.nip86Method,
-        timeoutMs: config.nip86TimeoutMs,
-      });
-      const relaysSuccess = relayResults.filter((result) => result.success).length;
-      relayAllow = {
-        attempted: true,
-        relays_total: relayResults.length,
-        relays_success: relaysSuccess,
-        relays_failed: relayResults.length - relaysSuccess,
-      };
-    }
 
     return res.json({
       success: true,
