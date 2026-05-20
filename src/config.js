@@ -106,6 +106,28 @@ function parseDomainRelayMap(value) {
   return map;
 }
 
+function parseDomainHttpUrlMap(value) {
+  const map = {};
+  const entries = String(value || '')
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const entry of entries) {
+    const separatorIndex = entry.indexOf('=');
+    if (separatorIndex <= 0) continue;
+    const domain = rootDomainFromHostLike(entry.slice(0, separatorIndex));
+    const urlsRaw = entry.slice(separatorIndex + 1).trim();
+    if (!domain || !urlsRaw) continue;
+    const urls = parseHttpUrlList(urlsRaw);
+    if (urls.length > 0) {
+      map[domain] = urls;
+    }
+  }
+
+  return map;
+}
+
 function parseAllowedOrigins(value) {
   return String(value || '')
     .split(',')
@@ -280,8 +302,15 @@ export const config = {
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,
   nip86RelayUrls: parseHttpUrlList(process.env.NIP86_RELAY_URLS),
+  domainNip86RelayMap: parseDomainHttpUrlMap(process.env.DOMAIN_NIP86_RELAY_MAP),
   nip86Method: (process.env.NIP86_METHOD || 'allowpubkey').trim() || 'allowpubkey',
   nip86TimeoutMs: Math.max(500, parseInt(process.env.NIP86_TIMEOUT_MS || '5000', 10) || 5000),
+  relayAllowWorkerEnabled: String(process.env.RELAY_ALLOW_WORKER_ENABLED || 'true').trim().toLowerCase() !== 'false',
+  relayAllowWorkerIntervalMs: Math.max(200, parseInt(process.env.RELAY_ALLOW_WORKER_INTERVAL_MS || '2000', 10) || 2000),
+  relayAllowWorkerBatchSize: Math.max(1, parseInt(process.env.RELAY_ALLOW_WORKER_BATCH_SIZE || '20', 10) || 20),
+  relayAllowMaxAttempts: Math.max(1, parseInt(process.env.RELAY_ALLOW_MAX_ATTEMPTS || '5', 10) || 5),
+  relayAllowRetryBaseSeconds: Math.max(1, parseInt(process.env.RELAY_ALLOW_RETRY_BASE_SECONDS || '15', 10) || 15),
+  relayAllowRetryMaxSeconds: Math.max(1, parseInt(process.env.RELAY_ALLOW_RETRY_MAX_SECONDS || '300', 10) || 300),
   nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
   nip46Relays: parseRelayList(process.env.NIP46_RELAYS) || [],
 };
