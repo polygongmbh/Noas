@@ -90,18 +90,9 @@ SMTP_FROM="Noas <no-reply@example.com>"
 SMTP_REPLY_TO=
 SMTP_REJECT_UNAUTHORIZED=true
 NIP46_SIGNER_PRIVATE_KEY=
-NIP46_RELAYS=
 NIP86_RELAY_URLS=
 DOMAIN_NIP86_RELAY_MAP=
-NIP86_METHOD=allowpubkey
-NIP86_TIMEOUT_MS=5000
-RELAY_ALLOW_WORKER_ENABLED=true
-RELAY_ALLOW_WORKER_INTERVAL_MS=2000
-RELAY_ALLOW_WORKER_BATCH_SIZE=20
-RELAY_ALLOW_MAX_ATTEMPTS=5
-RELAY_ALLOW_RETRY_BASE_SECONDS=15
-RELAY_ALLOW_RETRY_MAX_SECONDS=300
-DISALLOWED_USERNAMES=feed,nostr,rnostr,base,tasks,relay
+DISALLOWED_USERNAMES=feed,nostr,rnostr,base,tasks,relay,noas,go,nodex,caldav,calendar,dav
 NOAS_ADMIN_USERS=admin_username,64_char_hex_pubkey
 ```
 
@@ -113,14 +104,13 @@ Primary domain settings:
 - `NOAS_PUBLIC_URL`: public Noas URL where users access verify/UI/API. Used when a tenant is not matched in `NOAS_PUBLIC_URL_MAP`. Leave empty to derive per request host for multi-tenant setups.
 - `NOAS_PUBLIC_URL_MAP`: per-tenant public URL override mapping (`domain=https://noas.domain`). When a tenant domain matches, it overrides `NOAS_PUBLIC_URL` and request-derived URLs for `api_base` and verification links. Use semicolons to separate entries.
 - `NIP46_SIGNER_PRIVATE_KEY`: optional stable signer identity for NIP-46 (`nsec` or 64-char hex)
-- `NIP46_RELAYS`: comma-separated relay URLs to advertise in `bunker://` connect tokens
 - `NIP86_RELAY_URLS`: comma-separated HTTP(S) relay admin endpoints that receive JSON-RPC `allowpubkey` after verification
 - `DOMAIN_NIP86_RELAY_MAP`: optional per-domain HTTP(S) relay admin endpoint mapping (`domain=https://relay-admin.domain`), semicolon separated
-- `NIP86_METHOD`: JSON-RPC method name for relay allow calls (default: `allowpubkey`)
-- `NIP86_TIMEOUT_MS`: timeout per relay allow request (default: `5000`)
-- `RELAY_ALLOW_*`: controls durable provisioning worker behavior (enablement, interval, retries, backoff)
 - `DISALLOWED_USERNAMES`: comma-separated usernames that cannot be registered.
 - `NOAS_ADMIN_USERS`: comma-separated initial admin identifiers applied at registration time. Each entry may be a username or a 64-character hex public key.
+
+Implementation note:
+- Relay allow provisioning internals (JSON-RPC method, timeout, worker interval, retry/backoff) are intentionally fixed in code to keep operator configuration surface minimal and safer by default.
 
 Most other domain-related behavior derives from these values.
 Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.

@@ -262,6 +262,16 @@ const configuredNoasPublicUrl = (process.env.NOAS_PUBLIC_URL || '').trim();
 const configuredNip05Domains = parseDomainList(configuredNip05Domain);
 const emailVerificationMode = parseEmailVerificationMode();
 const configuredAdminSeeds = parseAdminSeedList(process.env.NOAS_ADMIN_USERS);
+const relayProvisionerDefaults = {
+  nip86Method: 'allowpubkey',
+  nip86TimeoutMs: 5000,
+  workerEnabled: true,
+  workerIntervalMs: 2000,
+  workerBatchSize: 20,
+  maxAttempts: 5,
+  retryBaseSeconds: 15,
+  retryMaxSeconds: 300,
+};
 
 // Export configuration object with all app settings
 export const config = {
@@ -303,16 +313,16 @@ export const config = {
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,
   nip86RelayUrls: parseHttpUrlList(process.env.NIP86_RELAY_URLS),
   domainNip86RelayMap: parseDomainHttpUrlMap(process.env.DOMAIN_NIP86_RELAY_MAP),
-  nip86Method: (process.env.NIP86_METHOD || 'allowpubkey').trim() || 'allowpubkey',
-  nip86TimeoutMs: Math.max(500, parseInt(process.env.NIP86_TIMEOUT_MS || '5000', 10) || 5000),
-  relayAllowWorkerEnabled: String(process.env.RELAY_ALLOW_WORKER_ENABLED || 'true').trim().toLowerCase() !== 'false',
-  relayAllowWorkerIntervalMs: Math.max(200, parseInt(process.env.RELAY_ALLOW_WORKER_INTERVAL_MS || '2000', 10) || 2000),
-  relayAllowWorkerBatchSize: Math.max(1, parseInt(process.env.RELAY_ALLOW_WORKER_BATCH_SIZE || '20', 10) || 20),
-  relayAllowMaxAttempts: Math.max(1, parseInt(process.env.RELAY_ALLOW_MAX_ATTEMPTS || '5', 10) || 5),
-  relayAllowRetryBaseSeconds: Math.max(1, parseInt(process.env.RELAY_ALLOW_RETRY_BASE_SECONDS || '15', 10) || 15),
-  relayAllowRetryMaxSeconds: Math.max(1, parseInt(process.env.RELAY_ALLOW_RETRY_MAX_SECONDS || '300', 10) || 300),
+  nip86Method: relayProvisionerDefaults.nip86Method,
+  nip86TimeoutMs: relayProvisionerDefaults.nip86TimeoutMs,
+  relayAllowWorkerEnabled: relayProvisionerDefaults.workerEnabled,
+  relayAllowWorkerIntervalMs: relayProvisionerDefaults.workerIntervalMs,
+  relayAllowWorkerBatchSize: relayProvisionerDefaults.workerBatchSize,
+  relayAllowMaxAttempts: relayProvisionerDefaults.maxAttempts,
+  relayAllowRetryBaseSeconds: relayProvisionerDefaults.retryBaseSeconds,
+  relayAllowRetryMaxSeconds: relayProvisionerDefaults.retryMaxSeconds,
   nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
-  nip46Relays: parseRelayList(process.env.NIP46_RELAYS) || [],
+  nip46Relays: [],
 };
 
 if (!config.nip05Domain) {
