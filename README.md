@@ -111,6 +111,7 @@ Primary domain settings:
 
 Implementation note:
 - Relay allow provisioning internals (JSON-RPC method, timeout, worker interval, retry/backoff) are intentionally fixed in code to keep operator configuration surface minimal and safer by default.
+- Background worker internals for retention/quota/reconcile intervals are also fixed in code; retention is active, while quota/reconcile currently run as framework no-op passes for future enforcement/reconciliation logic.
 
 Most other domain-related behavior derives from these values.
 Usernames are unique per tenant domain (`tenant_domain + username`), so the same username can exist on different configured domains.

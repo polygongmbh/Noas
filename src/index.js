@@ -11,6 +11,7 @@ import { dirname, join } from 'path';
 import { config } from './config.js';
 import { router } from './routes.js';
 import { startRelayAllowWorker } from './relay-provisioner.js';
+import { startBackgroundWorkers } from './background-workers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -73,6 +74,8 @@ if (!config.isTest) {
     console.log(`Domain: ${config.domain}`);
     const workerStatus = startRelayAllowWorker();
     console.log('relay allow worker status', workerStatus);
+    const backgroundWorkerStatus = startBackgroundWorkers();
+    console.log('background worker status', backgroundWorkerStatus);
   });
 
   // Handle port conflict gracefully

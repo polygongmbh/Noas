@@ -272,6 +272,20 @@ const relayProvisionerDefaults = {
   retryBaseSeconds: 15,
   retryMaxSeconds: 300,
 };
+const backgroundWorkerDefaults = {
+  retention: {
+    enabled: true,
+    intervalMs: 60 * 1000,
+  },
+  quota: {
+    enabled: true,
+    intervalMs: 60 * 1000,
+  },
+  reconcile: {
+    enabled: true,
+    intervalMs: 5 * 60 * 1000,
+  },
+};
 
 // Export configuration object with all app settings
 export const config = {
@@ -321,6 +335,12 @@ export const config = {
   relayAllowMaxAttempts: relayProvisionerDefaults.maxAttempts,
   relayAllowRetryBaseSeconds: relayProvisionerDefaults.retryBaseSeconds,
   relayAllowRetryMaxSeconds: relayProvisionerDefaults.retryMaxSeconds,
+  retentionWorkerEnabled: backgroundWorkerDefaults.retention.enabled,
+  retentionWorkerIntervalMs: backgroundWorkerDefaults.retention.intervalMs,
+  quotaWorkerEnabled: backgroundWorkerDefaults.quota.enabled,
+  quotaWorkerIntervalMs: backgroundWorkerDefaults.quota.intervalMs,
+  reconcileWorkerEnabled: backgroundWorkerDefaults.reconcile.enabled,
+  reconcileWorkerIntervalMs: backgroundWorkerDefaults.reconcile.intervalMs,
   nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
   nip46Relays: [],
 };
