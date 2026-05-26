@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const homeAuthToggleSignIn = document.getElementById('homeAuthToggleSignIn');
   const homeAuthToggleRegister = document.getElementById('homeAuthToggleRegister');
   const homeConfirmPasswordField = document.getElementById('homeConfirmPasswordField');
+  const signupProfilePictureField = document.getElementById('signupProfilePictureField');
   const homeRegisterWarning = document.getElementById('homeRegisterWarning');
   const homeShowRegister = document.getElementById('homeShowRegister');
   const homeShowSignIn = document.getElementById('homeShowSignIn');
@@ -177,6 +178,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (homeAuthToggleRegister) homeAuthToggleRegister.hidden = !isRegisterMode;
     if (signupEmailLabel) signupEmailLabel.hidden = !isRegisterMode;
     if (homeConfirmPasswordField) homeConfirmPasswordField.hidden = !isRegisterMode;
+    if (signupProfilePictureField) signupProfilePictureField.hidden = !isRegisterMode;
     if (registerAdvancedToggle) registerAdvancedToggle.hidden = !isRegisterMode;
     if (homeRegisterWarning) homeRegisterWarning.hidden = !isRegisterMode;
     if (signupStatus) signupStatus.hidden = !isRegisterMode;
