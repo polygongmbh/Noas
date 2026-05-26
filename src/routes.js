@@ -77,6 +77,11 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function normalizeUsernameInput(username) {
+  const raw = String(username || '').trim().toLowerCase();
+  return raw.split('@')[0] || '';
+}
+
 function getEmailDomain(email) {
   const normalized = normalizeEmail(email);
   const atIndex = normalized.lastIndexOf('@');
@@ -231,7 +236,7 @@ function isValidRole(value) {
 }
 
 function resolveInitialRole(username, publicKey) {
-  const normalizedUsername = String(username || '').trim().toLowerCase();
+  const normalizedUsername = normalizeUsernameInput(username);
   const normalizedPublicKey = String(publicKey || '').trim().toLowerCase();
   if (normalizedUsername && config.adminUsernames.includes(normalizedUsername)) {
     return NOSTR_USER_ROLES.ADMIN;
@@ -446,7 +451,7 @@ router.post('/api/v1/auth/register', async (req, res) => {
       redirect,
       relays,
     } = req.body || {};
-    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedUsername = normalizeUsernameInput(username);
     const normalizedEmail = normalizeEmail(email);
     const normalizedPassword = String(password || '');
     const normalizedRedirect = String(redirect || '').trim() || null;
@@ -734,7 +739,7 @@ router.post('/api/v1/auth/verify', async (req, res) => {
 router.post('/api/v1/auth/resend', async (req, res) => {
   try {
     const tenant = resolveTenantContext(req);
-    const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
+    const normalizedUsername = normalizeUsernameInput(req.body?.username);
     const usernameCheck = validateUsername(normalizedUsername);
     if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.error });
 
@@ -843,7 +848,7 @@ function normalizePasswordHashFromSignin(passwordHash, password) {
 
 async function resolveAdminActor(req) {
   const tenant = resolveTenantContext(req);
-  const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
+  const normalizedUsername = normalizeUsernameInput(req.body?.username);
   const normalizedPasswordHash = normalizePasswordHashFromSignin(
     req.body?.password_hash,
     req.body?.password
@@ -869,7 +874,7 @@ async function resolveAdminActor(req) {
 const handleSignin = async (req, res) => {
   try {
     const tenant = resolveTenantContext(req);
-    const normalizedUsername = String(req.body?.username || '').trim().toLowerCase();
+    const normalizedUsername = normalizeUsernameInput(req.body?.username);
     const normalizedPasswordHash = normalizePasswordHashFromSignin(
       req.body?.password_hash,
       req.body?.password
@@ -918,7 +923,7 @@ const handleUpdate = async (req, res) => {
   try {
     const tenant = resolveTenantContext(req);
     const { username, password, password_hash: passwordHashInput, updates } = req.body;
-    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedUsername = normalizeUsernameInput(username);
     const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
 
     if (!normalizedUsername || !normalizedPasswordHash) {
@@ -1035,7 +1040,7 @@ const handleDelete = async (req, res) => {
   try {
     const tenant = resolveTenantContext(req);
     const { username, password, password_hash: passwordHashInput } = req.body;
-    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedUsername = normalizeUsernameInput(username);
     const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
 
     if (!normalizedUsername || !normalizedPasswordHash) {
@@ -1087,7 +1092,7 @@ const handleRelayCreate = async (req, res) => {
   try {
     const tenant = resolveTenantContext(req);
     const { username, password, password_hash: passwordHashInput, relay_url: relayUrlRaw, policy } = req.body || {};
-    const normalizedUsername = String(username || '').trim().toLowerCase();
+    const normalizedUsername = normalizeUsernameInput(username);
     const normalizedPasswordHash = normalizePasswordHashFromSignin(passwordHashInput, password);
     const normalizedRelayUrl = String(relayUrlRaw || '').trim();
 
@@ -1518,7 +1523,7 @@ const handleNip46Connect = async (req, res) => {
 
     // Validate username exists
     const user = await getActiveNostrUserByUsername(
-      String(username || '').trim().toLowerCase(),
+      normalizeUsernameInput(username),
       tenant.nip05RootDomain
     );
     if (!user) {

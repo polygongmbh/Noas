@@ -83,6 +83,13 @@ document.addEventListener('DOMContentLoaded', function () {
   const registerAdvancedToggle = document.getElementById('registerAdvancedToggle');
   const registerAdvancedPanel = document.getElementById('registerAdvancedPanel');
   const isUnifiedHomeAuth = Boolean(homeUnifiedAuthForm);
+  const signinUsernameInput = signinForm?.querySelector('input[name="username"]');
+
+  function normalizeUsernameForInput(value) {
+    const raw = String(value || '').toLowerCase();
+    const base = raw.split('@')[0] || '';
+    return base.replace(/[^a-z0-9._-]/g, '').slice(0, 32);
+  }
 
   function updateDeleteGuardState() {
     if (!deleteSubmitButton || !deleteForm) return;
@@ -312,8 +319,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (signupUsername) {
     signupUsername.addEventListener('input', () => {
+      const normalizedUsername = normalizeUsernameForInput(signupUsername.value);
+      if (signupUsername.value !== normalizedUsername) {
+        signupUsername.value = normalizedUsername;
+      }
       if (state.emailVerificationMode === 'required_nip05_domains') {
         syncSignupEmailLockState();
+      }
+    });
+  }
+  if (signinUsernameInput) {
+    signinUsernameInput.addEventListener('input', () => {
+      const normalizedUsername = normalizeUsernameForInput(signinUsernameInput.value);
+      if (signinUsernameInput.value !== normalizedUsername) {
+        signinUsernameInput.value = normalizedUsername;
       }
     });
   }
@@ -739,7 +758,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function validateSignupStartForm() {
-    const username = signupUsername?.value.trim().toLowerCase() || '';
+    const username = normalizeUsernameForInput(signupUsername?.value || '');
     const email = signupEmail?.value.trim().toLowerCase() || '';
     const password = signupPassword?.value || '';
     const passwordConfirm = signupPasswordConfirm?.value || '';
@@ -823,7 +842,7 @@ document.addEventListener('DOMContentLoaded', function () {
       event.preventDefault();
       if (!validateSignupStartForm()) return;
 
-      const username = signupUsername.value.trim().toLowerCase();
+      const username = normalizeUsernameForInput(signupUsername.value);
       const email = signupEmail?.value.trim().toLowerCase() || '';
       const password = signupPassword.value;
       const publicKey = signupPublicKey?.value.trim() || '';
@@ -881,7 +900,10 @@ document.addEventListener('DOMContentLoaded', function () {
   if (resendForm) {
     resendForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const username = (resendUsername?.value || state.signupUsername || '').trim().toLowerCase();
+      const username = normalizeUsernameForInput(resendUsername?.value || state.signupUsername || '');
+      if (resendUsername && resendUsername.value !== username) {
+        resendUsername.value = username;
+      }
       if (!username) {
         setStatus(resendStatus, 'Username is required.', 'error');
         return;
@@ -911,7 +933,7 @@ document.addEventListener('DOMContentLoaded', function () {
       event.preventDefault();
       setStatus(signinStatus, 'Signing in...');
       const formData = new FormData(signinForm);
-      const username = String(formData.get('username') || '').trim().toLowerCase();
+      const username = normalizeUsernameForInput(formData.get('username'));
       const password = String(formData.get('password') || '');
 
       try {
@@ -938,7 +960,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!registerMode) {
         setStatus(signinStatus, 'Signing in...', 'info');
         setStatus(signupStatus, '', 'info');
-        const username = String(signupUsername?.value || '').trim().toLowerCase();
+        const username = normalizeUsernameForInput(signupUsername?.value || '');
         const password = String(signupPassword?.value || '');
 
         try {
@@ -957,7 +979,7 @@ document.addEventListener('DOMContentLoaded', function () {
       setStatus(signinStatus, '', 'info');
 
       try {
-        const username = signupUsername.value.trim().toLowerCase();
+        const username = normalizeUsernameForInput(signupUsername.value);
         const email = signupEmail?.value.trim().toLowerCase() || '';
         const password = signupPassword.value;
         const publicKey = signupPublicKey?.value.trim() || '';
