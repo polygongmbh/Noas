@@ -58,8 +58,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const signupEmailHint = document.getElementById('signupEmailHint');
   const signupPassword = document.getElementById('signupPassword');
   const signupPasswordConfirm = document.getElementById('signupPasswordConfirm');
-  const signupPublicKey = document.getElementById('signupPublicKey');
-  const signupPrivateKeyEncrypted = document.getElementById('signupPrivateKeyEncrypted');
+  const signupPrivateKey = document.getElementById('signupPrivateKey');
   const signupProfilePictureInput = document.getElementById('signupProfilePictureInput');
   const signupSubmit = document.getElementById('signupSubmit');
   const signupStatus = document.getElementById('signupStatus');
@@ -191,8 +190,7 @@ document.addEventListener('DOMContentLoaded', function () {
       signupPasswordConfirm.disabled = !isRegisterMode;
       signupPasswordConfirm.required = isRegisterMode;
     }
-    if (signupPublicKey) signupPublicKey.disabled = !isRegisterMode;
-    if (signupPrivateKeyEncrypted) signupPrivateKeyEncrypted.disabled = !isRegisterMode;
+    if (signupPrivateKey) signupPrivateKey.disabled = !isRegisterMode;
     if (signupProfilePictureInput) signupProfilePictureInput.disabled = !isRegisterMode;
     if (!isRegisterMode && registerAdvancedPanel) {
       registerAdvancedPanel.hidden = true;
@@ -227,7 +225,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const verificationMode = String(state.emailVerificationMode || 'off').trim().toLowerCase();
     const lockEmail = verificationMode === 'required_nip05_domains';
     const requireEmail = verificationMode === 'required' || lockEmail;
-    const lockHint = 'Because EMAIL_VERIFICATION_MODE=required_nip05_domains, email must be username@NIP05_DOMAIN.';
+    const lockHint = 'Domain verification is enabled. You need an email address that matches your username to sign up.';
     const requiredHint = 'Email verification is required. Enter the email that should receive verification links.';
     signupEmail.disabled = lockEmail;
     signupEmail.readOnly = false;
@@ -245,7 +243,7 @@ document.addEventListener('DOMContentLoaded', function () {
     signupEmail.removeAttribute('title');
     signupEmailHint.textContent = requireEmail
       ? requiredHint
-      : 'Optional when EMAIL_VERIFICATION_MODE=off. Used for account and verification emails.';
+      : 'Optional when email verification is disabled. Used for account and verification emails.';
     signupEmailLabel.classList.remove('email-lock-hint');
   }
 
@@ -764,8 +762,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const email = signupEmail?.value.trim().toLowerCase() || '';
     const password = signupPassword?.value || '';
     const passwordConfirm = signupPasswordConfirm?.value || '';
-    const publicKey = signupPublicKey?.value.trim() || '';
-    const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
+    const privateKeyInput = signupPrivateKey?.value.trim() || '';
     if (!username) {
       setStatus(signupStatus, 'Username is required', 'error');
       signupUsername?.focus();
@@ -812,7 +809,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const expectedEmail = getDerivedSignupEmail(username);
       if (email !== expectedEmail) {
         signupEmail.value = expectedEmail;
-        setStatus(signupStatus, 'Email must follow username@NIP05_DOMAIN when verification mode is required_nip05_domains', 'error');
+        setStatus(signupStatus, 'Domain verification is enabled. Use an email that matches your username.', 'error');
         if (signupEmail?.disabled) {
           signupUsername?.focus();
         } else {
@@ -821,15 +818,17 @@ document.addEventListener('DOMContentLoaded', function () {
         return false;
       }
     }
-    if (publicKey && !(/^[a-f0-9]{64}$/i.test(publicKey) || publicKey.startsWith('npub1'))) {
-      setStatus(signupStatus, 'Public key must be a valid npub1... or 64-char hex value', 'error');
-      signupPublicKey?.focus();
-      return false;
-    }
-    if (privateKeyEncrypted && !privateKeyEncrypted.startsWith('ncryptsec')) {
-      setStatus(signupStatus, 'Encrypted private key must start with ncryptsec', 'error');
-      signupPrivateKeyEncrypted?.focus();
-      return false;
+    if (privateKeyInput) {
+      if (!window.NoasNostr?.normalizeSecretKey) {
+        setStatus(signupStatus, 'Private key tools are unavailable. Reload and try again.', 'error');
+        return false;
+      }
+      const privateKeyLooksValid = /^[a-f0-9]{64}$/i.test(privateKeyInput) || privateKeyInput.startsWith('nsec1');
+      if (!privateKeyLooksValid) {
+        setStatus(signupStatus, 'Private key must be a 64-character hex key or nsec key', 'error');
+        signupPrivateKey?.focus();
+        return false;
+      }
     }
     if (password !== passwordConfirm) {
       setStatus(signupStatus, 'Passwords do not match', 'error');
@@ -847,8 +846,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const username = normalizeUsernameForInput(signupUsername.value);
       const email = signupEmail?.value.trim().toLowerCase() || '';
       const password = signupPassword.value;
-      const publicKey = signupPublicKey?.value.trim() || '';
-      const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
+      const privateKeyInput = signupPrivateKey?.value.trim() || '';
       const signupProfilePicture = signupProfilePictureInput?.files?.[0] || null;
       setStatus(signupStatus, 'Sending verification email...', 'info');
 
@@ -856,14 +854,20 @@ document.addEventListener('DOMContentLoaded', function () {
         const requestBody = {
           username,
           email: email || undefined,
-          public_key: publicKey || undefined,
-          private_key_encrypted: privateKeyEncrypted || undefined,
         };
         if (signupProfilePicture) {
           requestBody.profile_picture_data = await fileToBase64(signupProfilePicture);
           requestBody.profile_picture_content_type = signupProfilePicture.type || 'application/octet-stream';
         }
-        if (publicKey || privateKeyEncrypted) {
+        if (privateKeyInput) {
+          let encrypted;
+          try {
+            encrypted = await window.NoasNostr.encryptPrivateKey(privateKeyInput, password);
+          } catch {
+            throw new Error('Private key must be a valid 64-character hex or nsec key');
+          }
+          requestBody.public_key = encrypted.publicKey;
+          requestBody.private_key_encrypted = encrypted.privateKeyEncrypted;
           requestBody.password_hash = await sha256Hex(password);
         } else {
           requestBody.password = password;
@@ -984,21 +988,26 @@ document.addEventListener('DOMContentLoaded', function () {
         const username = normalizeUsernameForInput(signupUsername.value);
         const email = signupEmail?.value.trim().toLowerCase() || '';
         const password = signupPassword.value;
-        const publicKey = signupPublicKey?.value.trim() || '';
-        const privateKeyEncrypted = signupPrivateKeyEncrypted?.value.trim() || '';
+        const privateKeyInput = signupPrivateKey?.value.trim() || '';
         const signupProfilePicture = signupProfilePictureInput?.files?.[0] || null;
 
         const requestBody = {
           username,
           email: email || undefined,
-          public_key: publicKey || undefined,
-          private_key_encrypted: privateKeyEncrypted || undefined,
         };
         if (signupProfilePicture) {
           requestBody.profile_picture_data = await fileToBase64(signupProfilePicture);
           requestBody.profile_picture_content_type = signupProfilePicture.type || 'application/octet-stream';
         }
-        if (publicKey || privateKeyEncrypted) {
+        if (privateKeyInput) {
+          let encrypted;
+          try {
+            encrypted = await window.NoasNostr.encryptPrivateKey(privateKeyInput, password);
+          } catch {
+            throw new Error('Private key must be a valid 64-character hex or nsec key');
+          }
+          requestBody.public_key = encrypted.publicKey;
+          requestBody.private_key_encrypted = encrypted.privateKeyEncrypted;
           requestBody.password_hash = await sha256Hex(password);
         } else {
           requestBody.password = password;

@@ -27,6 +27,7 @@ import express from 'express';
 import { 
   createNostrUser,
   getNostrUserByUsername,
+  getNostrUserByPublicKey,
   getNostrUserByVerificationToken,
   activateNostrUserByUsername,
   updateNostrUserResendToken,
@@ -220,6 +221,13 @@ function resolveRegistrationEmail({ mode, requestedEmail, username, tenantDomain
   }
 
   return { error: 'Invalid EMAIL_VERIFICATION_MODE value' };
+}
+
+function isDuplicatePublicKeyError(error) {
+  if (!error || error.code !== '23505') return false;
+  const constraint = String(error.constraint || '').toLowerCase();
+  const detail = String(error.detail || '').toLowerCase();
+  return constraint.includes('public_key') || detail.includes('public_key');
 }
 
 function normalizeRole(value) {
@@ -521,6 +529,12 @@ router.post('/api/v1/auth/register', async (req, res) => {
     if (existing?.status === 'unverified_email') {
       return res.status(409).json({ error: 'Username is currently pending verification.' });
     }
+    const existingByPublicKey = await getNostrUserByPublicKey(keyMaterial.publicKey, tenant.nip05RootDomain);
+    if (existingByPublicKey) {
+      return res.status(409).json({
+        error: 'An account already exists for this private key. Sign in with that account or use a different private key.',
+      });
+    }
 
     if (!config.emailVerificationEnabled) {
       const createdUser = await createNostrUser({
@@ -622,6 +636,11 @@ router.post('/api/v1/auth/register', async (req, res) => {
     res.status(200).json(responseBody);
   } catch (error) {
     if (error?.code === '23505') {
+      if (isDuplicatePublicKeyError(error)) {
+        return res.status(409).json({
+          error: 'An account already exists for this private key. Sign in with that account or use a different private key.',
+        });
+      }
       return res.status(409).json({ error: 'Username is currently pending verification.' });
     }
     console.error('V1 register error:', error);

@@ -72,15 +72,9 @@
               <button type="button" id="registerAdvancedToggle" class="advanced-toggle">▸ Show advanced options</button>
               <div class="advanced-panel" id="registerAdvancedPanel" hidden>
                 <label>
-                  <span class="small-label">Public key (optional)</span>
-                  <input type="text" id="signupPublicKey" class="form-mono" placeholder="npub1... (or 64-char hex)" />
-                  <small>Leave blank to auto-generate a Nostr keypair.</small>
-                </label>
-
-                <label>
-                  <span class="small-label">Encrypted private key (optional)</span>
-                  <input type="text" id="signupPrivateKeyEncrypted" class="form-mono" placeholder="ncryptsec1..." />
-                  <small>Provide together with Public Key, or leave both blank for auto-generation.</small>
+                  <span class="small-label">Private key (optional)</span>
+                  <input type="text" id="signupPrivateKey" class="form-mono" placeholder="64-character hex or nsec1..." />
+                  <small>Paste your private key (hex or nsec). It will be encrypted locally in your browser before upload.</small>
                 </label>
               </div>
 

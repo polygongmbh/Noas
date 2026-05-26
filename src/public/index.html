@@ -70,14 +70,10 @@
               <button type="button" id="registerAdvancedToggle" class="advanced-toggle" hidden>▸ Show advanced options</button>
               <div class="advanced-panel" id="registerAdvancedPanel" hidden>
                 <label class="field">
-                  <span class="label small-label">Public key (npub)</span>
-                  <input type="text" id="signupPublicKey" class="form-mono" placeholder="npub1..." />
+                  <span class="label small-label">Private key (optional)</span>
+                  <input type="text" id="signupPrivateKey" class="form-mono" placeholder="64-character hex or nsec1..." />
                 </label>
-                <label class="field">
-                  <span class="label small-label">Encrypted private key (NIP-49)</span>
-                  <input type="text" id="signupPrivateKeyEncrypted" class="form-mono" placeholder="ncryptsec1..." />
-                </label>
-                <p class="hint">Leave blank to let noas generate a keypair for you.</p>
+                <p class="hint">Leave blank to let noas generate a keypair. If provided, your key is encrypted locally before upload.</p>
               </div>
               <div class="warning-banner" id="homeRegisterWarning" hidden>⚠ Your private key is encrypted with your password. If you lose your password, your key is irrecoverable.</div>
               <button type="submit" class="btn w-full" id="homeAuthSubmit">Sign in</button>

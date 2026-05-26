@@ -239,6 +239,25 @@ export async function getNostrUserByUsername(username, tenantDomain = null) {
 }
 
 /**
+ * Retrieve nostr user by public key.
+ * @param {string} publicKey
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getNostrUserByPublicKey(publicKey, tenantDomain = null) {
+  const normalizedPublicKey = String(publicKey || '').trim().toLowerCase();
+  if (!normalizedPublicKey) return undefined;
+  const params = [normalizedPublicKey];
+  let sql = 'SELECT * FROM nostr_users WHERE lower(public_key) = $1';
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ' AND tenant_domain = $2';
+  }
+  const result = await query(sql, params);
+  return result.rows[0];
+}
+
+/**
  * Retrieve nostr user by verification token.
  * @param {string} token
  * @returns {Promise<Object|undefined>}
