@@ -210,8 +210,14 @@ document.addEventListener('DOMContentLoaded', function () {
     return `${username}@${domain}`;
   }
 
+  function getSignupEmailPlaceholder() {
+    const domain = String(state.nip05Domain || '').trim().toLowerCase();
+    return domain ? `you@${domain}` : 'you@your-domain.tld';
+  }
+
   function syncSignupEmailLockState() {
     if (!signupEmail || !signupEmailLabel || !signupEmailHint) return;
+    signupEmail.placeholder = getSignupEmailPlaceholder();
     if (isUnifiedHomeAuth && !isUnifiedHomeMode('register')) {
       signupEmail.disabled = true;
       signupEmail.readOnly = false;
