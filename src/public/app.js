@@ -878,6 +878,8 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
           requestBody.password = password;
         }
+        const _redirectParam = new URLSearchParams(window.location.search).get('redirect');
+        if (_redirectParam) requestBody.redirect = _redirectParam;
         const data = await request('/api/v1/auth/register', requestBody);
 
         state.signupUsername = username;
@@ -1018,6 +1020,8 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
           requestBody.password = password;
         }
+        const _redirectParam = new URLSearchParams(window.location.search).get('redirect');
+        if (_redirectParam) requestBody.redirect = _redirectParam;
         const data = await request('/api/v1/auth/register', requestBody);
 
         state.signupUsername = username;
