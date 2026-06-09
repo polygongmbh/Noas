@@ -348,7 +348,8 @@ document.addEventListener('DOMContentLoaded', function () {
   loadNoasVersion();
 
   if (homeUnifiedAuthForm) {
-    setUnifiedHomeMode('signin');
+    const initialMode = window.location.pathname === '/register' ? 'register' : 'signin';
+    setUnifiedHomeMode(initialMode);
   }
 
   if (homeShowRegister && homeUnifiedAuthForm) {
