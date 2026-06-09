@@ -53,7 +53,10 @@
       <footer class="site-footer">
         <div class="site-footer-inner">
           <span>noas · nostr authentication server</span>
-          <a href="/docs">API docs</a>
+          <span class="site-footer-right">
+            <a href="/docs">API docs</a>
+            <span id="noasVersionFooter"></span>
+          </span>
         </div>
       </footer>
     </div>
@@ -147,6 +150,11 @@
           const data = await response.json().catch(() => ({}));
           if (!response.ok) return;
           trustedNip05Domain = String(data?.noas?.nip05_domain || '').trim().toLowerCase();
+          const raw = String(data?.noas?.version || '').trim().replace(/^v/i, '');
+          if (raw) {
+            const el = document.getElementById('noasVersionFooter');
+            if (el) el.textContent = `v${raw.split('.').slice(0, 2).join('.')}`;
+          }
         } catch {
           // Non-blocking fallback.
         }

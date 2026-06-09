@@ -1502,7 +1502,7 @@ router.get('/.well-known/nostr.json', async (req, res) => {
  * Returns only server status.
  */
 const handleHealth = (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', version: config.apiVersion });
 };
 
 /**

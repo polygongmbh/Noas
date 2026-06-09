@@ -154,6 +154,16 @@ a {
   color: var(--foreground);
 }
 
+.site-footer-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+#noasVersionFooter {
+  opacity: 0.6;
+}
+
 .page-title-wrap {
   margin-bottom: 2.5rem;
   text-align: center;
