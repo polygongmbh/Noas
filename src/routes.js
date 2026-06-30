@@ -58,7 +58,7 @@ import {
 import { sendVerificationEmail } from './email.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
 import { randomUUID, createHash } from 'crypto';
-import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs } from './relay-provisioner.js';
+import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs, enqueueTenantRelayBanJobs } from './allowlist-worker.js';
 
 export const router = express.Router();
 
@@ -1016,6 +1016,7 @@ const handleUpdate = async (req, res) => {
       return res.status(400).json({ error: 'No updates provided' });
     }
 
+    const oldPublicKey = user.public_key;
     let updated = user;
     if (hasAccountFieldUpdates) {
       updated = await updateNostrUser(normalizedUsername, updateData, tenant.nip05RootDomain);
@@ -1030,6 +1031,20 @@ const handleUpdate = async (req, res) => {
         return res.status(500).json({ error: 'Profile picture update failed' });
       }
     }
+    const newPublicKey = updated.public_key;
+    if (oldPublicKey && newPublicKey && oldPublicKey !== newPublicKey) {
+      enqueueTenantRelayBanJobs({
+        tenantDomain: tenant.nip05RootDomain,
+        username: user.username,
+        pubkey: oldPublicKey,
+      }).catch((err) => console.warn('relay ban job (key rotation) enqueue failed (non-fatal)', err?.message));
+      enqueueTenantRelayAllowJobs({
+        tenantDomain: tenant.nip05RootDomain,
+        username: user.username,
+        pubkey: newPublicKey,
+      }).catch((err) => console.warn('relay allow job (key rotation) enqueue failed (non-fatal)', err?.message));
+    }
+
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     res.json({
@@ -1076,6 +1091,14 @@ const handleDelete = async (req, res) => {
     }
 
     await deleteNostrUser(normalizedUsername, tenant.nip05RootDomain);
+
+    if (user.public_key) {
+      enqueueTenantRelayBanJobs({
+        tenantDomain: tenant.nip05RootDomain,
+        username: user.username,
+        pubkey: user.public_key,
+      }).catch((err) => console.warn('relay ban job enqueue failed (non-fatal)', err?.message));
+    }
 
     res.json({
       success: true,
@@ -1357,6 +1380,15 @@ const handleAdminUserDelete = async (req, res) => {
     }
 
     const deleted = await deleteNostrUser(targetUsername, tenant.nip05RootDomain);
+
+    if (deleted?.public_key) {
+      enqueueTenantRelayBanJobs({
+        tenantDomain: tenant.nip05RootDomain,
+        username: deleted.username,
+        pubkey: deleted.public_key,
+      }).catch((err) => console.warn('relay ban job enqueue failed (non-fatal)', err?.message));
+    }
+
     return res.json({
       success: true,
       user: {
