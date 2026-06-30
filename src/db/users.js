@@ -611,6 +611,28 @@ export async function listNostrUsers({ tenantDomain = null, limit = 200 } = {}) 
 }
 
 /**
+ * List all active nostr users' pubkeys for a tenant domain.
+ * Used by the relay sync worker for full reconciliation.
+ * @param {string} tenantDomain
+ * @returns {Promise<string[]>}
+ */
+export async function listActiveNostrUserPubkeys(tenantDomain) {
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (!tenant) return [];
+  const result = await query(
+    `SELECT public_key
+       FROM nostr_users
+      WHERE tenant_domain = $1
+        AND status = 'active'
+        AND public_key IS NOT NULL
+        AND public_key <> ''
+      ORDER BY created_at ASC`,
+    [tenant]
+  );
+  return result.rows.map((r) => r.public_key);
+}
+
+/**
  * Delete nostr user by username.
  * @param {string} username
  * @returns {Promise<Object|undefined>}

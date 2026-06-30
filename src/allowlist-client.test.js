@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { sendAllowPubkeyToRelays } from './nip86.js';
+import { sendAllowPubkeyToRelays } from './allowlist-client.js';
 
 test('sendAllowPubkeyToRelays posts JSON-RPC allowpubkey requests', async () => {
   const fetchCalls = [];

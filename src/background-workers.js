@@ -1,5 +1,6 @@
 import { config } from './config.js';
 import { deleteExpiredPendingNostrUsers } from './db/users.js';
+import { runRelaySyncTick } from './allowlist-sync.js';
 
 function createIntervalWorker({ name, enabled, intervalMs, runTick, shouldLogSummary }) {
   let timer = null;
@@ -87,10 +88,19 @@ const reconcileWorker = createIntervalWorker({
   shouldLogSummary: (summary) => summary.repaired > 0,
 });
 
+const relaySyncWorker = createIntervalWorker({
+  name: 'relay-sync',
+  enabled: config.relaySyncWorkerEnabled && Object.keys(config.domainRelayUsernameMap).length > 0,
+  intervalMs: config.relaySyncWorkerIntervalMs,
+  runTick: runRelaySyncTick,
+  shouldLogSummary: (summary) => (summary.allows_enqueued || 0) > 0 || (summary.bans_enqueued || 0) > 0,
+});
+
 export function startBackgroundWorkers() {
   return {
     retention: retentionWorker.start(),
     quota: quotaWorker.start(),
     reconcile: reconcileWorker.start(),
+    relay_sync: relaySyncWorker.start(),
   };
 }

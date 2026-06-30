@@ -1,5 +1,5 @@
 import { config } from './config.js';
-import { sendAllowPubkeyToRelays } from './nip86.js';
+import { sendAllowPubkeyToRelays } from './allowlist-client.js';
 import {
   enqueueRelayAllowJobRecord,
   claimDueRelayAllowJobs,
@@ -26,7 +26,7 @@ function backoffSecondsForAttempt(attemptNumber) {
   return Math.min(max, base * (2 ** exponent));
 }
 
-export async function enqueueTenantRelayAllowJobs({ tenantDomain, username, pubkey }) {
+async function enqueueTenantRelayJobs({ tenantDomain, username, pubkey, method }) {
   const relayUrls = getTenantRelayAdminUrls(tenantDomain);
   if (!pubkey || relayUrls.length === 0) {
     return { enqueued: 0, total_targets: relayUrls.length, job_ids: [] };
@@ -38,6 +38,7 @@ export async function enqueueTenantRelayAllowJobs({ tenantDomain, username, pubk
       username,
       pubkey,
       relayUrl,
+      method,
       maxAttempts: config.relayAllowMaxAttempts,
     }))
   );
@@ -51,17 +52,27 @@ export async function enqueueTenantRelayAllowJobs({ tenantDomain, username, pubk
   };
 }
 
+export async function enqueueTenantRelayAllowJobs({ tenantDomain, username, pubkey }) {
+  return enqueueTenantRelayJobs({ tenantDomain, username, pubkey, method: 'allowpubkey' });
+}
+
+export async function enqueueTenantRelayBanJobs({ tenantDomain, username, pubkey }) {
+  return enqueueTenantRelayJobs({ tenantDomain, username, pubkey, method: 'banpubkey' });
+}
+
 export async function enqueueRelayAllowJobForRelayUrl({
   tenantDomain,
   username,
   pubkey,
   relayUrl,
+  method = 'allowpubkey',
 }) {
   const result = await enqueueRelayAllowJobRecord({
     tenantDomain,
     username,
     pubkey,
     relayUrl,
+    method,
     maxAttempts: config.relayAllowMaxAttempts,
   });
   return {
@@ -78,11 +89,17 @@ export async function processRelayAllowJobsTick({ limit = config.relayAllowWorke
 
   for (const job of claimed) {
     try {
+      const isInternalRelayManager = config.relayManagerInternalUrl
+        && job.relay_url.startsWith(config.relayManagerInternalUrl);
+      const extraHeaders = isInternalRelayManager && config.relayManagerInternalToken
+        ? { 'x-noas-internal-token': config.relayManagerInternalToken }
+        : {};
       const results = await sendAllowPubkeyToRelays({
         pubkey: job.pubkey,
         relayUrls: [job.relay_url],
-        method: config.nip86Method,
+        method: job.method || config.nip86Method,
         timeoutMs: config.nip86TimeoutMs,
+        extraHeaders,
       });
       const outcome = results[0] || null;
       if (outcome?.success) {

@@ -17,12 +17,14 @@ export async function enqueueRelayAllowJobRecord({
   username,
   pubkey,
   relayUrl,
+  method = 'allowpubkey',
   maxAttempts = 5,
 }) {
   const normalizedTenant = normalizeTenantDomain(tenantDomain);
   const normalizedPubkey = normalizePubkey(pubkey);
   const normalizedRelayUrl = normalizeRelayUrl(relayUrl);
   const normalizedUsername = String(username || '').trim().toLowerCase() || null;
+  const normalizedMethod = method === 'banpubkey' ? 'banpubkey' : 'allowpubkey';
   const safeMaxAttempts = Math.max(1, Number(maxAttempts) || 5);
 
   if (!normalizedTenant || !normalizedPubkey || !normalizedRelayUrl) {
@@ -36,6 +38,7 @@ export async function enqueueRelayAllowJobRecord({
         username,
         pubkey,
         relay_url,
+        method,
         status,
         attempts,
         max_attempts,
@@ -43,8 +46,8 @@ export async function enqueueRelayAllowJobRecord({
         last_error,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, 'queued', 0, $5, NOW(), NULL, NOW())
-      ON CONFLICT (tenant_domain, pubkey, relay_url)
+      VALUES ($1, $2, $3, $4, $5, 'queued', 0, $6, NOW(), NULL, NOW())
+      ON CONFLICT (tenant_domain, pubkey, relay_url, method)
       DO UPDATE SET
         username = COALESCE(EXCLUDED.username, relay_allow_jobs.username),
         max_attempts = GREATEST(relay_allow_jobs.max_attempts, EXCLUDED.max_attempts),
@@ -63,7 +66,7 @@ export async function enqueueRelayAllowJobRecord({
         updated_at = NOW()
       RETURNING *
     `,
-    [normalizedTenant, normalizedUsername, normalizedPubkey, normalizedRelayUrl, safeMaxAttempts]
+    [normalizedTenant, normalizedUsername, normalizedPubkey, normalizedRelayUrl, normalizedMethod, safeMaxAttempts]
   );
 
   const job = result.rows[0] || null;

@@ -24,6 +24,7 @@ export async function sendAllowPubkeyToRelays({
   relayUrls = [],
   method = 'allowpubkey',
   timeoutMs = 5000,
+  extraHeaders = {},
 }) {
   const normalizedPubkey = String(pubkey || '').trim().toLowerCase();
   if (!normalizedPubkey || relayUrls.length === 0) {
@@ -36,7 +37,7 @@ export async function sendAllowPubkeyToRelays({
     try {
       const response = await fetch(relayUrl, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...extraHeaders },
         body: JSON.stringify(buildRpcRequest(normalizedPubkey, method)),
         signal: controller.signal,
       });

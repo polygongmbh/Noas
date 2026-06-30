@@ -106,6 +106,25 @@ function parseDomainRelayMap(value) {
   return map;
 }
 
+function parseDomainStringMap(value) {
+  const map = {};
+  const entries = String(value || '')
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const entry of entries) {
+    const separatorIndex = entry.indexOf('=');
+    if (separatorIndex <= 0) continue;
+    const domain = rootDomainFromHostLike(entry.slice(0, separatorIndex));
+    const val = entry.slice(separatorIndex + 1).trim();
+    if (domain && val) {
+      map[domain] = val;
+    }
+  }
+  return map;
+}
+
 function parseDomainHttpUrlMap(value) {
   const map = {};
   const entries = String(value || '')
@@ -343,6 +362,11 @@ export const config = {
   reconcileWorkerIntervalMs: backgroundWorkerDefaults.reconcile.intervalMs,
   nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
   nip46Relays: [],
+  relayManagerInternalUrl: stripTrailingSlash(String(process.env.RELAY_MANAGER_INTERNAL_URL || '').trim()),
+  relayManagerInternalToken: String(process.env.RELAY_MANAGER_INTERNAL_TOKEN || '').trim(),
+  domainRelayUsernameMap: parseDomainStringMap(process.env.DOMAIN_RELAY_USERNAME_MAP),
+  relaySyncWorkerEnabled: String(process.env.RELAY_SYNC_WORKER_ENABLED || 'true').trim().toLowerCase() !== 'false',
+  relaySyncWorkerIntervalMs: Math.max(60000, parseInt(process.env.RELAY_SYNC_WORKER_INTERVAL_MS || '3600000', 10) || 3600000),
 };
 
 if (!config.nip05Domain) {
