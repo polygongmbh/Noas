@@ -81,7 +81,7 @@ export async function runRelaySyncTick({
           tenantDomain: domain,
           pubkey,
           relayUrl: relayAclUrl,
-          method: 'banpubkey',
+          method: 'unallowpubkey',
           maxAttempts: config.relayAllowMaxAttempts,
         }).catch(() => {});
         totalBans += 1;

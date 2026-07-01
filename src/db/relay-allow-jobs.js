@@ -24,7 +24,7 @@ export async function enqueueRelayAllowJobRecord({
   const normalizedPubkey = normalizePubkey(pubkey);
   const normalizedRelayUrl = normalizeRelayUrl(relayUrl);
   const normalizedUsername = String(username || '').trim().toLowerCase() || null;
-  const normalizedMethod = method === 'banpubkey' ? 'banpubkey' : 'allowpubkey';
+  const normalizedMethod = method === 'unallowpubkey' ? 'unallowpubkey' : 'allowpubkey';
   const safeMaxAttempts = Math.max(1, Number(maxAttempts) || 5);
 
   if (!normalizedTenant || !normalizedPubkey || !normalizedRelayUrl) {

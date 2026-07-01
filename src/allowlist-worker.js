@@ -56,8 +56,8 @@ export async function enqueueTenantRelayAllowJobs({ tenantDomain, username, pubk
   return enqueueTenantRelayJobs({ tenantDomain, username, pubkey, method: 'allowpubkey' });
 }
 
-export async function enqueueTenantRelayBanJobs({ tenantDomain, username, pubkey }) {
-  return enqueueTenantRelayJobs({ tenantDomain, username, pubkey, method: 'banpubkey' });
+export async function enqueueTenantRelayUnallowJobs({ tenantDomain, username, pubkey }) {
+  return enqueueTenantRelayJobs({ tenantDomain, username, pubkey, method: 'unallowpubkey' });
 }
 
 export async function enqueueRelayAllowJobForRelayUrl({

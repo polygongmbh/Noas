@@ -1,18 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { enqueueTenantRelayBanJobs, enqueueTenantRelayAllowJobs } from './allowlist-worker.js';
+import { enqueueTenantRelayUnallowJobs, enqueueTenantRelayAllowJobs } from './allowlist-worker.js';
 import { config } from './config.js';
 
 const VALID_PUBKEY = 'c'.repeat(64);
 
-// enqueueTenantRelayBanJobs skips when no relay URLs configured
-test('enqueueTenantRelayBanJobs returns zero enqueued when no relay URLs configured', async () => {
+// enqueueTenantRelayUnallowJobs skips when no relay URLs configured
+test('enqueueTenantRelayUnallowJobs returns zero enqueued when no relay URLs configured', async () => {
   const savedNip86 = config.nip86RelayUrls;
   const savedMap = config.domainNip86RelayMap;
   config.nip86RelayUrls = [];
   config.domainNip86RelayMap = {};
   try {
-    const result = await enqueueTenantRelayBanJobs({
+    const result = await enqueueTenantRelayUnallowJobs({
       tenantDomain: 'example.com',
       username: 'alice',
       pubkey: VALID_PUBKEY,
@@ -26,11 +26,11 @@ test('enqueueTenantRelayBanJobs returns zero enqueued when no relay URLs configu
   }
 });
 
-test('enqueueTenantRelayBanJobs returns zero enqueued when pubkey is empty', async () => {
+test('enqueueTenantRelayUnallowJobs returns zero enqueued when pubkey is empty', async () => {
   const savedNip86 = config.nip86RelayUrls;
   config.nip86RelayUrls = ['http://relay-manager:3400/internal/noas/relay-acl/platform'];
   try {
-    const result = await enqueueTenantRelayBanJobs({
+    const result = await enqueueTenantRelayUnallowJobs({
       tenantDomain: 'example.com',
       username: 'alice',
       pubkey: '',
@@ -41,7 +41,7 @@ test('enqueueTenantRelayBanJobs returns zero enqueued when pubkey is empty', asy
   }
 });
 
-test('enqueueTenantRelayAllowJobs and enqueueTenantRelayBanJobs use separate job methods', async () => {
+test('enqueueTenantRelayAllowJobs and enqueueTenantRelayUnallowJobs use separate job methods', async () => {
   // Verify that the worker dispatches with the right method by inspecting
   // sendAllowPubkeyToRelays calls via fetch mock. This tests the job method
   // flows through to the NIP-86 HTTP call correctly.
@@ -57,12 +57,12 @@ test('enqueueTenantRelayAllowJobs and enqueueTenantRelayBanJobs use separate job
     await sendAllowPubkeyToRelays({
       pubkey: VALID_PUBKEY,
       relayUrls: ['https://relay-admin.example.com/rpc'],
-      method: 'banpubkey',
+      method: 'unallowpubkey',
       timeoutMs: 2000,
     });
 
     assert.strictEqual(fetchCalls.length, 1);
-    assert.strictEqual(fetchCalls[0].body.method, 'banpubkey');
+    assert.strictEqual(fetchCalls[0].body.method, 'unallowpubkey');
     assert.deepStrictEqual(fetchCalls[0].body.params, [VALID_PUBKEY]);
   } finally {
     globalThis.fetch = originalFetch;

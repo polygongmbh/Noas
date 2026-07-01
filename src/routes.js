@@ -58,7 +58,7 @@ import {
 import { sendVerificationEmail } from './email.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
 import { randomUUID, createHash } from 'crypto';
-import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs, enqueueTenantRelayBanJobs } from './allowlist-worker.js';
+import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs, enqueueTenantRelayUnallowJobs } from './allowlist-worker.js';
 
 export const router = express.Router();
 
@@ -1033,7 +1033,7 @@ const handleUpdate = async (req, res) => {
     }
     const newPublicKey = updated.public_key;
     if (oldPublicKey && newPublicKey && oldPublicKey !== newPublicKey) {
-      enqueueTenantRelayBanJobs({
+      enqueueTenantRelayUnallowJobs({
         tenantDomain: tenant.nip05RootDomain,
         username: user.username,
         pubkey: oldPublicKey,
@@ -1093,7 +1093,7 @@ const handleDelete = async (req, res) => {
     await deleteNostrUser(normalizedUsername, tenant.nip05RootDomain);
 
     if (user.public_key) {
-      enqueueTenantRelayBanJobs({
+      enqueueTenantRelayUnallowJobs({
         tenantDomain: tenant.nip05RootDomain,
         username: user.username,
         pubkey: user.public_key,
@@ -1382,7 +1382,7 @@ const handleAdminUserDelete = async (req, res) => {
     const deleted = await deleteNostrUser(targetUsername, tenant.nip05RootDomain);
 
     if (deleted?.public_key) {
-      enqueueTenantRelayBanJobs({
+      enqueueTenantRelayUnallowJobs({
         tenantDomain: tenant.nip05RootDomain,
         username: deleted.username,
         pubkey: deleted.public_key,

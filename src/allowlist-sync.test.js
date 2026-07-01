@@ -92,8 +92,8 @@ test('runRelaySyncTick enqueues bans for relay ACL entries no longer in NOAS', a
     });
     assert.strictEqual(result.allows_enqueued, 0);
     assert.strictEqual(result.bans_enqueued, 1);
-    const banJob = enqueuedJobs.find((j) => j.method === 'banpubkey');
-    assert.ok(banJob, 'Should have enqueued a banpubkey job for PUBKEY_STALE');
+    const banJob = enqueuedJobs.find((j) => j.method === 'unallowpubkey');
+    assert.ok(banJob, 'Should have enqueued an unallowpubkey job for PUBKEY_STALE');
     assert.strictEqual(banJob.pubkey, PUBKEY_STALE);
   } finally {
     globalThis.fetch = originalFetch;
