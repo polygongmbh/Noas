@@ -282,6 +282,9 @@ test('GET /.well-known/nostr.json metadata honors forwarded host for multi-tenan
   assert.strictEqual(alphaMeta.data?.noas?.nip05_domain, 'alpha.test');
   assert.strictEqual(alphaMeta.data?.noas?.public_url, 'https://noas.alpha.test');
   assert.strictEqual(alphaMeta.data?.noas?.api_base, 'https://noas.alpha.test/api/v1');
+  // A domain-mapped tenant advertises its default spaces at discovery, so
+  // clients can adopt a space with no per-account configuration.
+  assert.deepStrictEqual(alphaMeta.data?.noas?.relays, ['wss://tasks.polygon.gmbh']);
 
   const betaMeta = await requestWithHeaders(
     'GET',
@@ -296,6 +299,8 @@ test('GET /.well-known/nostr.json metadata honors forwarded host for multi-tenan
   assert.strictEqual(betaMeta.data?.noas?.nip05_domain, 'beta.test');
   assert.strictEqual(betaMeta.data?.noas?.public_url, 'https://noas.beta.test');
   assert.strictEqual(betaMeta.data?.noas?.api_base, 'https://noas.beta.test/api/v1');
+  // A tenant with no mapping and no TENANT_DEFAULT_RELAYS advertises none.
+  assert.deepStrictEqual(betaMeta.data?.noas?.relays, []);
 });
 
 test('GET /.well-known/nostr.json metadata honors NOAS_PUBLIC_URL_MAP', async () => {

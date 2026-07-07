@@ -106,6 +106,22 @@ function getDomainScopedRelays(email, fallbackRelays = []) {
   return sanitizeFallback(fallbackRelays);
 }
 
+/**
+ * The tenant's default spaces, keyed by root domain rather than by a user's
+ * email — the domain's mapped relays if configured, else the tenant defaults.
+ * Exposed at discovery so clients can adopt a space without per-account
+ * configuration. Returns [] when nothing is configured for the tenant.
+ */
+function getDomainDefaultRelays(tenantDomain) {
+  const domain = String(tenantDomain || '').trim().toLowerCase();
+  const mappedRelays = config.domainRelayMap[domain];
+  if (Array.isArray(mappedRelays) && mappedRelays.length > 0) {
+    return mappedRelays;
+  }
+  const protectedRelaySet = new Set(Object.values(config.domainRelayMap).flat());
+  return config.tenantDefaultRelays.filter((relayUrl) => !protectedRelaySet.has(relayUrl));
+}
+
 function buildVerificationToken() {
   return randomUUID();
 }
@@ -1495,6 +1511,7 @@ router.get('/.well-known/nostr.json', async (req, res) => {
           base_path: config.noasBasePath || '/',
           api_base: tenant.apiBase,
           email_verification_mode: config.emailVerificationMode,
+          relays: getDomainDefaultRelays(tenant.nip05RootDomain),
         },
       });
     }

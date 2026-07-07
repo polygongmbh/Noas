@@ -463,7 +463,23 @@ NIP-05 verification endpoint.
 }
 ```
 
-When called without `name`, returns Noas instance metadata (version, public URL, API base, NIP-05 domain, and `email_verification_mode`) for client discovery. If `NOAS_PUBLIC_URL_MAP` has a matching tenant entry, it takes precedence for `api_base`; otherwise `NOAS_PUBLIC_URL` is used, and if neither are set the URL is derived from request headers.
+When called without `name`, returns Noas instance metadata for client discovery:
+
+```json
+{
+  "noas": {
+    "version": "1.2.3",
+    "nip05_domain": "example.com",
+    "public_url": "https://noas.example.com",
+    "base_path": "/",
+    "api_base": "https://noas.example.com/api/v1",
+    "email_verification_mode": "required_nip05_domains",
+    "relays": ["wss://tasks.example.com"]
+  }
+}
+```
+
+`relays` is the tenant's default space list — its `DOMAIN_RELAY_MAP` entry if the tenant root domain is mapped, otherwise `TENANT_DEFAULT_RELAYS` (protected domain-mapped relays filtered out), or `[]` when nothing is configured. It lets clients adopt a default space without any per-account configuration. If `NOAS_PUBLIC_URL_MAP` has a matching tenant entry, it takes precedence for `api_base`; otherwise `NOAS_PUBLIC_URL` is used, and if neither are set the URL is derived from request headers.
 
 ## Security Notes
 
