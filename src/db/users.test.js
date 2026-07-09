@@ -131,7 +131,7 @@ test('updateUserProfilePicture stores profile picture', async () => {
 test('same username can exist in different tenant domains', async () => {
   const username = 'tenantdupe';
   const tenantA = 'noas.progyssey.org';
-  const tenantB = 'noas.polygon.gmbh';
+  const tenantB = 'noas.tenant.test';
 
   await query('DELETE FROM nostr_users WHERE username = $1', [username]);
 

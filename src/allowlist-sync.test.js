@@ -24,7 +24,7 @@ test('runRelaySyncTick returns early when relay-manager URL not configured', asy
   const savedMap = config.domainRelayUsernameMap;
   const savedUrl = config.relayManagerInternalUrl;
   const savedToken = config.relayManagerInternalToken;
-  config.domainRelayUsernameMap = { 'polygon.gmbh': 'platform' };
+  config.domainRelayUsernameMap = { 'tenant.test': 'platform' };
   config.relayManagerInternalUrl = '';
   config.relayManagerInternalToken = '';
   try {
@@ -42,7 +42,7 @@ test('runRelaySyncTick enqueues allows for active users missing from relay ACL',
   const savedMap = config.domainRelayUsernameMap;
   const savedUrl = config.relayManagerInternalUrl;
   const savedToken = config.relayManagerInternalToken;
-  config.domainRelayUsernameMap = { 'polygon.gmbh': 'platform' };
+  config.domainRelayUsernameMap = { 'tenant.test': 'platform' };
   config.relayManagerInternalUrl = 'http://relay-manager:3400';
   config.relayManagerInternalToken = 'test-secret';
 
@@ -62,7 +62,7 @@ test('runRelaySyncTick enqueues allows for active users missing from relay ACL',
     const allowJob = enqueuedJobs.find((j) => j.method === 'allowpubkey');
     assert.ok(allowJob, 'Should have enqueued an allowpubkey job for PUBKEY_B');
     assert.strictEqual(allowJob.pubkey, PUBKEY_B);
-    assert.strictEqual(allowJob.tenantDomain, 'polygon.gmbh');
+    assert.strictEqual(allowJob.tenantDomain, 'tenant.test');
   } finally {
     globalThis.fetch = originalFetch;
     config.domainRelayUsernameMap = savedMap;
@@ -75,7 +75,7 @@ test('runRelaySyncTick enqueues bans for relay ACL entries no longer in NOAS', a
   const savedMap = config.domainRelayUsernameMap;
   const savedUrl = config.relayManagerInternalUrl;
   const savedToken = config.relayManagerInternalToken;
-  config.domainRelayUsernameMap = { 'polygon.gmbh': 'platform' };
+  config.domainRelayUsernameMap = { 'tenant.test': 'platform' };
   config.relayManagerInternalUrl = 'http://relay-manager:3400';
   config.relayManagerInternalToken = 'test-secret';
 
@@ -107,7 +107,7 @@ test('runRelaySyncTick does nothing when relay ACL and NOAS users are in sync', 
   const savedMap = config.domainRelayUsernameMap;
   const savedUrl = config.relayManagerInternalUrl;
   const savedToken = config.relayManagerInternalToken;
-  config.domainRelayUsernameMap = { 'polygon.gmbh': 'platform' };
+  config.domainRelayUsernameMap = { 'tenant.test': 'platform' };
   config.relayManagerInternalUrl = 'http://relay-manager:3400';
   config.relayManagerInternalToken = 'test-secret';
 
@@ -137,7 +137,7 @@ test('runRelaySyncTick continues after per-domain fetch error', async () => {
   const savedMap = config.domainRelayUsernameMap;
   const savedUrl = config.relayManagerInternalUrl;
   const savedToken = config.relayManagerInternalToken;
-  config.domainRelayUsernameMap = { 'polygon.gmbh': 'platform' };
+  config.domainRelayUsernameMap = { 'tenant.test': 'platform' };
   config.relayManagerInternalUrl = 'http://relay-manager:3400';
   config.relayManagerInternalToken = 'test-secret';
 

@@ -14,7 +14,7 @@ import { decrypt, encrypt } from 'nostr-tools/nip49';
 process.env.NOAS_LOAD_DOTENV = 'false';
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.NIP05_DOMAIN = 'alpha.test,beta.test';
-process.env.DOMAIN_RELAY_MAP = 'alpha.test=wss://tasks.polygon.gmbh';
+process.env.DOMAIN_RELAY_MAP = 'alpha.test=wss://tasks.tenant.test';
 process.env.NOAS_PUBLIC_URL = '';
 process.env.NOAS_PUBLIC_URL_MAP = 'alpha.test=https://noas.alpha.test;beta.test=https://noas.beta.test';
 
@@ -255,7 +255,7 @@ test('GET /.well-known/nostr.json returns user public key', async () => {
   assert.ok(data.names);
   assert.strictEqual(data.names.apitestuser, apitestUserPubkey);
   assert.ok(data.relays);
-  assert.deepStrictEqual(data.relays[apitestUserPubkey], ['wss://tasks.polygon.gmbh']);
+  assert.deepStrictEqual(data.relays[apitestUserPubkey], ['wss://tasks.tenant.test']);
 });
 
 // NIP-05: lookup returns 404 for unknown users.
@@ -284,7 +284,7 @@ test('GET /.well-known/nostr.json metadata honors forwarded host for multi-tenan
   assert.strictEqual(alphaMeta.data?.noas?.api_base, 'https://noas.alpha.test/api/v1');
   // A domain-mapped tenant advertises its default spaces at discovery, so
   // clients can adopt a space with no per-account configuration.
-  assert.deepStrictEqual(alphaMeta.data?.noas?.relays, ['wss://tasks.polygon.gmbh']);
+  assert.deepStrictEqual(alphaMeta.data?.noas?.relays, ['wss://tasks.tenant.test']);
 
   const betaMeta = await requestWithHeaders(
     'GET',
