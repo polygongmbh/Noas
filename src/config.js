@@ -154,6 +154,17 @@ function parseAllowedOrigins(value) {
     .filter(Boolean);
 }
 
+function parseServiceApiKeys(value) {
+  return Array.from(
+    new Set(
+      String(value || '')
+        .split(',')
+        .map((key) => key.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 function parsePublicUrlMap(value) {
   const map = {};
   const entries = String(value || '')
@@ -363,6 +374,7 @@ export const config = {
   nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
   nip46Relays: [],
   custodyMasterKey: String(process.env.CUSTODY_MASTER_KEY || '').trim(),
+  serviceApiKeys: parseServiceApiKeys(process.env.SERVICE_API_KEYS),
   relayManagerInternalUrl: stripTrailingSlash(String(process.env.RELAY_MANAGER_INTERNAL_URL || '').trim()),
   relayManagerInternalToken: String(process.env.RELAY_MANAGER_INTERNAL_TOKEN || '').trim(),
   domainRelayUsernameMap: parseDomainStringMap(process.env.DOMAIN_RELAY_USERNAME_MAP),

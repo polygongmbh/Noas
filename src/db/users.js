@@ -263,6 +263,32 @@ export async function getNostrUserByPublicKey(publicKey, tenantDomain = null) {
 }
 
 /**
+ * Retrieve nostr user by registration email, oldest account first.
+ * @param {string} email
+ * @param {string|null} tenantDomain
+ * @param {string|null} custody - Optional custody mode filter
+ * @returns {Promise<Object|undefined>}
+ */
+export async function getNostrUserByRegistrationEmail(email, tenantDomain = null, custody = null) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return undefined;
+  const params = [normalizedEmail];
+  let sql = 'SELECT * FROM nostr_users WHERE lower(registration_email) = $1';
+  const tenant = normalizeTenantDomain(tenantDomain);
+  if (tenant) {
+    params.push(tenant);
+    sql += ` AND tenant_domain = $${params.length}`;
+  }
+  if (custody) {
+    params.push(custody);
+    sql += ` AND custody = $${params.length}`;
+  }
+  sql += ' ORDER BY created_at ASC LIMIT 1';
+  const result = await query(sql, params);
+  return result.rows[0];
+}
+
+/**
  * Retrieve nostr user by verification token.
  * @param {string} token
  * @returns {Promise<Object|undefined>}

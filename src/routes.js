@@ -18,6 +18,7 @@
  * - GET /api/v1/picture/:identifier - Serve profile picture by pubkey or username
  * - GET /.well-known/nostr.json - NIP-05 verification
  * - GET /api/v1/health - Health check endpoint
+ * - POST /api/v1/service/accounts - Provision a custodial account (service key)
  * - POST /api/v1/nip46/request - Handle NIP-46 requests
  * - GET /api/v1/nip46/connect/:username - Get connection token
  * - GET /api/v1/nip46/info - Get signer information
@@ -56,8 +57,9 @@ import {
   handleConnect,
 } from './nip46.js';
 import { sendVerificationEmail } from './email.js';
+import { provisionServiceAccount } from './service-accounts.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
-import { randomUUID, createHash } from 'crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'crypto';
 import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs, enqueueTenantRelayUnallowJobs } from './allowlist-worker.js';
 
 export const router = express.Router();
@@ -1712,6 +1714,82 @@ const handleNip46Nostrconnect = async (req, res) => {
     res.status(500).json({ error: 'Connection failed' });
   }
 };
+
+/**
+ * Service API authentication
+ *
+ * All /api/v1/service/* routes require a shared secret from SERVICE_API_KEYS
+ * in the X-Noas-Service-Key header. When no keys are configured the service
+ * API is disabled entirely.
+ */
+function timingSafeEqualStrings(a, b) {
+  const aBuffer = Buffer.from(String(a));
+  const bBuffer = Buffer.from(String(b));
+  return aBuffer.length === bBuffer.length && timingSafeEqual(aBuffer, bBuffer);
+}
+
+function hasValidServiceKey(req) {
+  const providedKey = String(req.get('x-noas-service-key') || '').trim();
+  if (!providedKey) return false;
+  return config.serviceApiKeys.some((key) => timingSafeEqualStrings(providedKey, key));
+}
+
+router.use('/api/v1/service', (req, res, next) => {
+  if (config.serviceApiKeys.length === 0) {
+    return res.status(503).json({ error: 'Service API is not configured' });
+  }
+  if (hasValidServiceKey(req)) {
+    req.service_key_auth = true;
+    return next();
+  }
+  return res.status(401).json({ error: 'Valid X-Noas-Service-Key header is required' });
+});
+
+/**
+ * POST /api/v1/service/accounts
+ * Provision (or return) the custodial account for a subscriber email.
+ *
+ * Idempotent per (tenant_domain, email): repeat calls return the existing
+ * account. The account is created active — email ownership verification
+ * (double opt-in) is the calling service's responsibility. Publishes no
+ * nostr events.
+ */
+const handleServiceAccountCreate = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const tenantDomain = rootDomainFromHostLike(req.body?.tenant_domain);
+    if (!isValidEmailAddress(email)) {
+      return res.status(400).json({ error: 'email must be a valid email address' });
+    }
+    if (!tenantDomain) {
+      return res.status(400).json({ error: 'tenant_domain is required' });
+    }
+    if (!config.custodyMasterKey) {
+      return res.status(503).json({ error: 'Custodial master key is not configured' });
+    }
+
+    const { user, created } = await provisionServiceAccount({ email, tenantDomain });
+    if (created && user.public_key) {
+      enqueueTenantRelayAllowJobs({
+        tenantDomain,
+        username: user.username,
+        pubkey: user.public_key,
+      }).catch((err) => console.warn('relay allow job (service account) enqueue failed (non-fatal)', err?.message));
+    }
+
+    return res.status(created ? 201 : 200).json({
+      success: true,
+      username: user.username,
+      pubkey: user.public_key,
+      created,
+    });
+  } catch (error) {
+    console.error('Service account create error:', error);
+    return res.status(500).json({ error: 'Account provisioning failed' });
+  }
+};
+
+router.post('/api/v1/service/accounts', handleServiceAccountCreate);
 
 router.post('/api/v1/auth/signin', handleSignin);
 

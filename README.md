@@ -443,9 +443,46 @@ Delete a user (admin/moderator).
 
 Remote signing detail:
 - `get_public_key` returns the connected account's pubkey.
-- `sign_event` signs only for accounts that still have a stored raw signup password and whose NIP-49 ciphertext can be unlocked with it.
+- `sign_event` signs only for accounts whose NIP-49 decryption secret Noas holds: a stored raw signup password (`custody = password`, legacy) or the `CUSTODY_MASTER_KEY` for service-provisioned accounts (`custody = master_key`).
 - Accounts created with client-provided `password_hash` and encrypted key material do not get server-side NIP-46 signing, because Noas never receives their raw password.
 - Password/key rotation does not enable NIP-46 signing unless the account already has a stored raw signup password.
+
+### Service API (trusted services)
+
+Internal endpoints for trusted services (e.g. the nail mailing-list engine)
+that manage custodial subscriber identities. All `/api/v1/service/*` routes
+require the `X-Noas-Service-Key` header with one of the comma-separated
+secrets from `SERVICE_API_KEYS`; when no keys are configured the service API
+responds `503`.
+
+#### POST /api/v1/service/accounts
+
+Provision (or return) the custodial account for a subscriber email.
+Requires `CUSTODY_MASTER_KEY`. The username is derived from the email local
+part (lowercased, stripped to `a-z0-9-_.`, numeric suffix on collision), the
+generated key is NIP-49 encrypted with the master key (`custody =
+master_key`, no stored raw password), and the account is created `active` —
+email ownership verification (double opt-in) is the calling service's
+responsibility. Idempotent per `(tenant_domain, email)`; publishes no nostr
+events.
+
+**Request:**
+```json
+{
+  "email": "jane.doe@example.com",
+  "tenant_domain": "example.com"
+}
+```
+
+**Response (`201` on create, `200` on repeat):**
+```json
+{
+  "success": true,
+  "username": "jane.doe",
+  "pubkey": "a0b1c2d3...",
+  "created": true
+}
+```
 
 ### GET /.well-known/nostr.json?name=alice
 
