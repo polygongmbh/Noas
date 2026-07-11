@@ -94,6 +94,8 @@ NIP86_RELAY_URLS=
 DOMAIN_NIP86_RELAY_MAP=
 DISALLOWED_USERNAMES=feed,nostr,rnostr,base,tasks,relay,noas,go,nodex,caldav,calendar,dav
 NOAS_ADMIN_USERS=admin_username,64_char_hex_pubkey
+SERVICE_API_KEYS=
+CUSTODY_MASTER_KEY=
 ```
 
 Primary domain settings:
@@ -108,6 +110,8 @@ Primary domain settings:
 - `DOMAIN_NIP86_RELAY_MAP`: optional per-domain HTTP(S) relay admin endpoint mapping (`domain=https://relay-admin.domain`), semicolon separated
 - `DISALLOWED_USERNAMES`: comma-separated usernames that cannot be registered.
 - `NOAS_ADMIN_USERS`: comma-separated initial admin identifiers applied at registration time. Each entry may be a username or a 64-character hex public key.
+- `SERVICE_API_KEYS`: comma-separated shared secrets for trusted services calling `/api/v1/service/*` (via the `X-Noas-Service-Key` header). Empty disables the service API.
+- `CUSTODY_MASTER_KEY`: NIP-49 password used to encrypt the keys of service-provisioned accounts (`custody = master_key`). Generate a strong random secret (e.g. `openssl rand -hex 32`) and never rotate it casually — existing custodial ciphertexts are bound to it.
 
 Implementation note:
 - Relay allow provisioning internals (JSON-RPC method, timeout, worker interval, retry/backoff) are intentionally fixed in code to keep operator configuration surface minimal and safer by default.
@@ -481,6 +485,29 @@ events.
   "username": "jane.doe",
   "pubkey": "a0b1c2d3...",
   "created": true
+}
+```
+
+#### DELETE /api/v1/service/accounts
+
+Delete the custodial account for a subscriber (best-effort account wipe on
+behalf of the calling service). Identify the account with `email` or
+`username` plus `tenant_domain`, in the JSON body or the query string.
+Only `custody = master_key` accounts can be deleted this way (`403`
+otherwise; email lookup only matches custodial accounts). Sessions and
+magic link tokens are revoked with the account, and relay unallow jobs are
+enqueued for its pubkey — like the user/admin delete paths.
+
+**Request:** `{"email": "jane.doe@example.com", "tenant_domain": "example.com"}`
+
+**Response:**
+```json
+{
+  "success": true,
+  "deleted": {
+    "username": "jane.doe",
+    "pubkey": "a0b1c2d3..."
+  }
 }
 ```
 

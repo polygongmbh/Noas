@@ -19,6 +19,7 @@
  * - GET /.well-known/nostr.json - NIP-05 verification
  * - GET /api/v1/health - Health check endpoint
  * - POST /api/v1/service/accounts - Provision a custodial account (service key)
+ * - DELETE /api/v1/service/accounts - Delete a custodial account (service key)
  * - POST /api/v1/service/magic-links - Issue a single-use login/confirm token (service key)
  * - POST /api/v1/service/sign - Sign an event for a custodial account (service key or session)
  * - POST /api/v1/auth/magic/verify - Exchange a magic link token for a session
@@ -1816,6 +1817,67 @@ const handleServiceAccountCreate = async (req, res) => {
 };
 
 router.post('/api/v1/service/accounts', handleServiceAccountCreate);
+
+/**
+ * DELETE /api/v1/service/accounts
+ * Delete the custodial account for a subscriber (best-effort account wipe).
+ *
+ * Identified by email or username plus tenant_domain, from the JSON body or
+ * the query string. Only master_key-custody accounts can be deleted through
+ * the service API. Mirrors the user/admin delete paths: the row is removed
+ * (sessions and magic link tokens cascade) and relay unallow jobs are
+ * enqueued for the account's pubkey.
+ */
+const handleServiceAccountDelete = async (req, res) => {
+  try {
+    const params = { ...(req.query || {}), ...(req.body || {}) };
+    const email = normalizeEmail(params.email);
+    const normalizedUsername = normalizeUsernameInput(params.username);
+    const tenantDomain = rootDomainFromHostLike(params.tenant_domain);
+    if (!tenantDomain) {
+      return res.status(400).json({ error: 'tenant_domain is required' });
+    }
+    if (!email && !normalizedUsername) {
+      return res.status(400).json({ error: 'email or username is required' });
+    }
+
+    const user = normalizedUsername
+      ? await getNostrUserByUsername(normalizedUsername, tenantDomain)
+      : await getNostrUserByRegistrationEmail(email, tenantDomain, 'master_key');
+    if (!user) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    if (!isMasterKeyCustody(user)) {
+      return res.status(403).json({ error: 'Deletion is only available for custodial accounts' });
+    }
+
+    const deleted = await deleteNostrUser(user.username, tenantDomain);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    if (deleted.public_key) {
+      enqueueTenantRelayUnallowJobs({
+        tenantDomain,
+        username: deleted.username,
+        pubkey: deleted.public_key,
+      }).catch((err) => console.warn('relay ban job (service account) enqueue failed (non-fatal)', err?.message));
+    }
+
+    return res.json({
+      success: true,
+      deleted: {
+        username: deleted.username,
+        pubkey: deleted.public_key || null,
+      },
+    });
+  } catch (error) {
+    console.error('Service account delete error:', error);
+    return res.status(500).json({ error: 'Account deletion failed' });
+  }
+};
+
+router.delete('/api/v1/service/accounts', handleServiceAccountDelete);
 
 const MAGIC_LINK_TTL_MINUTES = {
   login: 30,

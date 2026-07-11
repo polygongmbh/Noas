@@ -25,7 +25,7 @@ NOAS_TEST_SERVICE_KEY="${NOAS_TEST_SERVICE_KEY:-}"
 SERVICE_TESTS_ENABLED=false
 if [ -n "$NOAS_TEST_SERVICE_KEY" ]; then
   SERVICE_TESTS_ENABLED=true
-  EXPECTED_TESTS=$((EXPECTED_TESTS + 5))
+  EXPECTED_TESTS=$((EXPECTED_TESTS + 6))
 fi
 
 if [ -t 1 ]; then
@@ -880,6 +880,23 @@ if [ "$SERVICE_TESTS_ENABLED" = true ]; then
     pass_step "Session resolved to the account and logout revoked it"
   else
     fail_step "Session info/logout failed" "$SERVICE_SESSION_INFO / $SERVICE_LOGOUT_RESPONSE / status=$SERVICE_SESSION_AFTER_LOGOUT_STATUS"
+  fi
+
+  start_test "Service Account Deletion"
+  SERVICE_DELETE_RESPONSE=$(curl -s -X DELETE "$API_URL/service/accounts" \
+    -H "Content-Type: application/json" \
+    -H "X-Noas-Service-Key: $NOAS_TEST_SERVICE_KEY" \
+    -d "{\"email\":\"$SERVICE_TEST_EMAIL\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\"}")
+  print_response "$SERVICE_DELETE_RESPONSE"
+  SERVICE_DELETED_USERNAME=$(jq -r '.deleted.username // empty' <<<"$SERVICE_DELETE_RESPONSE")
+  SERVICE_MAGIC_AFTER_DELETE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/service/magic-links" \
+    -H "Content-Type: application/json" \
+    -H "X-Noas-Service-Key: $NOAS_TEST_SERVICE_KEY" \
+    -d "{\"email\":\"$SERVICE_TEST_EMAIL\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\",\"purpose\":\"login\"}")
+  if [ "$SERVICE_DELETED_USERNAME" = "$SERVICE_USERNAME" ] && [ "$SERVICE_MAGIC_AFTER_DELETE_STATUS" = "404" ]; then
+    pass_step "Custodial account deleted and no longer resolvable"
+  else
+    fail_step "Service account deletion failed" "$SERVICE_DELETE_RESPONSE / magic_status=$SERVICE_MAGIC_AFTER_DELETE_STATUS"
   fi
 fi
 

@@ -494,6 +494,130 @@ test('POST /api/v1/service/sign rejects unauthenticated requests', async () => {
   assert.strictEqual(status, 401);
 });
 
+// Delete: removes the custodial account by email, revoking its sessions.
+test('DELETE /api/v1/service/accounts deletes a custodial account by email', async () => {
+  const account = await request(
+    'POST',
+    '/api/v1/service/accounts',
+    { email: 'wipe@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  const magicLink = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'wipe@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+  const verify = await request('POST', '/api/v1/auth/magic/verify', {
+    token: magicLink.data.token,
+  });
+
+  const { status, data } = await request(
+    'DELETE',
+    '/api/v1/service/accounts',
+    { email: 'wipe@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  assert.strictEqual(status, 200);
+  assert.strictEqual(data.success, true);
+  assert.strictEqual(data.deleted.username, account.data.username);
+  assert.strictEqual(data.deleted.pubkey, account.data.pubkey);
+
+  const stored = await pool.query(
+    'SELECT id FROM nostr_users WHERE tenant_domain = $1 AND username = $2',
+    [TEST_TENANT, account.data.username]
+  );
+  assert.strictEqual(stored.rows.length, 0);
+
+  // Sessions cascade with the account.
+  const session = await request('GET', '/api/v1/auth/session', null, {
+    Authorization: `Bearer ${verify.data.session_token}`,
+  });
+  assert.strictEqual(session.status, 401);
+
+  const repeat = await request(
+    'DELETE',
+    '/api/v1/service/accounts',
+    { email: 'wipe@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  assert.strictEqual(repeat.status, 404);
+});
+
+// Delete: username identification works via the query string too.
+test('DELETE /api/v1/service/accounts accepts username via query string', async () => {
+  const account = await request(
+    'POST',
+    '/api/v1/service/accounts',
+    { email: 'wipe.query@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+
+  const query = new URLSearchParams({
+    username: account.data.username,
+    tenant_domain: TEST_TENANT,
+  });
+  const { status, data } = await request(
+    'DELETE',
+    `/api/v1/service/accounts?${query.toString()}`,
+    null,
+    serviceHeaders()
+  );
+  assert.strictEqual(status, 200);
+  assert.strictEqual(data.deleted.username, account.data.username);
+});
+
+// Delete: non-custodial accounts and bad input are rejected.
+test('DELETE /api/v1/service/accounts rejects non-custodial accounts and bad input', async () => {
+  const { createNostrUser } = await import('./db/users.js');
+  await createNostrUser({
+    tenantDomain: TEST_TENANT,
+    username: 'legacykeeper',
+    passwordSha256: 'e'.repeat(64),
+    registrationEmail: 'legacykeeper@example.com',
+    status: 'active',
+  });
+
+  const byUsername = await request(
+    'DELETE',
+    '/api/v1/service/accounts',
+    { username: 'legacykeeper', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  assert.strictEqual(byUsername.status, 403);
+
+  // Email lookup only matches custodial accounts.
+  const byEmail = await request(
+    'DELETE',
+    '/api/v1/service/accounts',
+    { email: 'legacykeeper@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  assert.strictEqual(byEmail.status, 404);
+
+  const kept = await pool.query(
+    'SELECT id FROM nostr_users WHERE tenant_domain = $1 AND username = $2',
+    [TEST_TENANT, 'legacykeeper']
+  );
+  assert.strictEqual(kept.rows.length, 1);
+
+  const missingIdentifier = await request(
+    'DELETE',
+    '/api/v1/service/accounts',
+    { tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  assert.strictEqual(missingIdentifier.status, 400);
+
+  const missingTenant = await request(
+    'DELETE',
+    '/api/v1/service/accounts',
+    { email: 'wipe@example.com' },
+    serviceHeaders()
+  );
+  assert.strictEqual(missingTenant.status, 400);
+});
+
 // Accounts: input validation.
 test('POST /api/v1/service/accounts validates email and tenant_domain', async () => {
   const badEmail = await request(
