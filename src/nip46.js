@@ -2,13 +2,14 @@
  * NIP-46 Remote Signer Service
  *
  * Implements the NIP-46 remote signing protocol over the app's HTTP shim.
- * For signing, Noas can only unlock keys for accounts that have a stored raw
- * password from signup.
+ * For signing, Noas can only unlock keys for accounts whose decryption
+ * secret it holds: a stored raw password from signup (legacy) or the
+ * custody master key for service-provisioned accounts.
  */
 
 import { nip44, getPublicKey, generateSecretKey, finalizeEvent } from 'nostr-tools';
-import { decrypt } from 'nostr-tools/nip49';
 import { getActiveNostrUserById, getActiveNostrUserByUsername } from './db/users.js';
+import { unlockNostrUserSecretKey, UNLOCK_ERRORS } from './custody.js';
 import { config } from './config.js';
 import {
   createNip46Session,
@@ -185,27 +186,22 @@ export async function handleSignEvent(requestData, sessionId) {
     }
 
     const user = await getActiveNostrUserById(session.user_id);
-    if (!user?.public_key || !user.private_key_encrypted || !user.raw_password) {
+    const unlocked = unlockNostrUserSecretKey(user);
+    if (unlocked.error === UNLOCK_ERRORS.UNAVAILABLE) {
       return {
         id,
         result: null,
         error: 'Remote signing is unavailable for this account'
       };
     }
-
-    let secretKey;
-    try {
-      secretKey = decrypt(user.private_key_encrypted, user.raw_password);
-    } catch {
+    if (unlocked.error === UNLOCK_ERRORS.UNLOCK_FAILED) {
       return {
         id,
         result: null,
         error: 'Stored account key cannot be unlocked for remote signing'
       };
     }
-
-    const derivedPubkey = getPublicKey(secretKey).toLowerCase();
-    if (derivedPubkey !== String(user.public_key).trim().toLowerCase()) {
+    if (unlocked.error === UNLOCK_ERRORS.PUBKEY_MISMATCH) {
       return {
         id,
         result: null,
@@ -215,8 +211,8 @@ export async function handleSignEvent(requestData, sessionId) {
 
     const signedEvent = finalizeEvent({
       ...event,
-      pubkey: derivedPubkey,
-    }, secretKey);
+      pubkey: unlocked.publicKey,
+    }, unlocked.secretKey);
 
     return {
       id,

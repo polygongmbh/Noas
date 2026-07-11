@@ -362,6 +362,7 @@ export const config = {
   reconcileWorkerIntervalMs: backgroundWorkerDefaults.reconcile.intervalMs,
   nip46SignerPrivateKey: normalizePrivateKey(process.env.NIP46_SIGNER_PRIVATE_KEY),
   nip46Relays: [],
+  custodyMasterKey: String(process.env.CUSTODY_MASTER_KEY || '').trim(),
   relayManagerInternalUrl: stripTrailingSlash(String(process.env.RELAY_MANAGER_INTERNAL_URL || '').trim()),
   relayManagerInternalToken: String(process.env.RELAY_MANAGER_INTERNAL_TOKEN || '').trim(),
   domainRelayUsernameMap: parseDomainStringMap(process.env.DOMAIN_RELAY_USERNAME_MAP),

@@ -22,6 +22,11 @@ const NOSTR_USER_ROLES = {
   USER: 'user',
 };
 
+const NOSTR_USER_CUSTODY_MODES = {
+  PASSWORD: 'password',
+  MASTER_KEY: 'master_key',
+};
+
 function normalizeTenantDomain(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -291,6 +296,7 @@ export async function createNostrUser({
   status = NOSTR_USER_STATUSES.UNVERIFIED_EMAIL,
   verificationToken = null,
   role = NOSTR_USER_ROLES.USER,
+  custody = NOSTR_USER_CUSTODY_MODES.PASSWORD,
 }) {
   const result = await query(
     `INSERT INTO nostr_users (
@@ -304,9 +310,10 @@ export async function createNostrUser({
       relays,
       status,
       verification_token,
-      role
+      role,
+      custody
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *`,
     [
       normalizeTenantDomain(tenantDomain),
@@ -320,6 +327,7 @@ export async function createNostrUser({
       status,
       verificationToken,
       role,
+      custody,
     ]
   );
   return result.rows[0];
