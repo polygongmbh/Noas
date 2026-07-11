@@ -510,6 +510,46 @@ any email for these — the calling service renders and delivers the link.
 }
 ```
 
+#### POST /api/v1/service/sign
+
+Sign an unsigned nostr event template with a custodial account's key.
+Only `custody = master_key` accounts are eligible (`403` otherwise). In
+place of the service key, a subscriber bearer session token
+(`Authorization: Bearer <session_token>`) is accepted — then `username`
+must match the session account. `event.content` defaults to `""`,
+`event.tags` to `[]`, and `event.created_at` to the current time; `pubkey`,
+`id`, and `sig` are always derived server-side.
+
+**Request:**
+```json
+{
+  "username": "jane.doe",
+  "tenant_domain": "example.com",
+  "event": {
+    "kind": 1,
+    "content": "hello nostr",
+    "tags": [["t", "nail"]],
+    "created_at": 1783800000
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "event": {
+    "kind": 1,
+    "content": "hello nostr",
+    "tags": [["t", "nail"]],
+    "created_at": 1783800000,
+    "pubkey": "a0b1c2d3...",
+    "id": "e4f5...",
+    "sig": "90ab..."
+  }
+}
+```
+
 ### Magic Link Sessions
 
 Public endpoints for subscribers holding a magic link.

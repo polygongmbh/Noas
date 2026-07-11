@@ -9,8 +9,8 @@
 
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert';
-import { getPublicKey } from 'nostr-tools';
-import { decrypt } from 'nostr-tools/nip49';
+import { getPublicKey, generateSecretKey, verifyEvent } from 'nostr-tools';
+import { decrypt, encrypt } from 'nostr-tools/nip49';
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const TEST_SERVICE_KEY = 'routes-service-test-key';
@@ -326,6 +326,172 @@ test('DELETE /api/v1/auth/session logs out', async () => {
     Authorization: `Bearer ${sessionToken}`,
   });
   assert.strictEqual(afterLogout.status, 401);
+});
+
+// Sign: service key signs an event template with the custodial key.
+test('POST /api/v1/service/sign signs an event for a custodial account', async () => {
+  const account = await request(
+    'POST',
+    '/api/v1/service/accounts',
+    { email: 'signer@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+
+  const template = {
+    kind: 1,
+    content: 'Signed by the noas service API',
+    tags: [['t', 'nail']],
+    created_at: Math.floor(Date.now() / 1000) - 5,
+  };
+  const { status, data } = await request(
+    'POST',
+    '/api/v1/service/sign',
+    { username: account.data.username, tenant_domain: TEST_TENANT, event: template },
+    serviceHeaders()
+  );
+
+  assert.strictEqual(status, 200);
+  assert.strictEqual(data.success, true);
+  assert.strictEqual(data.event.kind, template.kind);
+  assert.strictEqual(data.event.content, template.content);
+  assert.deepStrictEqual(data.event.tags, template.tags);
+  assert.strictEqual(data.event.created_at, template.created_at);
+  assert.strictEqual(data.event.pubkey, account.data.pubkey);
+  assert.ok(data.event.id);
+  assert.ok(data.event.sig);
+  assert.ok(verifyEvent(data.event));
+});
+
+// Sign: created_at defaults to now when omitted.
+test('POST /api/v1/service/sign fills created_at when omitted', async () => {
+  const { status, data } = await request(
+    'POST',
+    '/api/v1/service/sign',
+    {
+      username: 'signer',
+      tenant_domain: TEST_TENANT,
+      event: { kind: 0, content: '{"name":"signer"}' },
+    },
+    serviceHeaders()
+  );
+
+  assert.strictEqual(status, 200);
+  assert.ok(Math.abs(data.event.created_at - Math.floor(Date.now() / 1000)) < 10);
+  assert.deepStrictEqual(data.event.tags, []);
+  assert.ok(verifyEvent(data.event));
+});
+
+// Sign: template validation.
+test('POST /api/v1/service/sign validates the event template', async () => {
+  const missingKind = await request(
+    'POST',
+    '/api/v1/service/sign',
+    { username: 'signer', tenant_domain: TEST_TENANT, event: { content: 'x' } },
+    serviceHeaders()
+  );
+  assert.strictEqual(missingKind.status, 400);
+
+  const badTags = await request(
+    'POST',
+    '/api/v1/service/sign',
+    { username: 'signer', tenant_domain: TEST_TENANT, event: { kind: 1, tags: ['t'] } },
+    serviceHeaders()
+  );
+  assert.strictEqual(badTags.status, 400);
+
+  const unknownUser = await request(
+    'POST',
+    '/api/v1/service/sign',
+    { username: 'ghostuser', tenant_domain: TEST_TENANT, event: { kind: 1 } },
+    serviceHeaders()
+  );
+  assert.strictEqual(unknownUser.status, 404);
+});
+
+// Sign: non-custodial (password custody) accounts are rejected.
+test('POST /api/v1/service/sign rejects non-custodial accounts', async () => {
+  const { createNostrUser } = await import('./db/users.js');
+  const secretKey = generateSecretKey();
+  await createNostrUser({
+    tenantDomain: TEST_TENANT,
+    username: 'legacyuser',
+    passwordSha256: 'd'.repeat(64),
+    publicKey: getPublicKey(secretKey).toLowerCase(),
+    privateKeyEncrypted: encrypt(secretKey, 'legacy-password'),
+    rawPassword: 'legacy-password',
+    status: 'active',
+  });
+
+  const { status, data } = await request(
+    'POST',
+    '/api/v1/service/sign',
+    { username: 'legacyuser', tenant_domain: TEST_TENANT, event: { kind: 1, content: 'no' } },
+    serviceHeaders()
+  );
+
+  assert.strictEqual(status, 403);
+  assert.ok(data.error);
+});
+
+// Sign: a subscriber session token works in place of the service key,
+// but only for the session's own account.
+test('POST /api/v1/service/sign accepts a matching bearer session', async () => {
+  const account = await request(
+    'POST',
+    '/api/v1/service/accounts',
+    { email: 'sessionsigner@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  const magicLink = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'sessionsigner@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+  const verify = await request('POST', '/api/v1/auth/magic/verify', {
+    token: magicLink.data.token,
+  });
+  const bearer = { Authorization: `Bearer ${verify.data.session_token}` };
+
+  const own = await request(
+    'POST',
+    '/api/v1/service/sign',
+    {
+      username: account.data.username,
+      tenant_domain: TEST_TENANT,
+      event: { kind: 1, content: 'signed via session' },
+    },
+    bearer
+  );
+  assert.strictEqual(own.status, 200);
+  assert.strictEqual(own.data.event.pubkey, account.data.pubkey);
+  assert.ok(verifyEvent(own.data.event));
+
+  const other = await request(
+    'POST',
+    '/api/v1/service/sign',
+    { username: 'signer', tenant_domain: TEST_TENANT, event: { kind: 1, content: 'nope' } },
+    bearer
+  );
+  assert.strictEqual(other.status, 403);
+
+  const invalidBearer = await request(
+    'POST',
+    '/api/v1/service/sign',
+    { username: account.data.username, tenant_domain: TEST_TENANT, event: { kind: 1 } },
+    { Authorization: `Bearer ${'a'.repeat(64)}` }
+  );
+  assert.strictEqual(invalidBearer.status, 401);
+});
+
+// Sign: no service key and no bearer token is rejected by the gate.
+test('POST /api/v1/service/sign rejects unauthenticated requests', async () => {
+  const { status } = await request('POST', '/api/v1/service/sign', {
+    username: 'signer',
+    tenant_domain: TEST_TENANT,
+    event: { kind: 1 },
+  });
+  assert.strictEqual(status, 401);
 });
 
 // Accounts: input validation.

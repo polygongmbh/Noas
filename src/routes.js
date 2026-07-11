@@ -20,6 +20,7 @@
  * - GET /api/v1/health - Health check endpoint
  * - POST /api/v1/service/accounts - Provision a custodial account (service key)
  * - POST /api/v1/service/magic-links - Issue a single-use login/confirm token (service key)
+ * - POST /api/v1/service/sign - Sign an event for a custodial account (service key or session)
  * - POST /api/v1/auth/magic/verify - Exchange a magic link token for a session
  * - GET /api/v1/auth/session - Resolve the bearer session to account info
  * - DELETE /api/v1/auth/session - Log out (revoke the bearer session)
@@ -76,6 +77,7 @@ import {
 } from './nip46.js';
 import { sendVerificationEmail } from './email.js';
 import { provisionServiceAccount } from './service-accounts.js';
+import { isMasterKeyCustody, unlockNostrUserSecretKey } from './custody.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
 import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'crypto';
 import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs, enqueueTenantRelayUnallowJobs } from './allowlist-worker.js';
@@ -1760,6 +1762,12 @@ router.use('/api/v1/service', (req, res, next) => {
     req.service_key_auth = true;
     return next();
   }
+  // The sign endpoint alternatively accepts a subscriber bearer session
+  // token; its handler validates the session and the username match.
+  if (req.path === '/sign' && getBearerToken(req)) {
+    req.service_key_auth = false;
+    return next();
+  }
   return res.status(401).json({ error: 'Valid X-Noas-Service-Key header is required' });
 });
 
@@ -1956,6 +1964,108 @@ const handleMagicVerify = async (req, res) => {
 };
 
 router.post('/api/v1/auth/magic/verify', handleMagicVerify);
+
+const MAX_EVENT_KIND = 65535;
+
+/**
+ * Validate an unsigned nostr event template and fill defaults.
+ * Only kind/content/tags/created_at are taken from the input; pubkey, id,
+ * and sig are always derived at signing time.
+ */
+function parseUnsignedEventTemplate(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { error: 'event must be an object' };
+  }
+  const kind = input.kind;
+  if (!Number.isInteger(kind) || kind < 0 || kind > MAX_EVENT_KIND) {
+    return { error: `event.kind must be an integer between 0 and ${MAX_EVENT_KIND}` };
+  }
+  const content = input.content === undefined ? '' : input.content;
+  if (typeof content !== 'string') {
+    return { error: 'event.content must be a string' };
+  }
+  const tags = input.tags === undefined ? [] : input.tags;
+  const tagsValid = Array.isArray(tags)
+    && tags.every((tag) => Array.isArray(tag) && tag.every((value) => typeof value === 'string'));
+  if (!tagsValid) {
+    return { error: 'event.tags must be an array of string arrays' };
+  }
+  const createdAt = input.created_at === undefined
+    ? Math.floor(Date.now() / 1000)
+    : input.created_at;
+  if (!Number.isInteger(createdAt) || createdAt < 0) {
+    return { error: 'event.created_at must be a unix timestamp in seconds' };
+  }
+  return { template: { kind, content, tags, created_at: createdAt } };
+}
+
+/**
+ * POST /api/v1/service/sign
+ * Sign an unsigned event template with a custodial account's key.
+ *
+ * Authenticated with the service key, or alternatively with a subscriber
+ * bearer session token — then the username must match the session account.
+ * Only master_key-custody accounts are eligible.
+ */
+const handleServiceSign = async (req, res) => {
+  try {
+    const normalizedUsername = normalizeUsernameInput(req.body?.username);
+    const tenantDomain = rootDomainFromHostLike(req.body?.tenant_domain);
+    const usernameCheck = validateUsername(normalizedUsername);
+    if (!usernameCheck.valid) {
+      return res.status(400).json({ error: usernameCheck.error });
+    }
+    if (!tenantDomain) {
+      return res.status(400).json({ error: 'tenant_domain is required' });
+    }
+    const parsed = parseUnsignedEventTemplate(req.body?.event);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+
+    let sessionUser = null;
+    if (!req.service_key_auth) {
+      const auth = await resolveSessionUser(req);
+      if (auth.error) {
+        return res.status(auth.error.status).json({ error: auth.error.message });
+      }
+      sessionUser = auth.user;
+    }
+
+    const user = await getActiveNostrUserByUsername(normalizedUsername, tenantDomain);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (sessionUser && sessionUser.id !== user.id) {
+      return res.status(403).json({ error: 'Session does not match the requested account' });
+    }
+    if (!isMasterKeyCustody(user)) {
+      return res.status(403).json({ error: 'Signing is only available for custodial accounts' });
+    }
+    if (!config.custodyMasterKey) {
+      return res.status(503).json({ error: 'Custodial master key is not configured' });
+    }
+
+    const unlocked = unlockNostrUserSecretKey(user);
+    if (unlocked.error) {
+      console.error(`Service sign unlock error (${unlocked.error}) for ${tenantDomain}/${user.username}`);
+      return res.status(500).json({ error: 'Stored account key cannot be unlocked for signing' });
+    }
+
+    const { finalizeEvent } = await import('nostr-tools');
+    const signedEvent = finalizeEvent({
+      ...parsed.template,
+      pubkey: unlocked.publicKey,
+    }, unlocked.secretKey);
+
+    return res.json({ success: true, event: signedEvent });
+  } catch (error) {
+    console.error('Service sign error:', error);
+    return res.status(500).json({ error: 'Signing failed' });
+  }
+};
+
+router.post('/api/v1/service/sign', handleServiceSign);
 
 /**
  * GET /api/v1/auth/session
