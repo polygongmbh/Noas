@@ -690,6 +690,8 @@ npm run test:watch
 - ✅ Input validation (usernames, keys, passwords)
 - ✅ Database operations (CRUD)
 - ✅ NIP-49 encrypted key validation
+- ✅ Key custody modes and master-key signing
+- ✅ Service account provisioning, magic link tokens, sessions
 
 **Integration tests** cover:
 - ✅ Complete registration flow
@@ -698,5 +700,9 @@ npm run test:watch
 - ✅ NIP-05 verification
 - ✅ Duplicate username prevention
 - ✅ Input validation
+- ✅ Service API (accounts, magic links, sessions, signing) — set
+  `NOAS_TEST_SERVICE_KEY` to one of the server's `SERVICE_API_KEYS`
+  (server must also have `CUSTODY_MASTER_KEY` configured), otherwise
+  these tests are skipped
 
 Integration tests use real HTTP requests to test the full API.

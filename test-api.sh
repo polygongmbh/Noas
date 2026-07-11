@@ -19,6 +19,14 @@ USE_EXISTING_SERVER="${NOAS_TEST_USE_EXISTING_SERVER:-true}"
 TEST_PORT="${NOAS_TEST_PORT:-3002}"
 ADMIN_TESTS_ENABLED=false
 ADMIN_VERIFY_TEST_ENABLED=false
+# Service API tests run only when NOAS_TEST_SERVICE_KEY matches one of the
+# server's SERVICE_API_KEYS (CUSTODY_MASTER_KEY must also be configured).
+NOAS_TEST_SERVICE_KEY="${NOAS_TEST_SERVICE_KEY:-}"
+SERVICE_TESTS_ENABLED=false
+if [ -n "$NOAS_TEST_SERVICE_KEY" ]; then
+  SERVICE_TESTS_ENABLED=true
+  EXPECTED_TESTS=$((EXPECTED_TESTS + 5))
+fi
 
 if [ -t 1 ]; then
   COLOR_RESET=$'\033[0m'
@@ -76,6 +84,15 @@ post_json() {
   local path="$1"
   local payload="$2"
   curl -s -X POST "$API_URL$path" -H "Content-Type: application/json" -d "$payload"
+}
+
+post_json_service() {
+  local path="$1"
+  local payload="$2"
+  curl -s -X POST "$API_URL$path" \
+    -H "Content-Type: application/json" \
+    -H "X-Noas-Service-Key: $NOAS_TEST_SERVICE_KEY" \
+    -d "$payload"
 }
 
 url_encode() {
@@ -783,6 +800,87 @@ if echo "$NIP46_NOSTRCONNECT_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space
   pass_step "NIP-46 nostrconnect established a session"
 else
   fail_step "NIP-46 nostrconnect failed" "$NIP46_NOSTRCONNECT_RESPONSE"
+fi
+
+if [ "$SERVICE_TESTS_ENABLED" = true ]; then
+  SERVICE_TEST_TENANT="service-$(date +%s).test"
+  SERVICE_TEST_EMAIL="Subscriber.$(date +%s)@example.com"
+
+  start_test "Service Auth Rejected Without Key"
+  SERVICE_NO_KEY_RESPONSE=$(post_json "/service/accounts" "{\"email\":\"$SERVICE_TEST_EMAIL\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\"}")
+  print_response "$SERVICE_NO_KEY_RESPONSE"
+  if echo "$SERVICE_NO_KEY_RESPONSE" | jq -e '.error and (.success != true)' >/dev/null 2>&1; then
+    pass_step "Service route rejected the request without a service key"
+  else
+    fail_step "Service route did not reject unauthenticated request" "$SERVICE_NO_KEY_RESPONSE"
+  fi
+
+  start_test "Service Account Provisioning"
+  SERVICE_ACCOUNT_RESPONSE=$(post_json_service "/service/accounts" "{\"email\":\"$SERVICE_TEST_EMAIL\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\"}")
+  print_response "$SERVICE_ACCOUNT_RESPONSE"
+  SERVICE_USERNAME=$(jq -r '.username // empty' <<<"$SERVICE_ACCOUNT_RESPONSE")
+  SERVICE_PUBKEY=$(jq -r '.pubkey // empty' <<<"$SERVICE_ACCOUNT_RESPONSE")
+  SERVICE_REPEAT_RESPONSE=$(post_json_service "/service/accounts" "{\"email\":\"$SERVICE_TEST_EMAIL\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\"}")
+  print_response "$SERVICE_REPEAT_RESPONSE"
+  SERVICE_REPEAT_PUBKEY=$(jq -r '.pubkey // empty' <<<"$SERVICE_REPEAT_RESPONSE")
+  SERVICE_REPEAT_CREATED=$(jq -r '.created' <<<"$SERVICE_REPEAT_RESPONSE")
+  if [ -n "$SERVICE_USERNAME" ] && echo "$SERVICE_PUBKEY" | grep -Eq '^[a-f0-9]{64}$' \
+    && [ "$SERVICE_REPEAT_PUBKEY" = "$SERVICE_PUBKEY" ] && [ "$SERVICE_REPEAT_CREATED" = "false" ]; then
+    pass_step "Custodial account provisioned idempotently ($SERVICE_USERNAME)"
+  else
+    fail_step "Service account provisioning failed" "$SERVICE_ACCOUNT_RESPONSE / $SERVICE_REPEAT_RESPONSE"
+  fi
+
+  start_test "Service Magic Link Verify"
+  SERVICE_MAGIC_RESPONSE=$(post_json_service "/service/magic-links" "{\"email\":\"$SERVICE_TEST_EMAIL\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\",\"purpose\":\"login\"}")
+  print_response "$SERVICE_MAGIC_RESPONSE"
+  SERVICE_MAGIC_TOKEN=$(jq -r '.token // empty' <<<"$SERVICE_MAGIC_RESPONSE")
+  SERVICE_VERIFY_RESPONSE=$(post_json "/auth/magic/verify" "{\"token\":\"$SERVICE_MAGIC_TOKEN\"}")
+  print_response "$SERVICE_VERIFY_RESPONSE"
+  SERVICE_SESSION_TOKEN=$(jq -r '.session_token // empty' <<<"$SERVICE_VERIFY_RESPONSE")
+  SERVICE_VERIFY_USERNAME=$(jq -r '.username // empty' <<<"$SERVICE_VERIFY_RESPONSE")
+  SERVICE_VERIFY_REPLAY=$(post_json "/auth/magic/verify" "{\"token\":\"$SERVICE_MAGIC_TOKEN\"}")
+  print_response "$SERVICE_VERIFY_REPLAY"
+  if [ -n "$SERVICE_MAGIC_TOKEN" ] && [ -n "$SERVICE_SESSION_TOKEN" ] \
+    && [ "$SERVICE_VERIFY_USERNAME" = "$SERVICE_USERNAME" ] \
+    && ! echo "$SERVICE_VERIFY_REPLAY" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    pass_step "Magic link exchanged for a session exactly once"
+  else
+    fail_step "Magic link verify failed" "$SERVICE_MAGIC_RESPONSE / $SERVICE_VERIFY_RESPONSE / $SERVICE_VERIFY_REPLAY"
+  fi
+
+  start_test "Service Sign Event"
+  SERVICE_SIGN_RESPONSE=$(post_json_service "/service/sign" "{\"username\":\"$SERVICE_USERNAME\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\",\"event\":{\"kind\":1,\"content\":\"integration test note\",\"tags\":[[\"t\",\"nail\"]]}}")
+  print_response "$SERVICE_SIGN_RESPONSE"
+  SERVICE_SIGN_PUBKEY=$(jq -r '.event.pubkey // empty' <<<"$SERVICE_SIGN_RESPONSE")
+  SERVICE_SIGN_ID=$(jq -r '.event.id // empty' <<<"$SERVICE_SIGN_RESPONSE")
+  SERVICE_SIGN_SIG=$(jq -r '.event.sig // empty' <<<"$SERVICE_SIGN_RESPONSE")
+  SERVICE_SESSION_SIGN_RESPONSE=$(curl -s -X POST "$API_URL/service/sign" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $SERVICE_SESSION_TOKEN" \
+    -d "{\"username\":\"$SERVICE_USERNAME\",\"tenant_domain\":\"$SERVICE_TEST_TENANT\",\"event\":{\"kind\":1,\"content\":\"signed via session\"}}")
+  print_response "$SERVICE_SESSION_SIGN_RESPONSE"
+  if [ "$SERVICE_SIGN_PUBKEY" = "$SERVICE_PUBKEY" ] && [ -n "$SERVICE_SIGN_ID" ] && [ -n "$SERVICE_SIGN_SIG" ] \
+    && echo "$SERVICE_SESSION_SIGN_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
+    pass_step "Custodial signing works with service key and session token"
+  else
+    fail_step "Service sign failed" "$SERVICE_SIGN_RESPONSE / $SERVICE_SESSION_SIGN_RESPONSE"
+  fi
+
+  start_test "Service Session Info And Logout"
+  SERVICE_SESSION_INFO=$(curl -s "$API_URL/auth/session" -H "Authorization: Bearer $SERVICE_SESSION_TOKEN")
+  print_response "$SERVICE_SESSION_INFO"
+  SERVICE_SESSION_USERNAME=$(jq -r '.username // empty' <<<"$SERVICE_SESSION_INFO")
+  SERVICE_LOGOUT_RESPONSE=$(curl -s -X DELETE "$API_URL/auth/session" -H "Authorization: Bearer $SERVICE_SESSION_TOKEN")
+  print_response "$SERVICE_LOGOUT_RESPONSE"
+  SERVICE_SESSION_AFTER_LOGOUT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/auth/session" -H "Authorization: Bearer $SERVICE_SESSION_TOKEN")
+  if [ "$SERVICE_SESSION_USERNAME" = "$SERVICE_USERNAME" ] \
+    && echo "$SERVICE_LOGOUT_RESPONSE" | grep -q '"success"[[:space:]]*:[[:space:]]*true' \
+    && [ "$SERVICE_SESSION_AFTER_LOGOUT_STATUS" = "401" ]; then
+    pass_step "Session resolved to the account and logout revoked it"
+  else
+    fail_step "Session info/logout failed" "$SERVICE_SESSION_INFO / $SERVICE_LOGOUT_RESPONSE / status=$SERVICE_SESSION_AFTER_LOGOUT_STATUS"
+  fi
 fi
 
 start_test "Fetch Profile Picture From Registration"
