@@ -7,7 +7,7 @@ set -uo pipefail
 BASE_URL="${NOAS_TEST_BASE_URL:-http://localhost:3000}"
 NOAS_TEST_PUBLIC_URL_MAP="${NOAS_TEST_PUBLIC_URL_MAP:-}"
 VERBOSE=false
-EXPECTED_TESTS_BASE=21
+EXPECTED_TESTS_BASE=24
 EXPECTED_TESTS=$EXPECTED_TESTS_BASE
 TOTAL_TESTS=0
 PASSED_TESTS=0
@@ -333,6 +333,25 @@ if (actualPublicKey !== expectedPublicKey) {
 EOF
 }
 
+generate_encrypted_keypair() {
+  local password="$1"
+
+  KEY_PASSWORD="$password" node --input-type=module <<'EOF'
+import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import { encrypt } from 'nostr-tools/nip49';
+
+const password = String(process.env.KEY_PASSWORD || '');
+if (!password) {
+  console.error('Missing key generation password');
+  process.exit(1);
+}
+
+const secretKey = generateSecretKey();
+console.log(getPublicKey(secretKey).toLowerCase());
+console.log(encrypt(secretKey, password));
+EOF
+}
+
 rotate_key_password() {
   local private_key_encrypted="$1"
   local old_password="$2"
@@ -590,9 +609,22 @@ else
   fail_step "Returned encrypted key is invalid"
 fi
 
-start_test "Register User With Returned Key"
-REGISTER_WITH_KEY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"public_key\":\"$RETURNED_PUBLIC_KEY\",\"private_key_encrypted\":\"$RETURNED_PRIVATE_KEY_ENCRYPTED\"}")
-assert_registration_and_activate "$REGISTER_WITH_KEY_RESPONSE" "User registered with provided key" "$TEST_PASS_HASH" "$TEST_USER_WITH_KEY" "$RETURNED_PUBLIC_KEY"
+start_test "Reject Duplicate Key Registration"
+DUPLICATE_KEY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"public_key\":\"$RETURNED_PUBLIC_KEY\",\"private_key_encrypted\":\"$RETURNED_PRIVATE_KEY_ENCRYPTED\"}")
+print_response "$DUPLICATE_KEY_RESPONSE"
+if echo "$DUPLICATE_KEY_RESPONSE" | grep -q 'An account already exists for this private key'; then
+  pass_step "Registration with an already-registered key is rejected"
+else
+  fail_step "Duplicate key registration was not rejected" "$DUPLICATE_KEY_RESPONSE"
+fi
+echo ""
+
+start_test "Register User With Provided Key"
+PROVIDED_KEY_OUTPUT=$(generate_encrypted_keypair "$TEST_PASS")
+PROVIDED_PUBLIC_KEY=$(printf '%s\n' "$PROVIDED_KEY_OUTPUT" | sed -n '1p')
+PROVIDED_PRIVATE_KEY_ENCRYPTED=$(printf '%s\n' "$PROVIDED_KEY_OUTPUT" | sed -n '2p')
+REGISTER_WITH_KEY_RESPONSE=$(post_json "/auth/register" "{\"username\":\"$TEST_USER_WITH_KEY\",\"password_hash\":\"$TEST_PASS_HASH\",\"public_key\":\"$PROVIDED_PUBLIC_KEY\",\"private_key_encrypted\":\"$PROVIDED_PRIVATE_KEY_ENCRYPTED\"}")
+assert_registration_and_activate "$REGISTER_WITH_KEY_RESPONSE" "User registered with provided key" "$TEST_PASS_HASH" "$TEST_USER_WITH_KEY" "$PROVIDED_PUBLIC_KEY"
 echo ""
 
 start_test "Sign In With Password Hash For Provided Key"
@@ -601,7 +633,7 @@ SIGNIN_WITH_KEY_RESPONSE=$(post_json "/auth/signin" "{\"username\":\"$TEST_USER_
 print_response "$SIGNIN_WITH_KEY_RESPONSE"
 SIGNIN_WITH_KEY_PUBLIC_KEY=$(jq -r '.public_key // empty' <<<"$SIGNIN_WITH_KEY_RESPONSE")
 SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED=$(jq -r '.private_key_encrypted // empty' <<<"$SIGNIN_WITH_KEY_RESPONSE")
-if [ "$SIGNIN_WITH_KEY_PUBLIC_KEY" = "$RETURNED_PUBLIC_KEY" ] && [ "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" = "$RETURNED_PRIVATE_KEY_ENCRYPTED" ]; then
+if [ "$SIGNIN_WITH_KEY_PUBLIC_KEY" = "$PROVIDED_PUBLIC_KEY" ] && [ "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" = "$PROVIDED_PRIVATE_KEY_ENCRYPTED" ]; then
   verify_returned_keypair "$SIGNIN_WITH_KEY_PUBLIC_KEY" "$SIGNIN_WITH_KEY_PRIVATE_KEY_ENCRYPTED" "$TEST_PASS" || fail_step "Provided key is invalid after sign in"
   pass_step "Sign in returned the provided key material and it remained valid"
 else
