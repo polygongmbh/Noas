@@ -2,7 +2,8 @@
  * Service API Routes Integration Tests
  *
  * End-to-end tests of the service endpoints used by trusted services
- * (e.g. nail): service-key auth and custodial account provisioning.
+ * (e.g. nail): service-key auth, custodial account provisioning, magic
+ * link tokens, and bearer sessions.
  * Uses a separate test server on port 3004.
  */
 
@@ -147,6 +148,184 @@ test('POST /api/v1/service/accounts is idempotent per tenant and email', async (
   assert.strictEqual(second.data.created, false);
   assert.strictEqual(second.data.username, first.data.username);
   assert.strictEqual(second.data.pubkey, first.data.pubkey);
+});
+
+// Magic links: issuing tokens for both purposes with the documented TTLs.
+test('POST /api/v1/service/magic-links issues single-use tokens', async () => {
+  await request(
+    'POST',
+    '/api/v1/service/accounts',
+    { email: 'magic@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+
+  const login = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'magic@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+  assert.strictEqual(login.status, 200);
+  assert.strictEqual(login.data.success, true);
+  assert.match(login.data.token, /^[a-f0-9]{64}$/);
+  const loginTtlMs = new Date(login.data.expires_at).getTime() - Date.now();
+  assert.ok(loginTtlMs > 25 * 60 * 1000 && loginTtlMs <= 30 * 60 * 1000);
+
+  const confirm = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'magic@example.com', tenant_domain: TEST_TENANT, purpose: 'confirm' },
+    serviceHeaders()
+  );
+  assert.strictEqual(confirm.status, 200);
+  const confirmTtlMs = new Date(confirm.data.expires_at).getTime() - Date.now();
+  assert.ok(confirmTtlMs > 6 * 24 * 60 * 60 * 1000 && confirmTtlMs <= 7 * 24 * 60 * 60 * 1000);
+});
+
+// Magic links: input validation and unknown accounts.
+test('POST /api/v1/service/magic-links rejects bad purpose and unknown email', async () => {
+  const badPurpose = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'magic@example.com', tenant_domain: TEST_TENANT, purpose: 'reset' },
+    serviceHeaders()
+  );
+  assert.strictEqual(badPurpose.status, 400);
+
+  const unknown = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'nobody@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+  assert.strictEqual(unknown.status, 404);
+});
+
+// Magic verify: exchanging a token for a session, single use.
+test('POST /api/v1/auth/magic/verify exchanges a token for a session once', async () => {
+  const account = await request(
+    'POST',
+    '/api/v1/service/accounts',
+    { email: 'verify@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  const magicLink = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'verify@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+
+  const verify = await request('POST', '/api/v1/auth/magic/verify', {
+    token: magicLink.data.token,
+  });
+  assert.strictEqual(verify.status, 200);
+  assert.strictEqual(verify.data.success, true);
+  assert.match(verify.data.session_token, /^[a-f0-9]{64}$/);
+  assert.strictEqual(verify.data.username, account.data.username);
+  assert.strictEqual(verify.data.pubkey, account.data.pubkey);
+  assert.strictEqual(verify.data.purpose, 'login');
+  const sessionTtlMs = new Date(verify.data.expires_at).getTime() - Date.now();
+  assert.ok(sessionTtlMs > 29 * 24 * 60 * 60 * 1000);
+
+  const replay = await request('POST', '/api/v1/auth/magic/verify', {
+    token: magicLink.data.token,
+  });
+  assert.strictEqual(replay.status, 410);
+
+  const garbage = await request('POST', '/api/v1/auth/magic/verify', {
+    token: 'f'.repeat(64),
+  });
+  assert.strictEqual(garbage.status, 404);
+});
+
+// Magic verify: expired tokens are rejected.
+test('POST /api/v1/auth/magic/verify rejects expired tokens', async () => {
+  const magicLink = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'verify@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+  await pool.query(
+    "UPDATE magic_link_tokens SET expires_at = NOW() - INTERVAL '1 minute' WHERE token = $1",
+    [magicLink.data.token]
+  );
+
+  const verify = await request('POST', '/api/v1/auth/magic/verify', {
+    token: magicLink.data.token,
+  });
+  assert.strictEqual(verify.status, 410);
+});
+
+// Sessions: bearer token resolves to account info with sliding expiry.
+test('GET /api/v1/auth/session returns account info and slides expiry', async () => {
+  const account = await request(
+    'POST',
+    '/api/v1/service/accounts',
+    { email: 'session@example.com', tenant_domain: TEST_TENANT },
+    serviceHeaders()
+  );
+  const magicLink = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'session@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+  const verify = await request('POST', '/api/v1/auth/magic/verify', {
+    token: magicLink.data.token,
+  });
+  const sessionToken = verify.data.session_token;
+
+  // Age the session so the sliding refresh is observable.
+  await pool.query(
+    "UPDATE session_tokens SET expires_at = NOW() + INTERVAL '1 day' WHERE token = $1",
+    [sessionToken]
+  );
+
+  const info = await request('GET', '/api/v1/auth/session', null, {
+    Authorization: `Bearer ${sessionToken}`,
+  });
+  assert.strictEqual(info.status, 200);
+  assert.strictEqual(info.data.username, account.data.username);
+  assert.strictEqual(info.data.pubkey, account.data.pubkey);
+  assert.strictEqual(info.data.tenant_domain, TEST_TENANT);
+  assert.strictEqual(info.data.registration_email, 'session@example.com');
+  const ttlMs = new Date(info.data.expires_at).getTime() - Date.now();
+  assert.ok(ttlMs > 29 * 24 * 60 * 60 * 1000, 'expiry should slide back to 30 days');
+
+  const noToken = await request('GET', '/api/v1/auth/session');
+  assert.strictEqual(noToken.status, 401);
+
+  const badToken = await request('GET', '/api/v1/auth/session', null, {
+    Authorization: `Bearer ${'e'.repeat(64)}`,
+  });
+  assert.strictEqual(badToken.status, 401);
+});
+
+// Sessions: logout revokes the token.
+test('DELETE /api/v1/auth/session logs out', async () => {
+  const magicLink = await request(
+    'POST',
+    '/api/v1/service/magic-links',
+    { email: 'session@example.com', tenant_domain: TEST_TENANT, purpose: 'login' },
+    serviceHeaders()
+  );
+  const verify = await request('POST', '/api/v1/auth/magic/verify', {
+    token: magicLink.data.token,
+  });
+  const sessionToken = verify.data.session_token;
+
+  const logout = await request('DELETE', '/api/v1/auth/session', null, {
+    Authorization: `Bearer ${sessionToken}`,
+  });
+  assert.strictEqual(logout.status, 200);
+  assert.strictEqual(logout.data.success, true);
+
+  const afterLogout = await request('GET', '/api/v1/auth/session', null, {
+    Authorization: `Bearer ${sessionToken}`,
+  });
+  assert.strictEqual(afterLogout.status, 401);
 });
 
 // Accounts: input validation.

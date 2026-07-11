@@ -19,6 +19,10 @@
  * - GET /.well-known/nostr.json - NIP-05 verification
  * - GET /api/v1/health - Health check endpoint
  * - POST /api/v1/service/accounts - Provision a custodial account (service key)
+ * - POST /api/v1/service/magic-links - Issue a single-use login/confirm token (service key)
+ * - POST /api/v1/auth/magic/verify - Exchange a magic link token for a session
+ * - GET /api/v1/auth/session - Resolve the bearer session to account info
+ * - DELETE /api/v1/auth/session - Log out (revoke the bearer session)
  * - POST /api/v1/nip46/request - Handle NIP-46 requests
  * - GET /api/v1/nip46/connect/:username - Get connection token
  * - GET /api/v1/nip46/info - Get signer information
@@ -35,6 +39,7 @@ import {
   deleteExpiredPendingNostrUsers,
   getActiveNostrUserForNip05,
   getActiveNostrUserByUsername,
+  getActiveNostrUserById,
   updateNostrUser,
   deleteNostrUser,
   updateNostrUserRole,
@@ -43,7 +48,20 @@ import {
   getNostrUserProfilePictureByPublicKey,
   updateNostrUserProfilePicture,
   addRelayToNostrUser,
+  getNostrUserByRegistrationEmail,
 } from './db/users.js';
+import {
+  createMagicLinkToken,
+  getMagicLinkToken,
+  consumeMagicLinkToken,
+  deleteExpiredMagicLinkTokens,
+} from './db/magic-links.js';
+import {
+  createSessionToken,
+  touchSessionToken,
+  deleteSessionToken,
+  deleteExpiredSessionTokens,
+} from './db/sessions.js';
 import { 
   validateUsername, 
   validatePublicKey, 
@@ -59,7 +77,7 @@ import {
 import { sendVerificationEmail } from './email.js';
 import { provisionServiceAccount } from './service-accounts.js';
 import { config, detectLocalHost, rootDomainFromHostLike } from './config.js';
-import { randomUUID, createHash, timingSafeEqual } from 'crypto';
+import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'crypto';
 import { enqueueRelayAllowJobForRelayUrl, enqueueTenantRelayAllowJobs, enqueueTenantRelayUnallowJobs } from './allowlist-worker.js';
 
 export const router = express.Router();
@@ -1790,6 +1808,200 @@ const handleServiceAccountCreate = async (req, res) => {
 };
 
 router.post('/api/v1/service/accounts', handleServiceAccountCreate);
+
+const MAGIC_LINK_TTL_MINUTES = {
+  login: 30,
+  confirm: 7 * 24 * 60,
+};
+const SESSION_TTL_DAYS = 30;
+
+function getBearerToken(req) {
+  const header = String(req.get('authorization') || '').trim();
+  if (!/^bearer\s/i.test(header)) return '';
+  return header.slice(7).trim();
+}
+
+function buildOpaqueToken() {
+  return randomBytes(32).toString('hex');
+}
+
+/**
+ * Resolve the Bearer session token to its (session, user) pair, sliding
+ * the session expiry forward on every authenticated use.
+ */
+async function resolveSessionUser(req) {
+  const token = getBearerToken(req);
+  if (!token) {
+    return { error: { status: 401, message: 'Bearer session token is required' } };
+  }
+  const session = await touchSessionToken(token, SESSION_TTL_DAYS);
+  if (!session) {
+    return { error: { status: 401, message: 'Invalid or expired session' } };
+  }
+  const user = await getActiveNostrUserById(session.user_id);
+  if (!user) {
+    return { error: { status: 403, message: 'Account is not active.' } };
+  }
+  return { session, user };
+}
+
+/**
+ * POST /api/v1/service/magic-links
+ * Issue a single-use magic link token for a subscriber email.
+ *
+ * Purpose 'login' expires after 30 minutes, 'confirm' after 7 days. Noas
+ * does not send any email for these — the calling service renders and
+ * delivers the link.
+ */
+const handleServiceMagicLinkCreate = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const tenantDomain = rootDomainFromHostLike(req.body?.tenant_domain);
+    const purpose = String(req.body?.purpose || '').trim().toLowerCase();
+    if (!isValidEmailAddress(email)) {
+      return res.status(400).json({ error: 'email must be a valid email address' });
+    }
+    if (!tenantDomain) {
+      return res.status(400).json({ error: 'tenant_domain is required' });
+    }
+    if (!MAGIC_LINK_TTL_MINUTES[purpose]) {
+      return res.status(400).json({ error: 'purpose must be login or confirm' });
+    }
+
+    const user = await getNostrUserByRegistrationEmail(email, tenantDomain);
+    if (!user) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    if (user.status === 'disabled') {
+      return res.status(403).json({ error: 'Account is disabled.' });
+    }
+
+    await deleteExpiredMagicLinkTokens();
+    const token = buildOpaqueToken();
+    const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MINUTES[purpose] * 60 * 1000);
+    await createMagicLinkToken({
+      token,
+      userId: user.id,
+      tenantDomain,
+      purpose,
+      expiresAt,
+    });
+
+    return res.json({
+      success: true,
+      token,
+      purpose,
+      expires_at: expiresAt.toISOString(),
+    });
+  } catch (error) {
+    console.error('Service magic link create error:', error);
+    return res.status(500).json({ error: 'Magic link creation failed' });
+  }
+};
+
+router.post('/api/v1/service/magic-links', handleServiceMagicLinkCreate);
+
+/**
+ * POST /api/v1/auth/magic/verify
+ * Exchange a single-use magic link token for a bearer session.
+ */
+const handleMagicVerify = async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) {
+      return res.status(400).json({ error: 'token is required' });
+    }
+
+    const magicLink = await getMagicLinkToken(token);
+    if (!magicLink) {
+      return res.status(404).json({ error: 'Invalid link.' });
+    }
+    if (magicLink.used_at) {
+      return res.status(410).json({ error: 'Link already used.' });
+    }
+    if (new Date(magicLink.expires_at).getTime() <= Date.now()) {
+      return res.status(410).json({ error: 'Link expired.' });
+    }
+    const consumed = await consumeMagicLinkToken(token);
+    if (!consumed) {
+      return res.status(410).json({ error: 'Link already used.' });
+    }
+
+    const user = await getActiveNostrUserById(magicLink.user_id);
+    if (!user) {
+      return res.status(403).json({ error: 'Account is not active.' });
+    }
+
+    await deleteExpiredSessionTokens();
+    const sessionToken = buildOpaqueToken();
+    const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+    await createSessionToken({
+      token: sessionToken,
+      userId: user.id,
+      expiresAt,
+    });
+
+    return res.json({
+      success: true,
+      session_token: sessionToken,
+      username: user.username,
+      pubkey: user.public_key,
+      purpose: magicLink.purpose,
+      expires_at: expiresAt.toISOString(),
+    });
+  } catch (error) {
+    console.error('Magic verify error:', error);
+    return res.status(500).json({ error: 'Verification failed' });
+  }
+};
+
+router.post('/api/v1/auth/magic/verify', handleMagicVerify);
+
+/**
+ * GET /api/v1/auth/session
+ * Resolve the bearer session to account info (slides the 30-day expiry).
+ */
+const handleSessionInfo = async (req, res) => {
+  try {
+    const auth = await resolveSessionUser(req);
+    if (auth.error) {
+      return res.status(auth.error.status).json({ error: auth.error.message });
+    }
+    const { session, user } = auth;
+    return res.json({
+      success: true,
+      username: user.username,
+      pubkey: user.public_key,
+      tenant_domain: user.tenant_domain,
+      registration_email: user.registration_email || null,
+      expires_at: new Date(session.expires_at).toISOString(),
+    });
+  } catch (error) {
+    console.error('Session info error:', error);
+    return res.status(500).json({ error: 'Session lookup failed' });
+  }
+};
+
+/**
+ * DELETE /api/v1/auth/session
+ * Log out: revoke the bearer session token.
+ */
+const handleSessionDelete = async (req, res) => {
+  try {
+    const token = getBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Bearer session token is required' });
+    }
+    await deleteSessionToken(token);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Session delete error:', error);
+    return res.status(500).json({ error: 'Logout failed' });
+  }
+};
+
+router.get('/api/v1/auth/session', handleSessionInfo);
+router.delete('/api/v1/auth/session', handleSessionDelete);
 
 router.post('/api/v1/auth/signin', handleSignin);
 

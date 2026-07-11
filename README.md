@@ -484,6 +484,79 @@ events.
 }
 ```
 
+#### POST /api/v1/service/magic-links
+
+Issue a single-use magic link token for a subscriber email. `purpose` is
+`login` (30-minute expiry) or `confirm` (7-day expiry). Noas does not send
+any email for these — the calling service renders and delivers the link.
+`404` when no account is registered for the email.
+
+**Request:**
+```json
+{
+  "email": "jane.doe@example.com",
+  "tenant_domain": "example.com",
+  "purpose": "login"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "token": "3f2a...",
+  "purpose": "login",
+  "expires_at": "2026-07-12T12:30:00.000Z"
+}
+```
+
+### Magic Link Sessions
+
+Public endpoints for subscribers holding a magic link.
+
+#### POST /api/v1/auth/magic/verify
+
+Exchange a single-use magic link token for an opaque bearer session token
+with a 30-day sliding expiry. `404` for unknown tokens, `410` for used or
+expired ones.
+
+**Request:** `{"token": "3f2a..."}`
+
+**Response:**
+```json
+{
+  "success": true,
+  "session_token": "9c1b...",
+  "username": "jane.doe",
+  "pubkey": "a0b1c2d3...",
+  "purpose": "login",
+  "expires_at": "2026-08-11T12:00:00.000Z"
+}
+```
+
+#### GET /api/v1/auth/session
+
+With `Authorization: Bearer <session_token>`: returns account info and
+slides the session expiry forward to 30 days from now. `401` for missing,
+unknown, or expired tokens.
+
+**Response:**
+```json
+{
+  "success": true,
+  "username": "jane.doe",
+  "pubkey": "a0b1c2d3...",
+  "tenant_domain": "example.com",
+  "registration_email": "jane.doe@example.com",
+  "expires_at": "2026-08-11T12:00:00.000Z"
+}
+```
+
+#### DELETE /api/v1/auth/session
+
+With `Authorization: Bearer <session_token>`: revokes the session (logout).
+Returns `{"success": true}`.
+
 ### GET /.well-known/nostr.json?name=alice
 
 NIP-05 verification endpoint.
