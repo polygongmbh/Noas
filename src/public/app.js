@@ -404,6 +404,43 @@ document.addEventListener('DOMContentLoaded', function () {
       .filter(Boolean);
   }
 
+  const AUTH_BROADCAST_CHANNEL = 'noas-auth-events';
+
+  function parseOrigin(url) {
+    try {
+      return new URL(url, window.location.origin).origin;
+    } catch {
+      return null;
+    }
+  }
+
+  function notifyOpenerAndClose(destination) {
+    const targetOrigin = parseOrigin(destination);
+    if (!window.opener || !targetOrigin) return false;
+    try {
+      window.opener.postMessage({ source: 'noas', type: 'auth-complete', destination }, targetOrigin);
+      window.close();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function listenForVerificationBroadcast() {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+    if (!redirectParam) return;
+    const channel = new BroadcastChannel(AUTH_BROADCAST_CHANNEL);
+    channel.onmessage = (event) => {
+      const { type, destination } = event.data || {};
+      if (type !== 'verified' || !destination) return;
+      channel.close();
+      if (!notifyOpenerAndClose(destination)) {
+        window.location.assign(destination);
+      }
+    };
+  }
+
   async function request(path, payload) {
     const response = await fetch(path, {
       method: 'POST',
@@ -740,7 +777,11 @@ document.addEventListener('DOMContentLoaded', function () {
         passwordHash,
         data,
       });
-      window.location.assign('/portal');
+      const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+      const destination = redirectParam ? decodeURIComponent(redirectParam) : '/portal';
+      if (!notifyOpenerAndClose(destination)) {
+        window.location.assign(destination);
+      }
       return true;
     } catch (error) {
       if (statusElement) {
@@ -1044,6 +1085,7 @@ document.addEventListener('DOMContentLoaded', function () {
           ? ` A Nostr keypair was generated automatically (pubkey: ${window.NoasNostr?.npubFromHexPublicKey(data.public_key) || data.public_key || 'unknown'}).`
           : '';
         setStatus(signupStatus, `${data.message || 'Verification sent.'}${keyHint}${verificationHint}`, 'success');
+        listenForVerificationBroadcast();
       } catch (error) {
         setStatus(signupStatus, `Registration start failed: ${error.message}`, 'error');
       }

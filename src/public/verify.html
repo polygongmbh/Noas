@@ -117,7 +117,9 @@
       if (redirect) {
         backToApp.hidden = false;
         backToApp.addEventListener('click', () => {
-          window.location.assign(redirect);
+          if (!notifyOpenerAndClose(redirect)) {
+            window.location.assign(redirect);
+          }
         });
       }
 
@@ -178,6 +180,37 @@
       function setStatus(message, type = 'info') {
         verifyStatus.textContent = message;
         verifyStatus.dataset.type = type;
+      }
+
+      function parseOrigin(url) {
+        try {
+          return new URL(url, window.location.origin).origin;
+        } catch {
+          return null;
+        }
+      }
+
+      function broadcastVerified(destination) {
+        try {
+          if (typeof BroadcastChannel === 'undefined') return;
+          const channel = new BroadcastChannel('noas-auth-events');
+          channel.postMessage({ type: 'verified', destination });
+          channel.close();
+        } catch {
+          // Non-blocking: only helps a pop-up opened from a different tab.
+        }
+      }
+
+      function notifyOpenerAndClose(destination) {
+        const targetOrigin = parseOrigin(destination);
+        if (!window.opener || !targetOrigin) return false;
+        try {
+          window.opener.postMessage({ source: 'noas', type: 'auth-complete', destination }, targetOrigin);
+          window.close();
+          return true;
+        } catch {
+          return false;
+        }
       }
 
       function persistAuthSession({ username, password, passwordHash }) {
@@ -326,8 +359,11 @@
             homeUrl.searchParams.set('nip05', verifiedNip05);
           }
           const destination = redirect || (signedIn ? '/portal' : homeUrl.toString());
+          broadcastVerified(destination);
           setTimeout(() => {
-            window.location.assign(destination);
+            if (!notifyOpenerAndClose(destination)) {
+              window.location.assign(destination);
+            }
           }, 700);
         } catch (error) {
           if (isAlreadyUsedError(error.message)) {
