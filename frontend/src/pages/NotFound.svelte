@@ -1,0 +1,15 @@
+<script lang="ts">
+</script>
+
+<svelte:head>
+  <title>404 | Noas</title>
+</svelte:head>
+
+<div class="nf-shell">
+  <div class="nf-wrap">
+    <h1 class="nf-code">404</h1>
+    <h2 class="nf-title">Page not found</h2>
+    <p class="nf-copy">The page you're looking for doesn't exist or has been moved.</p>
+    <a class="btn mt-6" href="/">Go home</a>
+  </div>
+</div>

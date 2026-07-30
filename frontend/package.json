@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@nodal/ui": "file:../../nodal-ui",
+    "@nodal/ui": "file:./vendor/nodal-ui",
     "nostr-tools": "^2.23.3",
     "svelte": "^5.1.9"
   },

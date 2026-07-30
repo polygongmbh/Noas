@@ -43,20 +43,24 @@ app.use((req, res, next) => {
   next();
 });
 
+const frontendDist = join(__dirname, '..', 'frontend', 'dist');
+
 // Named page routes must come before static middleware so they aren't shadowed by html files of the same name
 app.get('/register', (req, res) => {
-  res.sendFile(join(__dirname, 'public', 'index.html'));
+  res.sendFile(join(frontendDist, 'index.html'));
 });
 
 app.get('/verify', (req, res) => {
-  res.sendFile(join(__dirname, 'public', 'verify.html'));
+  res.sendFile(join(frontendDist, 'verify.html'));
 });
 
-// Serve landing page and static assets
-app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }));
-app.use('/vendor/nostr-tools', express.static(join(__dirname, '..', 'node_modules', 'nostr-tools', 'lib')));
-app.use('/vendor/@noble', express.static(join(__dirname, '..', 'node_modules', '@noble')));
-app.use('/vendor/@scure', express.static(join(__dirname, '..', 'node_modules', '@scure')));
+// /login is a dual-served alias of /portal (byte-identical content, no redirect)
+app.get('/login', (req, res) => {
+  res.sendFile(join(frontendDist, 'portal.html'));
+});
+
+// Serve the built frontend (Vite MPA output) and its static assets
+app.use(express.static(frontendDist, { extensions: ['html'] }));
 
 // Mount all API routes
 app.use(router);
@@ -65,7 +69,7 @@ app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/') || req.path.startsWith('/.well-known/')) {
     return next();
   }
-  return res.status(404).sendFile(join(__dirname, 'public', '404.html'));
+  return res.status(404).sendFile(join(frontendDist, '404.html'));
 });
 
 app.use((req, res) => {
