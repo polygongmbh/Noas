@@ -343,6 +343,13 @@ export const config = {
   noasPublicUrlMap: parsePublicUrlMap(process.env.NOAS_PUBLIC_URL_MAP),
   noasBasePath: normalizeBasePath(process.env.NOAS_BASE_PATH),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
+  // Origins of relying-party apps (e.g. norc) that are allowed to receive a
+  // freshly-decrypted private key over the pop-up postMessage hand-off after
+  // register/sign-in on this page. Deliberately separate from allowedOrigins
+  // (CORS): that list only gates API calls, this one gates whether raw key
+  // material is ever released to an opener. Empty by default — opt in per
+  // deployment, never widen this to "same as CORS" or "*".
+  trustedAppOrigins: parseHttpUrlList(process.env.TRUSTED_APP_ORIGINS),
   apiVersion: process.env.NOAS_API_VERSION || packageVersion,
   nip86RelayUrls: parseHttpUrlList(process.env.NIP86_RELAY_URLS),
   domainNip86RelayMap: parseDomainHttpUrlMap(process.env.DOMAIN_NIP86_RELAY_MAP),

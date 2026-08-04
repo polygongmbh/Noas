@@ -1511,6 +1511,7 @@ router.get('/.well-known/nostr.json', async (req, res) => {
           base_path: config.noasBasePath || '/',
           api_base: tenant.apiBase,
           email_verification_mode: config.emailVerificationMode,
+          trusted_app_origins: config.trustedAppOrigins,
           relays: getDomainDefaultRelays(tenant.nip05RootDomain),
         },
       });

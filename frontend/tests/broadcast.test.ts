@@ -1,11 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  AUTH_BROADCAST_CHANNEL,
-  broadcastVerified,
-  listenForVerificationBroadcast,
-  notifyOpenerAndClose,
-  parseOrigin,
-} from '../src/lib/broadcast';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isTrustedCredentialOrigin, notifyOpenerAndClose, parseOrigin } from '../src/lib/broadcast';
 
 describe('parseOrigin', () => {
   it('resolves an absolute URL to its origin', () => {
@@ -72,88 +66,49 @@ describe('notifyOpenerAndClose', () => {
 
     expect(notifyOpenerAndClose('https://norc.nodal.tools/auth/sign-in')).toBe(false);
   });
-});
 
-describe('broadcastVerified + listenForVerificationBroadcast', () => {
-  const originalOpener = window.opener;
-  const originalClose = window.close;
-  const originalLocation = window.location;
-  const originalSearch = window.location.search;
-
-  beforeEach(() => {
-    Object.defineProperty(window, 'opener', { value: null, configurable: true });
-  });
-
-  afterEach(() => {
-    Object.defineProperty(window, 'opener', { value: originalOpener, configurable: true });
-    window.close = originalClose;
-    Object.defineProperty(window, 'location', { value: originalLocation, configurable: true, writable: true });
-    window.history.replaceState(null, '', `${window.location.pathname}${originalSearch}`);
-  });
-
-  it('does nothing if there is no redirect param in the URL', async () => {
-    window.history.replaceState(null, '', window.location.pathname);
-    const channel = new BroadcastChannel(AUTH_BROADCAST_CHANNEL);
-    const onmessage = vi.fn();
-    channel.onmessage = onmessage;
-
-    listenForVerificationBroadcast();
-    broadcastVerified('https://norc.nodal.tools/auth/sign-in');
-
-    await new Promise((r) => setTimeout(r, 10));
-    channel.close();
-  });
-
-  it('relays a verified broadcast to the opener and closes when a redirect param is present', async () => {
-    window.history.replaceState(
-      null,
-      '',
-      `${window.location.pathname}?redirect=${encodeURIComponent('https://norc.nodal.tools/auth/sign-in')}`,
-    );
-
+  it('includes credentials in the message when the caller supplies them', () => {
     const postMessage = vi.fn();
-    const close = vi.fn();
     Object.defineProperty(window, 'opener', { value: { postMessage }, configurable: true });
-    window.close = close;
+    window.close = vi.fn();
+    const credentials = { username: 'alice', publicKeyHex: 'pub', secretKeyHex: 'sec' };
 
-    listenForVerificationBroadcast();
-
-    const sender = new BroadcastChannel(AUTH_BROADCAST_CHANNEL);
-    sender.postMessage({ type: 'verified', destination: 'https://norc.nodal.tools/auth/sign-in' });
-    sender.close();
-
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    notifyOpenerAndClose('https://norc.nodal.tools/auth/sign-in', credentials);
 
     expect(postMessage).toHaveBeenCalledWith(
-      { source: 'noas', type: 'auth-complete', destination: 'https://norc.nodal.tools/auth/sign-in' },
+      { source: 'noas', type: 'auth-complete', destination: 'https://norc.nodal.tools/auth/sign-in', credentials },
       'https://norc.nodal.tools',
     );
-    expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to navigating directly when there is no opener', async () => {
-    window.history.replaceState(
-      null,
-      '',
-      `${window.location.pathname}?redirect=${encodeURIComponent('https://norc.nodal.tools/auth/sign-in')}`,
-    );
+  it('omits credentials from the message when the caller does not supply them', () => {
+    const postMessage = vi.fn();
+    Object.defineProperty(window, 'opener', { value: { postMessage }, configurable: true });
+    window.close = vi.fn();
 
-    const assign = vi.fn();
-    const originalLocation = window.location;
-    Object.defineProperty(window, 'location', {
-      value: { ...originalLocation, assign },
-      configurable: true,
-      writable: true,
-    });
+    notifyOpenerAndClose('https://norc.nodal.tools/auth/sign-in');
 
-    listenForVerificationBroadcast();
+    const [message] = postMessage.mock.calls[0];
+    expect(message).not.toHaveProperty('credentials');
+  });
+});
 
-    const sender = new BroadcastChannel(AUTH_BROADCAST_CHANNEL);
-    sender.postMessage({ type: 'verified', destination: 'https://norc.nodal.tools/auth/sign-in' });
-    sender.close();
+describe('isTrustedCredentialOrigin', () => {
+  const trustedOrigins = ['https://norc.nodal.tools', 'https://norc.linkenfels.de'];
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+  it('trusts a destination whose origin is on the allowlist', () => {
+    expect(isTrustedCredentialOrigin('https://norc.nodal.tools/auth/sign-in', trustedOrigins)).toBe(true);
+  });
 
-    expect(assign).toHaveBeenCalledWith('https://norc.nodal.tools/auth/sign-in');
+  it('does not trust a destination whose origin is off the allowlist, even if attacker-supplied', () => {
+    expect(isTrustedCredentialOrigin('https://evil.example/harvest', trustedOrigins)).toBe(false);
+  });
+
+  it('does not trust anything when the allowlist is empty (safe default)', () => {
+    expect(isTrustedCredentialOrigin('https://norc.nodal.tools/auth/sign-in', [])).toBe(false);
+  });
+
+  it('does not trust an unparsable destination', () => {
+    expect(isTrustedCredentialOrigin('http://', trustedOrigins)).toBe(false);
   });
 });

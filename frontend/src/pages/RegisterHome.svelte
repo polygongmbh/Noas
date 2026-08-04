@@ -5,8 +5,9 @@
   import { sha256Hex } from '../lib/crypto';
   import { persistAuthSession } from '../lib/session';
   import { loadNoasVersion, type EmailVerificationMode } from '../lib/version';
-  import { listenForVerificationBroadcast, notifyOpenerAndClose } from '../lib/broadcast';
-  import { encryptPrivateKey, npubFromHexPublicKey } from '../lib/nostr';
+  import { notifyOpenerAndClose, isTrustedCredentialOrigin, type AuthCredentials } from '../lib/broadcast';
+  import { encryptPrivateKey, decryptPrivateKey, npubFromHexPublicKey } from '../lib/nostr';
+  import { onDestroy } from 'svelte';
 
   type Mode = 'signin' | 'register';
   type StatusType = 'info' | 'success' | 'error';
@@ -25,6 +26,7 @@
   let emailVerificationMode = $state<EmailVerificationMode>('required_nip05_domains');
   let emailVerificationEnabled = $derived(emailVerificationMode !== 'off');
   let nip05Domain = $state(window.location.hostname || '');
+  let trustedAppOrigins = $state<string[]>([]);
 
   let username = $state('');
   let email = $state('');
@@ -71,6 +73,7 @@
     versionLabel = metadata.versionLabel;
     if (metadata.emailVerificationMode) emailVerificationMode = metadata.emailVerificationMode;
     if (metadata.nip05Domain) nip05Domain = metadata.nip05Domain;
+    trustedAppOrigins = metadata.trustedAppOrigins;
   }
   loadMetadata();
 
@@ -105,6 +108,7 @@
     signinStatus = { message: '', type: 'info' };
     signupStatus = { message: '', type: 'info' };
     showResend = false;
+    stopVerificationPoll();
   }
 
   function toggleAdvanced() {
@@ -152,14 +156,86 @@
     return new URLSearchParams(window.location.search).get('redirect');
   }
 
+  // Decrypt the private key here (we still have the plaintext password) and
+  // hand it to a trusted relying party via the pop-up hand-off, so it can
+  // sign the user in without asking them to retype their password. Only ever
+  // decrypts for a destination on the operator-configured allowlist.
+  async function buildCredentialsIfTrusted(
+    destination: string,
+    un: string,
+    pw: string,
+    privateKeyEncrypted: string | null | undefined,
+  ): Promise<AuthCredentials | undefined> {
+    if (!privateKeyEncrypted) return undefined;
+    if (!isTrustedCredentialOrigin(destination, trustedAppOrigins)) return undefined;
+    try {
+      const decrypted = await decryptPrivateKey(privateKeyEncrypted, pw);
+      return { username: un, publicKeyHex: decrypted.publicKey, secretKeyHex: decrypted.hex };
+    } catch {
+      return undefined;
+    }
+  }
+
+  // While showing "check your email," quietly retry sign-in with the
+  // credentials the user just entered until it succeeds. A verification
+  // link opened on another tab, browser, or device has no way to signal
+  // this page directly (no window.opener, no shared BroadcastChannel across
+  // devices), so polling the one thing we can always check — "has this
+  // account been verified yet?" — is the only mechanism that works
+  // regardless of where the email got opened.
+  const VERIFICATION_POLL_INTERVAL_MS = 4000;
+  const VERIFICATION_POLL_TIMEOUT_MS = 15 * 60 * 1000;
+  let verificationPollHandle: ReturnType<typeof setInterval> | undefined;
+
+  function stopVerificationPoll() {
+    if (verificationPollHandle !== undefined) {
+      clearInterval(verificationPollHandle);
+      verificationPollHandle = undefined;
+    }
+  }
+
+  function startVerificationPoll(un: string, pw: string) {
+    stopVerificationPoll();
+    const deadline = Date.now() + VERIFICATION_POLL_TIMEOUT_MS;
+    verificationPollHandle = setInterval(async () => {
+      if (Date.now() > deadline) {
+        stopVerificationPoll();
+        return;
+      }
+      try {
+        const passwordHash = await sha256Hex(pw);
+        const data = await request<{ private_key_encrypted?: string | null }>('/api/v1/auth/signin', {
+          username: un,
+          password_hash: passwordHash,
+        });
+        stopVerificationPoll();
+        persistAuthSession({ username: un, password: pw, passwordHash });
+        const redirect = redirectParam();
+        const destination = redirect ? decodeURIComponent(redirect) : '/portal';
+        const credentials = await buildCredentialsIfTrusted(destination, un, pw, data.private_key_encrypted);
+        if (!notifyOpenerAndClose(destination, credentials)) {
+          window.location.assign(destination);
+        }
+      } catch {
+        // Not verified yet — keep waiting.
+      }
+    }, VERIFICATION_POLL_INTERVAL_MS);
+  }
+
+  onDestroy(stopVerificationPoll);
+
   async function autoSigninAndRedirect(un: string, pw: string): Promise<boolean> {
     try {
       const passwordHash = await sha256Hex(pw);
-      await request('/api/v1/auth/signin', { username: un, password_hash: passwordHash });
+      const data = await request<{ private_key_encrypted?: string | null }>('/api/v1/auth/signin', {
+        username: un,
+        password_hash: passwordHash,
+      });
       persistAuthSession({ username: un, password: pw, passwordHash });
       const redirect = redirectParam();
       const destination = redirect ? decodeURIComponent(redirect) : '/portal';
-      if (!notifyOpenerAndClose(destination)) {
+      const credentials = await buildCredentialsIfTrusted(destination, un, pw, data.private_key_encrypted);
+      if (!notifyOpenerAndClose(destination, credentials)) {
         window.location.assign(destination);
       }
       return true;
@@ -249,7 +325,7 @@
       };
       if (emailVerificationEnabled) {
         showResend = true;
-        listenForVerificationBroadcast();
+        startVerificationPoll(username, password);
       }
     } catch (error) {
       signupStatus = { message: `Registration start failed: ${(error as Error).message}`, type: 'error' };

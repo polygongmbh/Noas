@@ -10,6 +10,7 @@ export interface NoasVersionMetadata {
   versionLabel: string;
   emailVerificationMode: EmailVerificationMode | null;
   nip05Domain: string | null;
+  trustedAppOrigins: string[];
 }
 
 export function normalizeVersionLabel(version: string | undefined | null): string {
@@ -42,7 +43,11 @@ export async function loadNoasVersion(): Promise<NoasVersionMetadata | null> {
         ? metadata.nip05_domain.trim().toLowerCase()
         : null;
 
-    return { versionLabel, emailVerificationMode, nip05Domain };
+    const trustedAppOrigins = Array.isArray(metadata.trusted_app_origins)
+      ? metadata.trusted_app_origins.filter((origin: unknown): origin is string => typeof origin === 'string')
+      : [];
+
+    return { versionLabel, emailVerificationMode, nip05Domain, trustedAppOrigins };
   } catch {
     return null;
   }

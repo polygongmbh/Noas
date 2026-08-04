@@ -41,7 +41,27 @@ describe('loadNoasVersion', () => {
       versionLabel: 'v1.6',
       emailVerificationMode: 'required_nip05_domains',
       nip05Domain: 'nodal.tools',
+      trustedAppOrigins: [],
     });
+  });
+
+  it('parses trusted app origins from the metadata endpoint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          noas: {
+            version: '1.7.0',
+            trusted_app_origins: ['https://norc.nodal.tools', 'not-a-string' as unknown, 42],
+          },
+        }),
+      })),
+    );
+
+    const result = await loadNoasVersion();
+
+    expect(result?.trustedAppOrigins).toEqual(['https://norc.nodal.tools', 'not-a-string']);
   });
 
   it('returns null on a non-ok response', async () => {

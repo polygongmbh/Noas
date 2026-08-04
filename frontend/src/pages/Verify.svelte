@@ -4,8 +4,8 @@
   import { sha256Hex } from '../lib/crypto';
   import { persistAuthSession } from '../lib/session';
   import { loadNoasVersion } from '../lib/version';
-  import { broadcastVerified, notifyOpenerAndClose, parseOrigin } from '../lib/broadcast';
-  import { npubFromHexPublicKey } from '../lib/nostr';
+  import { notifyOpenerAndClose, parseOrigin, isTrustedCredentialOrigin, type AuthCredentials } from '../lib/broadcast';
+  import { npubFromHexPublicKey, decryptPrivateKey } from '../lib/nostr';
 
   type StatusType = 'info' | 'success' | 'error';
 
@@ -15,6 +15,7 @@
 
   let versionLabel = $state('');
   let trustedNip05Domain = $state('');
+  let trustedAppOrigins = $state<string[]>([]);
 
   function tryDecodeURIComponent(value: string): string {
     try {
@@ -153,8 +154,11 @@
     }
   }
 
-  async function signinAfterVerification(pw: string, passwordHash: string): Promise<boolean> {
-    if (!verifiedUsername || !passwordHash) return false;
+  async function signinAfterVerification(
+    pw: string,
+    passwordHash: string,
+  ): Promise<{ signedIn: boolean; privateKeyEncrypted: string | null }> {
+    if (!verifiedUsername || !passwordHash) return { signedIn: false, privateKeyEncrypted: null };
     try {
       const response = await fetch('/api/v1/auth/signin', {
         method: 'POST',
@@ -162,11 +166,28 @@
         body: JSON.stringify({ username: verifiedUsername, password_hash: passwordHash }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success) return false;
+      if (!response.ok || !data.success) return { signedIn: false, privateKeyEncrypted: null };
       persistAuthSession({ username: verifiedUsername, password: pw, passwordHash });
-      return true;
+      return { signedIn: true, privateKeyEncrypted: data.private_key_encrypted || null };
     } catch {
-      return false;
+      return { signedIn: false, privateKeyEncrypted: null };
+    }
+  }
+
+  // Same trust boundary as RegisterHome.svelte's poll success path: only
+  // decrypt and hand off the private key to a destination on the
+  // operator-configured allowlist. See broadcast.ts for the full rationale.
+  async function buildCredentialsIfTrusted(
+    destination: string,
+    privateKeyEncrypted: string | null,
+  ): Promise<AuthCredentials | undefined> {
+    if (!privateKeyEncrypted || !verifiedUsername) return undefined;
+    if (!isTrustedCredentialOrigin(destination, trustedAppOrigins)) return undefined;
+    try {
+      const decrypted = await decryptPrivateKey(privateKeyEncrypted, password);
+      return { username: verifiedUsername, publicKeyHex: decrypted.publicKey, secretKeyHex: decrypted.hex };
+    } catch {
+      return undefined;
     }
   }
 
@@ -191,7 +212,7 @@
       setStatus('Account verified. Signing you in...', 'success');
       verifyMessage = 'Your NIP-05 identity is live.';
       verified = true;
-      const signedIn = await signinAfterVerification(password, passwordHash);
+      const { signedIn, privateKeyEncrypted } = await signinAfterVerification(password, passwordHash);
 
       if (redirect && !isTrustedRedirect(redirect)) {
         showBackToApp = true;
@@ -208,9 +229,9 @@
         homeUrl.searchParams.set('nip05', verifiedNip05);
       }
       const destination = redirect || (signedIn ? '/portal' : homeUrl.toString());
-      broadcastVerified(destination);
+      const credentials = await buildCredentialsIfTrusted(destination, privateKeyEncrypted);
       setTimeout(() => {
-        if (!notifyOpenerAndClose(destination)) {
+        if (!notifyOpenerAndClose(destination, credentials)) {
           window.location.assign(destination);
         }
       }, 700);
@@ -236,6 +257,7 @@
     if (!metadata) return;
     versionLabel = metadata.versionLabel;
     if (metadata.nip05Domain) trustedNip05Domain = metadata.nip05Domain;
+    trustedAppOrigins = metadata.trustedAppOrigins;
   }
 
   if (redirect) showBackToApp = true;
