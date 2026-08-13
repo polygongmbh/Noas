@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { Card, Field, Button } from '@nodal/ui';
+  import { Field, Button } from '@nodal/ui';
   import Shell from '../components/Shell.svelte';
+  import NoasLogo from '../components/NoasLogo.svelte';
   import { request } from '../lib/request';
   import { sha256Hex } from '../lib/crypto';
   import { persistAuthSession } from '../lib/session';
@@ -22,7 +23,6 @@
   let mode = $state<Mode>(initialMode);
   const isRegisterMode = $derived(mode === 'register');
 
-  let versionLabel = $state('');
   let emailVerificationMode = $state<EmailVerificationMode>('required_nip05_domains');
   let emailVerificationEnabled = $derived(emailVerificationMode !== 'off');
   let nip05Domain = $state(window.location.hostname || '');
@@ -62,7 +62,6 @@
   });
 
   const title = $derived(isRegisterMode ? 'Register' : 'Sign in');
-  const description = $derived(isRegisterMode ? 'Create your Nostr identity' : 'Access your Nostr account');
   const submitLabel = $derived(
     isRegisterMode ? (emailVerificationEnabled ? 'Register & Send Verification' : 'Register') : 'Sign in',
   );
@@ -70,7 +69,6 @@
   async function loadMetadata() {
     const metadata = await loadNoasVersion();
     if (!metadata) return;
-    versionLabel = metadata.versionLabel;
     if (metadata.emailVerificationMode) emailVerificationMode = metadata.emailVerificationMode;
     if (metadata.nip05Domain) nip05Domain = metadata.nip05Domain;
     trustedAppOrigins = metadata.trustedAppOrigins;
@@ -384,18 +382,16 @@
   />
 </svelte:head>
 
-<Shell {versionLabel}>
-  <div class="page-title-wrap">
+<Shell header={false}>
+  <div class="landing-intro">
+    <NoasLogo class="landing-logo" />
     <h1 class="page-title">noas</h1>
-    <p class="page-subtitle">
-      Secure, API-first Nostr account service.<br />
-      NIP-05 verification · encrypted key storage · relay management.
-    </p>
+    <p class="page-subtitle">Verified identity, encrypted keys, your relays — Nostr made simple.</p>
   </div>
 
   <div class="auth-wrap">
-    <Card glow borderGlow title={title} description={description}>
-      <form class="form" onsubmit={submit}>
+    <div class="stack-5">
+      <form class="form" aria-label={title} onsubmit={submit}>
         <Field id="signupUsername" label="Username" bind:value={username} oninput={onUsernameInput} required placeholder="username" autocomplete="username" />
 
         {#if isRegisterMode}
@@ -442,7 +438,7 @@
           </label>
 
           <button type="button" class="advanced-toggle" onclick={toggleAdvanced}>
-            {showAdvanced ? '▾ Hide advanced options' : '▸ Show advanced options'}
+            {showAdvanced ? '▾ Hide' : '▸ Bring your own keys'}
           </button>
           {#if showAdvanced}
             <div class="advanced-panel">
@@ -450,7 +446,7 @@
                 <span class="label small-label">Private key (optional)</span>
                 <input type="text" id="signupPrivateKey" class="form-mono" bind:value={privateKeyInput} placeholder="64-character hex or nsec1..." />
               </label>
-              <p class="hint">Leave blank to let noas generate a keypair. If provided, your key is encrypted locally before upload.</p>
+              <p class="hint">Leave blank to let noas generate a keypair for you. If provided, your key is encrypted locally before upload.</p>
             </div>
           {/if}
 
@@ -469,21 +465,17 @@
 
         {#if !isRegisterMode}
           <p class="auth-toggle">
-            No account? <button class="advanced-toggle" type="button" onclick={() => setMode('register')}>Register</button>
+            No account? <button class="mode-toggle" type="button" onclick={() => setMode('register')}>Sign up</button>
           </p>
         {:else}
           <p class="auth-toggle">
-            Already registered? <button class="advanced-toggle" type="button" onclick={() => setMode('signin')}>Sign in</button>
+            Already registered? <button class="mode-toggle" type="button" onclick={() => setMode('signin')}>Sign in</button>
           </p>
         {/if}
       </form>
 
       {#if isRegisterMode && showResend}
-        <form
-          class="form"
-          style="padding-top: 0.5rem; border-top: 1px solid oklch(0.25 0.01 260 / 0.45)"
-          onsubmit={submitResend}
-        >
+        <form class="form resend-form" onsubmit={submitResend}>
           <label class="field">
             <span class="label">Username for resend</span>
             <input type="text" bind:value={resendUsername} placeholder="username" />
@@ -492,6 +484,6 @@
           <div class="status" role="status" data-type={resendStatus.type}>{resendStatus.message}</div>
         </form>
       {/if}
-    </Card>
+    </div>
   </div>
 </Shell>

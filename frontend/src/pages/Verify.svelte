@@ -13,7 +13,6 @@
   const token = (params.get('token') || '').trim();
   const redirectRaw = (params.get('redirect') || params.get('origin') || '').trim();
 
-  let versionLabel = $state('');
   let trustedNip05Domain = $state('');
   let trustedAppOrigins = $state<string[]>([]);
 
@@ -255,7 +254,6 @@
   async function loadMetadata() {
     const metadata = await loadNoasVersion();
     if (!metadata) return;
-    versionLabel = metadata.versionLabel;
     if (metadata.nip05Domain) trustedNip05Domain = metadata.nip05Domain;
     trustedAppOrigins = metadata.trustedAppOrigins;
   }
@@ -269,7 +267,7 @@
   <title>Verify Identity | Noas</title>
 </svelte:head>
 
-<Shell {versionLabel}>
+<Shell>
   <div class="auth-wrap">
     <Card glow borderGlow>
       <div class="card-header">

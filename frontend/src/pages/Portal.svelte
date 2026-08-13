@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Card, Badge, Button, Tabs, Tab } from '@nodal/ui';
+  import { Button } from '@nodal/ui';
   import Shell from '../components/Shell.svelte';
   import { request, adminRequest } from '../lib/request';
   import { persistAuthSession, readAuthSession, clearAuthSession } from '../lib/session';
@@ -8,7 +8,6 @@
 
   type StatusType = 'info' | 'success' | 'error';
   type Status = { message: string; type: StatusType };
-  type Tag = 'overview' | 'update' | 'delete';
 
   interface AdminUser {
     username: string;
@@ -22,9 +21,6 @@
   function setStatus(message: string, type: StatusType = 'info'): Status {
     return { message, type };
   }
-
-  let versionLabel = $state('');
-  let activeTab = $state<Tag>('overview');
 
   // Signed-in session state
   let username = $state<string | null>(null);
@@ -42,29 +38,47 @@
   let signinStatus = $state<Status>(setStatus(''));
   let profilePictureUrl = $state<string | null>(null);
   let profilePictureError = $state(false);
-  let profilePictureStatusText = $state('No profile picture uploaded');
   let publicKeyDisplay = $state('—');
   let encryptedKeyDisplay = $state('—');
   let privateKeyDisplay = $state('—');
-  let relayListDisplay = $state('—');
   let relays = $state<string[]>([]);
 
   let adminUsers = $state<AdminUser[]>([]);
   let adminStatus = $state<Status>(setStatus(''));
+  let adminQuery = $state('');
+  // Falls back to the username initial if a picture_url 404s (stale/missing upload) —
+  // defense in depth alongside the backend only sending picture_url when a picture exists.
+  let brokenAdminAvatars = $state(new Set<string>());
+  function markAdminAvatarBroken(username: string) {
+    brokenAdminAvatars = new Set(brokenAdminAvatars).add(username);
+  }
   const showAdminPanel = $derived(role === 'admin' || role === 'moderator');
+  const filteredAdminUsers = $derived.by(() => {
+    const q = adminQuery.trim().toLowerCase();
+    if (!q) return adminUsers;
+    return adminUsers.filter(
+      (u) => u.username.toLowerCase().includes(q) || (u.registration_email || '').toLowerCase().includes(q),
+    );
+  });
+  const pendingAdminCount = $derived(adminUsers.filter((u) => u.status === 'unverified_email').length);
 
-  // Update forms
+  // Fingerprint / rotate-key drawer
+  let showPrivateDrawer = $state(false);
   let newPassword = $state('');
   let newPrivateKeyInput = $state('');
   let credentialsStatus = $state<Status>(setStatus(''));
 
+  // Relays
+  let relayMode = $state<'view' | 'edit'>('view');
   let relaysText = $state('');
   let relayStatus = $state<Status>(setStatus(''));
 
+  // Profile picture
   let profilePictureInput: HTMLInputElement | undefined = $state();
   let pictureStatus = $state<Status>(setStatus(''));
 
-  // Delete form
+  // Delete account dialog
+  let showDeleteDialog = $state(false);
   let deleteSavedKeyChecked = $state(false);
   let deleteConfirmUsername = $state('');
   const deleteGuardOk = $derived(
@@ -94,18 +108,11 @@
   function setProfilePicture(pubkey: string | null | undefined) {
     const normalized = String(pubkey || '').trim();
     profilePictureError = false;
-    if (!normalized) {
-      profilePictureUrl = null;
-      profilePictureStatusText = 'No profile picture available';
-      return;
-    }
-    profilePictureUrl = `/api/v1/picture/${normalized}`;
-    profilePictureStatusText = profilePictureUrl;
+    profilePictureUrl = normalized ? `/api/v1/picture/${normalized}` : null;
   }
 
   function clearProfilePicture() {
     profilePictureUrl = null;
-    profilePictureStatusText = 'No profile picture uploaded';
   }
 
   async function loadAdminUsers() {
@@ -196,7 +203,6 @@
     encryptedKeyDisplay = data.private_key_encrypted || '—';
     privateKeyDisplay = '—';
     relays = data.relays || [];
-    relayListDisplay = relays.length ? relays.join(', ') : '—';
     relaysText = relays.join('\n');
 
     persistAuthSession({ username: un, password: pw, passwordHash: pwHash });
@@ -230,7 +236,6 @@
   async function loadMetadata() {
     const metadata = await loadNoasVersion();
     if (!metadata) return;
-    versionLabel = metadata.versionLabel;
     if (metadata.nip05Domain) nip05Domain = metadata.nip05Domain;
   }
 
@@ -241,14 +246,19 @@
     clearAuthSession();
   }
 
-  async function handleCopyEncrypted() {
-    if (!encryptedKeyDisplay || encryptedKeyDisplay === '—') return;
+  async function handleCopy(value: string, label: string) {
+    if (!value || value === '—') return;
     try {
-      await navigator.clipboard.writeText(encryptedKeyDisplay);
-      signinStatus = setStatus('Encrypted key copied to clipboard.', 'success');
+      await navigator.clipboard.writeText(value);
+      signinStatus = setStatus(`${label} copied to clipboard.`, 'success');
     } catch {
-      signinStatus = setStatus('Unable to copy key. Copy it manually.', 'error');
+      signinStatus = setStatus(`Unable to copy ${label.toLowerCase()}. Copy it manually.`, 'error');
     }
+  }
+
+  function togglePrivateDrawer() {
+    showPrivateDrawer = !showPrivateDrawer;
+    if (!showPrivateDrawer) privateKeyDisplay = '—';
   }
 
   async function handleDecryptPrivateKey() {
@@ -269,6 +279,10 @@
       privateKeyDisplay = '—';
       signinStatus = setStatus(`Unable to decrypt private key: ${(error as Error).message}`, 'error');
     }
+  }
+
+  function hidePrivateKey() {
+    privateKeyDisplay = '—';
   }
 
   async function handleCredentialsSubmit(event: SubmitEvent) {
@@ -325,6 +339,10 @@
     return text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   }
 
+  function toggleRelayMode() {
+    relayMode = relayMode === 'view' ? 'edit' : 'view';
+  }
+
   async function handleRelaySubmit(event: SubmitEvent) {
     event.preventDefault();
     if (!username || !password) {
@@ -340,8 +358,8 @@
     try {
       await request('/api/v1/auth/update', { username, password, updates: { relays: parsedRelays } });
       relays = parsedRelays;
-      relayListDisplay = parsedRelays.join(', ');
       relayStatus = setStatus('Relays updated.', 'success');
+      relayMode = 'view';
     } catch (error) {
       relayStatus = setStatus((error as Error).message, 'error');
     }
@@ -359,17 +377,13 @@
     });
   }
 
-  async function handlePictureSubmit(event: SubmitEvent) {
-    event.preventDefault();
+  async function uploadSelectedProfilePicture() {
     if (!username || !password) {
       pictureStatus = setStatus('Sign in before uploading a profile picture.', 'error');
       return;
     }
     const file = profilePictureInput?.files?.[0];
-    if (!file) {
-      pictureStatus = setStatus('Choose an image file to upload.', 'error');
-      return;
-    }
+    if (!file) return;
     pictureStatus = setStatus('Uploading profile picture...', 'info');
     try {
       const payloadBase64 = await fileToBase64(file);
@@ -381,12 +395,25 @@
       const resolvedPictureUrl = data.picture_url || `/api/v1/picture/${publicKey || username}`;
       profilePictureUrl = `${resolvedPictureUrl}?t=${Date.now()}`;
       profilePictureError = false;
-      profilePictureStatusText = resolvedPictureUrl || 'Profile picture uploaded';
       pictureStatus = setStatus('Profile picture uploaded.', 'success');
-      if (profilePictureInput) profilePictureInput.value = '';
     } catch (error) {
       pictureStatus = setStatus((error as Error).message, 'error');
     }
+  }
+
+  function openDeleteDialog() {
+    showDeleteDialog = true;
+  }
+
+  function closeDeleteDialog() {
+    showDeleteDialog = false;
+    deleteSavedKeyChecked = false;
+    deleteConfirmUsername = '';
+    deleteStatus = setStatus('');
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (showDeleteDialog && event.key === 'Escape') closeDeleteDialog();
   }
 
   function handleDeletePaste(event: ClipboardEvent) {
@@ -451,6 +478,18 @@
       window.location.href = `/verify?${verifyParams.toString()}`;
     }
   })();
+
+  // Simple orbit-point layout for the relay glyph — mirrors the design's
+  // RelayOrbit icon, alternating between the inner and outer ring radius.
+  function relayOrbitPoints(count: number): { x: number; y: number }[] {
+    const points: { x: number; y: number }[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2;
+      const radius = i % 2 === 0 ? 22 : 40;
+      points.push({ x: 60 + Math.cos(angle) * radius, y: 60 + Math.sin(angle) * radius });
+    }
+    return points;
+  }
 </script>
 
 <svelte:head>
@@ -458,118 +497,274 @@
   <meta name="description" content="Sign in to Noas to retrieve encrypted keys and manage your account." />
 </svelte:head>
 
-<Shell wide {versionLabel}>
-  <div class="portal-top">
-    <div>
-      <h1 class="portal-title">NIP-05 Identity</h1>
-      <p class="portal-subtitle">{portalIdentity}</p>
-    </div>
-    <Badge variant={signedIn ? 'success' : 'outline'}>{signedIn ? 'verified' : 'pending'}</Badge>
+<Shell wide>
+  {#snippet footerStart()}
+    {#if signedIn}
+      <button type="button" class="footer-action danger" onclick={openDeleteDialog}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6" /><path d="M14 11v6" />
+        </svg>
+        Delete account
+      </button>
+    {/if}
+  {/snippet}
+  {#snippet footerEnd()}
+    {#if signedIn}
+      <a class="footer-action primary" href="/" onclick={handleSignOut}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+        Sign out
+      </a>
+    {/if}
+  {/snippet}
+  <div class="portal-welcome">
+    <button
+      type="button"
+      class="portal-avatar-btn"
+      onclick={() => profilePictureInput?.click()}
+      aria-label="Change profile picture"
+    >
+      <span class="portal-avatar-glow" aria-hidden="true"></span>
+      <span class="portal-avatar-circle">
+        {#if profilePictureUrl && !profilePictureError}
+          <img src={profilePictureUrl} alt="" onerror={() => (profilePictureError = true)} />
+        {:else}
+          {(username || '?')[0]?.toUpperCase()}
+        {/if}
+      </span>
+      <span class="portal-avatar-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+          <circle cx="12" cy="13" r="4" />
+        </svg>
+      </span>
+    </button>
+    <input
+      type="file"
+      accept="image/*"
+      class="visually-hidden"
+      bind:this={profilePictureInput}
+      onchange={uploadSelectedProfilePicture}
+    />
+    {#if signedIn}
+      <h1>Welcome back, <span class="identity-highlight">{username}</span></h1>
+    {:else}
+      <h1>{portalIdentity}</h1>
+    {/if}
+    <button type="button" class="portal-picture-toggle" onclick={() => profilePictureInput?.click()}>
+      {profilePictureUrl ? 'Replace profile picture' : 'Add profile picture'}
+    </button>
+    <p class="font-mono-key muted portal-nip05">{portalIdentity}</p>
+    <div class="status mt-6" data-type={signinStatus.type}>{signinStatus.message}</div>
+    {#if pictureStatus.message}
+      <div class="status" data-type={pictureStatus.type}>{pictureStatus.message}</div>
+    {/if}
   </div>
-  <div class="status mb-6" data-type={signinStatus.type}>{signinStatus.message}</div>
 
-  <Tabs>
-    <Tab active={activeTab === 'overview'} onselect={() => (activeTab = 'overview')}>Overview</Tab>
-    <Tab active={activeTab === 'update'} onselect={() => (activeTab = 'update')}>Update</Tab>
-    <Tab active={activeTab === 'delete'} onselect={() => (activeTab = 'delete')}>Delete</Tab>
-  </Tabs>
-
-  {#if activeTab === 'overview'}
-    <div class="tab-panel">
-      {#if signedIn}
-        <Card>
-          <div class="card-header" style="padding-bottom:0.75rem">
-            <h2 class="card-title" style="font-size:1rem">Keys</h2>
+  {#if signedIn}
+    <div class="portal-sections">
+      <section class="section-shell">
+        <span class="section-dot" aria-hidden="true"></span>
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Your fingerprint</h2>
+            <p class="section-subtitle">Your public identity on Nostr.</p>
           </div>
-          <div class="card-content">
-            {#if profilePictureUrl && !profilePictureError}
-              <div class="profile-summary">
-                <img
-                  class="profile-picture"
-                  alt="Profile picture preview"
-                  src={profilePictureUrl}
-                  onerror={() => (profilePictureError = true)}
-                />
-                <div>
-                  <div class="field" style="margin:0">
-                    <span class="small-label">Profile picture</span>
-                    <code class="font-mono-key">{profilePictureStatusText}</code>
-                  </div>
+        </div>
+        <div class="section-box">
+          <div class="fingerprint-row">
+            <svg class="fingerprint-glyph" viewBox="0 0 80 80" fill="none" stroke-width="1.5" stroke="currentColor">
+              <path d="M40 12c-13 0-22 10-22 22v10" stroke-linecap="round" />
+              <path d="M40 20c-8 0-14 6-14 14v14" stroke-linecap="round" />
+              <path d="M40 28c-4 0-7 3-7 7v22" stroke-linecap="round" />
+              <path d="M40 36v20" stroke-linecap="round" />
+              <path d="M47 34c0-4-3-7-7-7" stroke-linecap="round" opacity="0.7" />
+              <path d="M54 34c0-8-6-14-14-14" stroke-linecap="round" opacity="0.5" />
+              <path d="M62 34c0-13-10-22-22-22" stroke-linecap="round" opacity="0.3" />
+              <path d="M33 60c1 3 4 5 7 5s6-2 7-5" stroke-linecap="round" opacity="0.7" />
+            </svg>
+            <div style="min-width:0;flex:1">
+              <div class="trunc-key">
+                <span class="trunc-key-label">pub</span>
+                <span class="trunc-key-value font-mono-key">{publicKeyDisplay}</span>
+                <button type="button" class="trunc-key-copy" onclick={() => handleCopy(publicKeyDisplay, 'Public key')}>copy</button>
+              </div>
+              <div class="trunc-key">
+                <span class="trunc-key-label">enc</span>
+                <span class="trunc-key-value font-mono-key">{encryptedKeyDisplay}</span>
+                <button type="button" class="trunc-key-copy" onclick={() => handleCopy(encryptedKeyDisplay, 'Encrypted key')}>copy</button>
+              </div>
+              <button type="button" class="section-action mt-6" aria-expanded={showPrivateDrawer} onclick={togglePrivateDrawer}>
+                {showPrivateDrawer ? 'Hide private key & rotation ↑' : 'Reveal, rotate or replace private key ↓'}
+              </button>
+            </div>
+          </div>
+
+          {#if showPrivateDrawer}
+            <div class="private-drawer">
+              <div class="private-drawer-warning">
+                <span aria-hidden="true">⚠</span>
+                <p style="margin:0">Your private key is the only proof of your identity. Never paste it into unknown apps.</p>
+              </div>
+
+              {#if privateKeyDisplay === '—'}
+                <Button variant="secondary" onclick={handleDecryptPrivateKey}>Decrypt private key</Button>
+              {:else}
+                <div class="trunc-key">
+                  <span class="trunc-key-label">nsec</span>
+                  <span class="trunc-key-value font-mono-key">{privateKeyDisplay}</span>
                 </div>
-              </div>
-            {/if}
+                <p class="muted" style="margin:0">Scroll to select. Never fully rendered at once.</p>
+                <Button variant="ghost" onclick={hidePrivateKey}>Hide</Button>
+              {/if}
 
-            <div class="field">
-              <span class="small-label">Public key</span>
-              <div class="key-line">
-                <code class="overview-code font-mono-key">{publicKeyDisplay}</code>
-              </div>
-            </div>
-
-            <div class="field">
-              <span class="small-label">Encrypted private key (NIP-49)</span>
-              <div class="key-line">
-                <code class="overview-code font-mono-key">{encryptedKeyDisplay}</code>
-                <button class="btn ghost copy-line" type="button" onclick={handleCopyEncrypted}>Copy</button>
-              </div>
-            </div>
-
-            <div class="field">
-              <span class="small-label">Decrypted private key</span>
-              <div class="warning-banner" style="margin-bottom:0.5rem">⚠ This is your unencrypted private key. Never share it.</div>
-              <div class="key-line">
-                <code class="overview-code font-mono-key">{privateKeyDisplay}</code>
-                <button class="btn subtle copy-line" type="button" onclick={handleDecryptPrivateKey}>Decrypt private key</button>
+              <div class="private-drawer-divider">
+                <p class="small-label" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.5rem">Rotate password &amp; re-encrypt</p>
+                <form class="form" onsubmit={handleCredentialsSubmit}>
+                  <label>
+                    New private key
+                    <input type="text" bind:value={newPrivateKeyInput} class="form-mono" placeholder="ncryptsec…, nsec1…, or hex" />
+                  </label>
+                  <div class="split-fields">
+                    <label>
+                      New password
+                      <input type="password" bind:value={newPassword} autocomplete="new-password" placeholder="••••••••" />
+                    </label>
+                    <Button type="submit">Rotate</Button>
+                  </div>
+                  <p class="muted" style="margin:0">Paste the nsec you want to re-encrypt with the new password.</p>
+                  <div class="status" data-type={credentialsStatus.type}>{credentialsStatus.message}</div>
+                </form>
               </div>
             </div>
+          {/if}
+        </div>
+      </section>
 
-            <div class="field">
-              <span class="small-label">Relays</span>
-              <code class="overview-code font-mono-key">{relayListDisplay}</code>
-            </div>
+      <section class="section-shell">
+        <span class="section-dot" aria-hidden="true"></span>
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Your spaces</h2>
+            <p class="section-subtitle">The relays that carry your notes.</p>
           </div>
-        </Card>
-
-        {#if showAdminPanel}
-          <Card>
-            <div class="card-header" style="padding-bottom:0.75rem">
-              <h2 class="card-title" style="font-size:1rem">Admin console</h2>
-              <p class="card-description">Review users, verify pending accounts, and manage roles.</p>
-            </div>
-            <div class="card-content">
-              <div>
-                <Button variant="secondary" onclick={loadAdminUsers}>Refresh users</Button>
-              </div>
-              <div class="status" data-type={adminStatus.type}>{adminStatus.message}</div>
-              <div class="admin-list">
-                {#if !adminUsers.length}
-                  <div class="admin-empty">No users returned.</div>
+          <button type="button" class="section-action" onclick={toggleRelayMode}>
+            {relayMode === 'view' ? 'Edit' : 'Done'}
+          </button>
+        </div>
+        <div
+          class="section-box relay-box"
+          class:relay-box--view={relayMode === 'view'}
+          onclick={() => relayMode === 'view' && toggleRelayMode()}
+          onkeydown={(e) => {
+            if (relayMode === 'view' && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              toggleRelayMode();
+            }
+          }}
+          role={relayMode === 'view' ? 'button' : undefined}
+          tabindex={relayMode === 'view' ? 0 : undefined}
+        >
+          <div class="relay-row">
+            <svg class="relay-orbit" viewBox="0 0 120 120" fill="none">
+              <circle cx="60" cy="60" r="4" fill="currentColor" />
+              <circle cx="60" cy="60" r="22" stroke="currentColor" stroke-opacity="0.25" />
+              <circle cx="60" cy="60" r="40" stroke="currentColor" stroke-opacity="0.15" />
+              {#each relayOrbitPoints(relays.length) as point}
+                <circle cx={point.x} cy={point.y} r="3" fill="currentColor" />
+              {/each}
+            </svg>
+            {#if relayMode === 'view'}
+              <ul class="relay-list font-mono-key">
+                {#each relays as relay (relay)}
+                  <li>{relay}</li>
                 {:else}
-                  {#each adminUsers as user (user.username)}
-                    {@const isSelf = Boolean(username && user.username === username)}
-                    {@const actorRank = roleRank(role)}
-                    {@const canManage = canManageUser(role, user.role, user.username)}
-                    <div class="admin-user">
-                      <div class="admin-user-main">
-                        <img
-                          class="admin-avatar"
-                          class:placeholder={!user.picture_url}
-                          alt="{user.username} avatar"
-                          src={user.picture_url || undefined}
-                        />
-                        <div class="admin-meta">
-                          <div class="admin-name">{user.username}</div>
-                          <div class="admin-sub">{user.registration_email || '—'}</div>
-                          <div class="admin-sub">{formatUserIdentifier(user)}</div>
-                        </div>
+                  <li>No relays configured.</li>
+                {/each}
+              </ul>
+            {:else}
+              <form class="form" style="flex:1;min-width:0" onsubmit={handleRelaySubmit}>
+                <textarea
+                  aria-label="Relay URLs, one per line"
+                  bind:value={relaysText}
+                  rows="4"
+                  class="font-mono-key"
+                  placeholder="wss://relay.example.com"
+                ></textarea>
+                <p class="muted" style="margin:0">One relay URL per line.</p>
+                <Button type="submit">Save relays</Button>
+                <div class="status" data-type={relayStatus.type}>{relayStatus.message}</div>
+              </form>
+            {/if}
+          </div>
+        </div>
+      </section>
+
+      {#if showAdminPanel}
+        <section class="section-shell">
+          <span class="section-dot" aria-hidden="true"></span>
+          <div class="section-head">
+            <div>
+              <h2 class="section-title">Administration</h2>
+              <p class="section-subtitle">Review accounts, verify pending users, and manage roles.</p>
+            </div>
+            <button type="button" class="section-action" onclick={loadAdminUsers}>Refresh</button>
+          </div>
+          <div class="section-box">
+            <div class="admin-console-head">
+              <div class="admin-search">
+                <svg class="admin-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+                <input
+                  type="text"
+                  aria-label="Search users"
+                  bind:value={adminQuery}
+                  placeholder="Search username or NIP-05"
+                />
+              </div>
+              <span class="admin-count">
+                {adminUsers.length} users{pendingAdminCount > 0 ? ` · ${pendingAdminCount} pending` : ''}
+              </span>
+            </div>
+            <div class="status" data-type={adminStatus.type}>{adminStatus.message}</div>
+            <div class="admin-list">
+              {#if !filteredAdminUsers.length}
+                <div class="admin-empty">{adminUsers.length ? 'No matching users.' : 'No users returned.'}</div>
+              {:else}
+                {#each filteredAdminUsers as user (user.username)}
+                  {@const isSelf = Boolean(username && user.username === username)}
+                  {@const actorRank = roleRank(role)}
+                  {@const canManage = canManageUser(role, user.role, user.username)}
+                  <div class="admin-user">
+                    {#if user.picture_url && !brokenAdminAvatars.has(user.username)}
+                      <img
+                        class="admin-avatar"
+                        alt="{user.username} avatar"
+                        src={user.picture_url}
+                        onerror={() => markAdminAvatarBroken(user.username)}
+                      />
+                    {:else}
+                      <div class="admin-avatar">{user.username[0]?.toUpperCase()}</div>
+                    {/if}
+                    <div class="admin-meta">
+                      <div class="admin-name-row">
+                        <span class="admin-name">{user.username}</span>
+                        {#if user.status === 'unverified_email'}
+                          <span class="admin-pending-pill">pending</span>
+                        {/if}
                       </div>
-                      <div class="admin-tags">
-                        <span class="tag">{user.role || 'user'}</span>
-                        <span class="tag status-{user.status || 'unknown'}">{user.status || 'unknown'}</span>
-                      </div>
+                      <div class="admin-sub">{user.registration_email || '—'}</div>
+                      <div class="admin-sub">{formatUserIdentifier(user)}</div>
+
                       <div class="admin-controls">
                         {#if role === 'admin'}
+                          <label class="sr-only" for="role-{user.username}">Role for {user.username}</label>
                           <select
+                            id="role-{user.username}"
                             class="role-select"
                             value={user.role || 'user'}
                             onchange={(e) => handleRoleChange(user, (e.target as HTMLSelectElement).value)}
@@ -583,117 +778,64 @@
                           <button class="btn subtle" type="button" disabled={!canManage} onclick={() => handleVerifyUser(user)}>Verify</button>
                         {/if}
                         {#if !(role === 'moderator' && user.role === 'admin')}
-                          <button class="btn danger" type="button" disabled={!canManage} onclick={() => handleDeleteUser(user)}>Delete</button>
+                          <button class="section-action" type="button" disabled={!canManage} onclick={() => handleDeleteUser(user)}>Remove</button>
                         {/if}
                       </div>
                     </div>
-                  {/each}
-                {/if}
-              </div>
+                  </div>
+                {/each}
+              {/if}
             </div>
-          </Card>
-        {/if}
-      {/if}
-    </div>
-  {/if}
-
-  {#if activeTab === 'update'}
-    <div class="tab-panel">
-      {#if signedIn}
-        <Card>
-          <div class="card-content">
-            <section class="stack-4" style="padding-bottom:1rem;border-bottom:1px solid oklch(0.25 0.01 260 / 0.45)">
-              <header>
-                <h2 class="card-title" style="font-size:1rem;margin-bottom:0.2rem">Rotate password &amp; key</h2>
-                <p class="card-description">This will re-encrypt your private key with the new password.</p>
-              </header>
-              <form class="form" onsubmit={handleCredentialsSubmit}>
-                <div class="split-fields">
-                  <label>
-                    New password
-                    <input type="password" bind:value={newPassword} autocomplete="new-password" placeholder="••••••••" />
-                  </label>
-                  <label>
-                    New private key
-                    <input type="text" bind:value={newPrivateKeyInput} placeholder="ncryptsec..., nsec1..., or hex" />
-                  </label>
-                </div>
-                <div class="warning-banner">⚠ Your private key will be re-encrypted with the new password before upload.</div>
-                <Button type="submit">Update password &amp; key</Button>
-                <div class="status" data-type={credentialsStatus.type}>{credentialsStatus.message}</div>
-              </form>
-            </section>
-
-            <section class="stack-4" style="padding-bottom:1rem;border-bottom:1px solid oklch(0.25 0.01 260 / 0.45)">
-              <header>
-                <h2 class="card-title" style="font-size:1rem;margin-bottom:0.2rem">Update relay list</h2>
-              </header>
-              <form class="form" onsubmit={handleRelaySubmit}>
-                <label>
-                  Relays (one per line)
-                  <textarea bind:value={relaysText} rows="4" class="font-mono-key" placeholder="wss://relay.example.com"></textarea>
-                </label>
-                <Button type="submit">Save relays</Button>
-                <div class="status" data-type={relayStatus.type}>{relayStatus.message}</div>
-              </form>
-            </section>
-
-            <section class="stack-4">
-              <header>
-                <h2 class="card-title" style="font-size:1rem;margin-bottom:0.2rem">Profile picture</h2>
-              </header>
-              <form class="form" onsubmit={handlePictureSubmit}>
-                <label>
-                  Profile picture
-                  <input type="file" accept="image/*" bind:this={profilePictureInput} />
-                </label>
-                <Button type="submit" variant="secondary">Upload</Button>
-                <div class="status" data-type={pictureStatus.type}>{pictureStatus.message}</div>
-              </form>
-            </section>
           </div>
-        </Card>
+        </section>
       {/if}
     </div>
   {/if}
-
-  {#if activeTab === 'delete'}
-    <div class="tab-panel">
-      {#if signedIn}
-        <Card class="danger-panel">
-          <div class="card-header" style="padding-bottom:0.75rem">
-            <h2 class="card-title" style="font-size:1rem;color:var(--destructive)">Delete account</h2>
-            <p class="card-description">This action is permanent and cannot be undone. Your NIP-05 identity and all stored data will be removed.</p>
-          </div>
-          <form class="form" onsubmit={handleDeleteSubmit}>
-            <label class="checkline">
-              <input type="checkbox" bind:checked={deleteSavedKeyChecked} required />
-              <span>I have saved my encrypted private key and understand it will be irrecoverable after deletion.</span>
-            </label>
-            <label>
-              <span class="small-label">Type <code class="font-mono-key">{username}</code> to confirm</span>
-              <input
-                type="text"
-                bind:value={deleteConfirmUsername}
-                placeholder="username"
-                autocomplete="off"
-                autocapitalize="off"
-                autocorrect="off"
-                spellcheck="false"
-                required
-                onpaste={handleDeletePaste}
-                ondrop={handleDeleteDrop}
-              />
-            </label>
-            <Button type="submit" variant="destructive" class="w-full" disabled={!deleteGuardOk}>Delete my account permanently</Button>
-            <div class="status" data-type={deleteStatus.type}>{deleteStatus.message}</div>
-          </form>
-        </Card>
-      {/if}
-    </div>
-  {/if}
-
-  <div class="mt-8" style="display:flex;justify-content:flex-end">
-    <a class="btn ghost" href="/" onclick={handleSignOut}>Sign out</a>
-  </div>
 </Shell>
+
+<svelte:window onkeydown={handleWindowKeydown} />
+
+{#if showDeleteDialog}
+  <div class="dialog-overlay" role="presentation" onclick={closeDeleteDialog}>
+    <div
+      class="dialog-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-dialog-title"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+    >
+      <h2 id="delete-dialog-title">Delete this account?</h2>
+      <p>
+        This is irreversible. Your encrypted key and relay list are erased from noas — if you have not saved
+        your private key, your identity is lost forever.
+      </p>
+      <form class="form mt-6" onsubmit={handleDeleteSubmit}>
+        <label class="checkline">
+          <input type="checkbox" bind:checked={deleteSavedKeyChecked} required />
+          <span>I have saved my private key somewhere safe.</span>
+        </label>
+        <label>
+          <span class="small-label">Type <code class="font-mono-key">{username}</code> to confirm</span>
+          <input
+            type="text"
+            bind:value={deleteConfirmUsername}
+            placeholder={username || 'username'}
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            required
+            onpaste={handleDeletePaste}
+            ondrop={handleDeleteDrop}
+          />
+        </label>
+        <div class="status" data-type={deleteStatus.type}>{deleteStatus.message}</div>
+        <div class="dialog-actions">
+          <button type="button" class="btn ghost" onclick={closeDeleteDialog}>Cancel</button>
+          <button type="submit" class="btn danger" disabled={!deleteGuardOk}>Delete permanently</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}

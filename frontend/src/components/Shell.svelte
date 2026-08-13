@@ -1,38 +1,44 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { onMount } from 'svelte';
+  import NoasLogo from './NoasLogo.svelte';
   import { loadNoasVersion } from '../lib/version';
 
   let {
     wide = false,
-    versionLabel: versionLabelProp = undefined,
+    header = true,
+    footerStart,
+    footerEnd,
     children,
   }: {
     wide?: boolean;
-    /** Pass this when the page already fetches /.well-known/nostr.json itself, to avoid a duplicate fetch. */
-    versionLabel?: string;
+    /** The landing/sign-in page omits the header — the logo already appears in the hero. */
+    header?: boolean;
+    /** Extra actions rendered at the left/right of the pinned footer bar (Portal's Delete account / Sign out). */
+    footerStart?: Snippet;
+    footerEnd?: Snippet;
     children?: Snippet;
   } = $props();
 
-  let ownVersionLabel = $state('');
-  const versionLabel = $derived(versionLabelProp ?? ownVersionLabel);
+  let versionLabel = $state('');
 
   onMount(async () => {
-    if (versionLabelProp !== undefined) return;
     const metadata = await loadNoasVersion();
-    if (metadata) ownVersionLabel = metadata.versionLabel;
+    if (metadata) versionLabel = metadata.versionLabel;
   });
 </script>
 
 <div class="site-shell">
-  <header class="site-header">
-    <div class="site-header-inner">
-      <a class="logo-link" href="/">
-        <span class="logo-mark" aria-hidden="true">N</span>
-        <span class="logo-word">noas</span>
-      </a>
-    </div>
-  </header>
+  {#if header}
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="logo-link" href="/">
+          <NoasLogo class="logo-mark" />
+          <span class="logo-word">noas</span>
+        </a>
+      </div>
+    </header>
+  {/if}
 
   <main class="site-main" class:main-centered={!wide} class:main-wide={wide}>
     {@render children?.()}
@@ -40,11 +46,16 @@
 
   <footer class="site-footer">
     <div class="site-footer-inner">
-      <span>noas · nostr authentication server</span>
-      <span class="site-footer-right">
+      <div class="site-footer-actions site-footer-start">
+        {@render footerStart?.()}
+      </div>
+      <div class="site-footer-meta">
         <a href="/docs">API docs</a>
-        <span id="noasVersionFooter">{versionLabel}</span>
-      </span>
+        {#if versionLabel}<span class="site-footer-version">{versionLabel}</span>{/if}
+      </div>
+      <div class="site-footer-actions site-footer-end">
+        {@render footerEnd?.()}
+      </div>
     </div>
   </footer>
 </div>
