@@ -591,19 +591,21 @@ export async function updateNostrUserStatus(username, status, tenantDomain = nul
 export async function listNostrUsers({ tenantDomain = null, limit = 200 } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || 200));
   const params = [];
-  let sql = `SELECT username,
-                    registration_email,
-                    public_key,
-                    status,
-                    role,
-                    created_at
-             FROM nostr_users`;
+  let sql = `SELECT u.username,
+                    u.registration_email,
+                    u.public_key,
+                    u.status,
+                    u.role,
+                    u.created_at,
+                    (p.account_id IS NOT NULL) AS has_profile_picture
+             FROM nostr_users u
+             LEFT JOIN profile_pictures p ON p.account_id = u.id`;
   const tenant = normalizeTenantDomain(tenantDomain);
   if (tenant) {
     params.push(tenant);
-    sql += ` WHERE tenant_domain = $1`;
+    sql += ` WHERE u.tenant_domain = $1`;
   }
-  sql += ' ORDER BY created_at DESC';
+  sql += ' ORDER BY u.created_at DESC';
   params.push(safeLimit);
   sql += ` LIMIT $${params.length}`;
   const result = await query(sql, params);

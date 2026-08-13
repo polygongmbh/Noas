@@ -1246,7 +1246,7 @@ const handleAdminUserList = async (req, res) => {
       public_key: user.public_key || null,
       status: user.status,
       role: user.role || NOSTR_USER_ROLES.USER,
-      picture_url: user.public_key ? `${pictureBase}${user.public_key}` : null,
+      picture_url: user.has_profile_picture && user.public_key ? `${pictureBase}${user.public_key}` : null,
       created_at: user.created_at,
       can_manage: canActOnUser(actor, user),
     }));
